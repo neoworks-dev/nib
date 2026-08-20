@@ -12,10 +12,12 @@ export {
 	isKnownEventType,
 	knownBlockKinds,
 	messageRoleSchema,
+	modelInfoSchema,
 	parseAgentEvent,
 	permissionBehaviorSchema,
 	safeParseAgentEvent,
 	sessionStatusSchema,
+	slashCommandSchema,
 	type AgentEvent,
 	type AnyAgentEvent,
 	type BlockContent,
@@ -26,8 +28,10 @@ export {
 	type KnownBlockKind,
 	type KnownEventType,
 	type MessageRole,
+	type ModelInfo,
 	type PermissionBehavior,
 	type SessionStatus,
+	type SlashCommandInfo,
 	type UnknownAgentEvent,
 } from './events';
 export {

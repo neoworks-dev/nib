@@ -16,7 +16,7 @@ export const trajectoryInspectorPlugin: Plugin = {
 			}),
 		);
 		ctx.effect(() => () => {
-			inspectorState.toggle(false);
+			inspectorState.reset();
 			inspectorState.sessions = null;
 		});
 	},

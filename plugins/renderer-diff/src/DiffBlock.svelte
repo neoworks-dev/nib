@@ -1,4 +1,6 @@
 <script lang="ts">
+	import CircleNotchIcon from 'phosphor-svelte/lib/CircleNotchIcon';
+	import FileCodeIcon from 'phosphor-svelte/lib/FileCodeIcon';
 	import { blockToolInput } from '@nib-ui/protocol';
 	import type { RendererProps } from '@nib-ui/ui-contracts';
 	import { diffLines } from './diff';
@@ -23,12 +25,19 @@
 	} as const;
 </script>
 
-<div class="overflow-hidden rounded-md border border-line bg-input">
-	<div class="flex items-center gap-2 border-b border-line-faint bg-raised px-3 py-1.5 text-xs">
-		<span class="tracking-caps uppercase text-dim">{block.toolName}</span>
-		<span class="truncate font-mono text-default">{filePath}</span>
-		<span class="ml-auto font-mono text-green">+{added}</span>
-		<span class="font-mono text-red">-{removed}</span>
+<div class="overflow-hidden rounded-lg border border-line-faint bg-input">
+	<div class="flex items-center gap-2 border-b border-line-faint bg-raised px-3 py-1.5">
+		<span class="text-blue">
+			{#if block.completed}
+				<FileCodeIcon size={14} />
+			{:else}
+				<CircleNotchIcon size={14} />
+			{/if}
+		</span>
+		<span class="text-2xs tracking-caps uppercase text-dim">{block.toolName}</span>
+		<span class="truncate font-mono text-xs text-default">{filePath}</span>
+		<span class="ml-auto font-mono text-xs text-green">+{added}</span>
+		<span class="font-mono text-xs text-red">-{removed}</span>
 	</div>
 	{#if lines.length === 0}
 		<p class="px-3 py-2 text-xs text-dim">Waiting for the tool input to finish streaming…</p>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LightningIcon from 'phosphor-svelte/lib/LightningIcon';
 	import type { SlotProps } from '@nib-ui/ui-contracts';
 
 	const { session }: SlotProps = $props();
@@ -10,6 +11,7 @@
 
 {#if usage}
 	<span class="flex items-center gap-3 font-mono">
+		<span class="text-amber"><LightningIcon size={12} /></span>
 		<span title="input / output tokens">{usage.inputTokens} in · {usage.outputTokens} out</span>
 		{#if usage.cacheReadTokens > 0}
 			<span title="cache reads">{usage.cacheReadTokens} cached</span>

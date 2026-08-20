@@ -84,6 +84,8 @@ async function startSession(
 		},
 	});
 
+	void publishMetadata(session, emit, (opts.options as Options | undefined)?.permissionMode ?? 'default');
+
 	const pump = (async () => {
 		for await (const message of session) mapper.handle(message);
 	})().catch((error: unknown) => {
@@ -125,7 +127,12 @@ async function startSession(
 
 		async setPermissionMode(mode) {
 			await session.setPermissionMode(mode as PermissionMode);
-			emit({ type: 'log', data: { level: 'info', message: `permission mode set to ${mode}` } });
+			emit({ type: 'session.meta', data: { permissionMode: mode } });
+		},
+
+		async setModel(model) {
+			await session.setModel(model);
+			emit({ type: 'session.meta', data: { model } });
 		},
 
 		async dispose() {
@@ -136,6 +143,36 @@ async function startSession(
 			await pump;
 		},
 	};
+}
+
+/**
+ * `supportedCommands`/`supportedModels` are control requests, so they only
+ * answer once the CLI is up; a failure downgrades the composer to plain text
+ * instead of failing the session.
+ */
+async function publishMetadata(session: Query, emit: EmitEvent, permissionMode: string): Promise<void> {
+	try {
+		const [commands, models] = await Promise.all([session.supportedCommands(), session.supportedModels()]);
+		emit({
+			type: 'session.meta',
+			data: {
+				permissionMode,
+				slashCommands: commands.map((command) => ({
+					name: command.name,
+					description: command.description,
+					argumentHint: command.argumentHint,
+				})),
+				models: models.map((model) => ({
+					id: model.value,
+					displayName: model.displayName,
+					description: model.description,
+				})),
+			},
+			raw: { commands, models },
+		});
+	} catch (error) {
+		emit({ type: 'log', data: { level: 'debug', message: `capability probe failed: ${describeError(error)}` } });
+	}
 }
 
 function toPermissionResult(response: PermissionResponse): PermissionResult {

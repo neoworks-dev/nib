@@ -20,10 +20,24 @@ export interface SessionSummary {
 	lastSeq: number;
 }
 
+export interface DirectoryEntry {
+	name: string;
+	path: string;
+}
+
+export interface CreateSessionInput {
+	harnessId: string;
+	cwd: string;
+	label?: string;
+	options?: Record<string, unknown>;
+}
+
 export interface TransportService {
 	listHarnesses(): Promise<HarnessDescriptor[]>;
 	listSessions(): Promise<SessionSummary[]>;
-	createSession(input: { harnessId: string; cwd: string; options?: Record<string, unknown> }): Promise<string>;
+	createSession(input: CreateSessionInput): Promise<string>;
+	listDirectories(path: string): Promise<{ base: string; entries: DirectoryEntry[] }>;
+	searchFiles(cwd: string, query: string, limit?: number): Promise<string[]>;
 	/** Replays from `fromSeq`, then streams live; reconnects on its own. */
 	subscribe(sessionId: string, fromSeq: number, onEvent: (event: AnyAgentEvent) => void): Disposer;
 	command(sessionId: string, command: SessionCommand): Promise<void>;
@@ -35,14 +49,21 @@ export interface SessionsService {
 	readonly activeId: string | null;
 	readonly active: SessionView | null;
 	readonly error: string | null;
+	/** Working directories used before, most recent first; survives a reload. */
+	readonly recentDirectories: string[];
 	events(sessionId: string): AnyAgentEvent[];
 	refresh(): Promise<void>;
-	create(harnessId: string, cwd: string): Promise<void>;
+	create(input: CreateSessionInput): Promise<void>;
 	open(sessionId: string): void;
 	send(text: string): Promise<void>;
 	interrupt(): Promise<void>;
 	respondToPermission(requestId: string, behavior: PermissionBehavior): Promise<void>;
 	setPermissionMode(mode: string): Promise<void>;
+	setModel(model: string): Promise<void>;
+	setLabel(label: string): Promise<void>;
+	/** Fuzzy file search inside the active session's working directory. */
+	searchFiles(query: string, limit?: number): Promise<string[]>;
+	listDirectories(path: string): Promise<{ base: string; entries: DirectoryEntry[] }>;
 	close(sessionId: string): Promise<void>;
 }
 

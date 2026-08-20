@@ -1,4 +1,5 @@
 <script lang="ts">
+	import TerminalWindowIcon from 'phosphor-svelte/lib/TerminalWindowIcon';
 	import { blockToolInput, blockToolOutput } from '@nib-ui/protocol';
 	import type { RendererProps } from '@nib-ui/ui-contracts';
 	import { stripAnsi } from './ansi';
@@ -17,7 +18,16 @@
 	const visible = $derived(expanded ? lines : lines.slice(0, collapsedLines));
 </script>
 
-<div class="overflow-hidden rounded-md border border-line bg-input font-mono text-xs">
+<div class="overflow-hidden rounded-lg border border-line-faint bg-input font-mono text-xs">
+	<div class="flex items-center gap-2 border-b border-line-faint bg-raised px-3 py-1.5">
+		<span class="text-green"><TerminalWindowIcon size={14} /></span>
+		<span class="text-2xs tracking-caps uppercase text-dim">
+			{block.kind === 'tool_use' ? 'bash' : 'bash output'}
+		</span>
+		{#if !block.completed}
+			<span class="ml-auto h-1.5 w-1.5 animate-pulse rounded-full bg-amber"></span>
+		{/if}
+	</div>
 	{#if block.kind === 'tool_use'}
 		<div class="flex gap-2 px-3 py-2 text-green">
 			<span class="select-none text-dim">$</span>

@@ -5,6 +5,7 @@ import { sessionHost } from '$lib/server/context';
 const createBodySchema = z.object({
 	harnessId: z.string(),
 	cwd: z.string(),
+	label: z.string().optional(),
 	options: z.record(z.string(), z.unknown()).optional(),
 	resume: z.object({ nativeSessionId: z.string(), fork: z.boolean().optional() }).optional(),
 });
@@ -16,11 +17,11 @@ export const POST: RequestHandler = async ({ request }) => {
 	if (!body.success) error(400, body.error.message);
 
 	const host = sessionHost();
-	const { harnessId, cwd, options, resume } = body.data;
+	const { harnessId, cwd, label, options, resume } = body.data;
 	try {
 		const sessionId = resume
 			? await host.resume({ harnessId, cwd, options, ...resume })
-			: await host.create({ harnessId, cwd, options });
+			: await host.create({ harnessId, cwd, label, options });
 		return json({ sessionId });
 	} catch (cause) {
 		error(400, cause instanceof Error ? cause.message : 'failed to create session');

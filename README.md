@@ -40,12 +40,21 @@ renderer/slot/command/session service interfaces plus the `@nib-ui/kernel` modul
 | Service     | Contributed by                            | Used for                                        |
 | ----------- | ----------------------------------------- | ----------------------------------------------- |
 | `harnesses` | server adapters (`claude-code`)           | `createSession`/`resumeSession` per harness      |
+| `workspace` | `workspace` (server)                      | cwd autocomplete + `@` file search over the cwd  |
 | `renderers` | `core-renderers`, `renderer-diff`, `renderer-terminal` | block rendering by `(kind, toolName)` |
 | `slots`     | `cost-tracker`, `trajectory-inspector`    | statusbar, headers, composer actions            |
 | `commands`  | `trajectory-inspector`, dev commands      | command palette (⌘/Ctrl+K)                      |
 
 Every registration goes through `ctx.effect(() => disposer)`, so disposing a plugin removes its
 renderers, slot entries, listeners and commands. `Toggle plugin: <name>` in the palette exercises it.
+
+## Session metadata
+
+Slash commands, models, the active permission mode and the user's label all travel as
+`session.meta` events on the same log — no side channel. The Claude Code adapter probes
+`supportedCommands()`/`supportedModels()` once the CLI is up and emits one event; `setPermissionMode`,
+`setModel` and `setLabel` each emit a partial update, and the reducer keeps whatever a partial omits.
+A harness that answers none of this simply leaves the composer's capability controls hidden.
 
 ## Commands
 

@@ -19,6 +19,8 @@ export const sessionCommandSchema = z.discriminatedUnion('type', [
 		updatedInput: z.unknown().optional(),
 	}),
 	z.object({ type: z.literal('session.setPermissionMode'), mode: z.string() }),
+	z.object({ type: z.literal('session.setModel'), model: z.string() }),
+	z.object({ type: z.literal('session.setLabel'), label: z.string() }),
 	z.object({ type: z.literal('session.resume'), nativeSessionId: z.string(), fork: z.boolean().optional() }),
 	z.object({ type: z.literal('session.close') }),
 ]);

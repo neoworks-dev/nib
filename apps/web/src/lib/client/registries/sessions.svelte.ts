@@ -8,7 +8,14 @@ import {
 	type SessionCommand,
 	type SessionView,
 } from '@nib-ui/protocol';
-import type { SessionSummary, SessionsService, TransportService } from '@nib-ui/ui-contracts';
+import type {
+	CreateSessionInput,
+	DirectoryEntry,
+	SessionSummary,
+	SessionsService,
+	TransportService,
+} from '@nib-ui/ui-contracts';
+import { loadRecentDirectories, rememberDirectory } from '../recent-directories';
 
 /**
  * The browser-side projection: every open session is a `reduceSession` fold over
@@ -20,6 +27,7 @@ export class ReactiveSessionsStore implements SessionsService {
 	summaries = $state<SessionSummary[]>([]);
 	activeId = $state<string | null>(null);
 	error = $state<string | null>(null);
+	recentDirectories = $state<string[]>(loadRecentDirectories());
 	private views = $state<Record<string, SessionView>>({});
 	private logs = $state<Record<string, AnyAgentEvent[]>>({});
 	private readonly subscriptions = new Map<string, Disposer>();
@@ -43,10 +51,11 @@ export class ReactiveSessionsStore implements SessionsService {
 		this.summaries = summaries;
 	}
 
-	async create(harnessId: string, cwd: string): Promise<void> {
+	async create(input: CreateSessionInput): Promise<void> {
 		this.error = null;
 		try {
-			const sessionId = await this.transport.createSession({ harnessId, cwd });
+			const sessionId = await this.transport.createSession(input);
+			this.recentDirectories = rememberDirectory(this.recentDirectories, input.cwd);
 			this.open(sessionId);
 			await this.refresh();
 		} catch (cause) {
@@ -80,6 +89,29 @@ export class ReactiveSessionsStore implements SessionsService {
 
 	setPermissionMode(mode: string) {
 		return this.dispatch({ type: 'session.setPermissionMode', mode });
+	}
+
+	setModel(model: string) {
+		return this.dispatch({ type: 'session.setModel', model });
+	}
+
+	setLabel(label: string) {
+		return this.dispatch({ type: 'session.setLabel', label });
+	}
+
+	/** Scoped to the active session's cwd; without one there is nothing to search. */
+	async searchFiles(query: string, limit?: number): Promise<string[]> {
+		const cwd = this.active?.cwd;
+		if (!cwd) return [];
+		try {
+			return await this.transport.searchFiles(cwd, query, limit);
+		} catch {
+			return [];
+		}
+	}
+
+	listDirectories(path: string): Promise<{ base: string; entries: DirectoryEntry[] }> {
+		return this.transport.listDirectories(path);
 	}
 
 	async close(sessionId: string): Promise<void> {

@@ -4,8 +4,10 @@ import type {
 	BlockContent,
 	BlockKind,
 	MessageRole,
+	ModelInfo,
 	PermissionBehavior,
 	SessionStatus,
+	SlashCommandInfo,
 } from './events';
 
 export interface BlockView {
@@ -63,6 +65,11 @@ export interface SessionView {
 	title: string | null;
 	nativeSessionId: string | null;
 	capabilities: HarnessCapabilities | null;
+	/** Active permission mode, as last reported by the harness. */
+	permissionMode: string | null;
+	model: string | null;
+	slashCommands: SlashCommandInfo[];
+	models: ModelInfo[];
 	status: SessionStatus;
 	statusDetail: string | null;
 	messages: MessageView[];
@@ -108,6 +115,10 @@ export function createSessionView(sessionId: string): SessionView {
 		title: null,
 		nativeSessionId: null,
 		capabilities: null,
+		permissionMode: null,
+		model: null,
+		slashCommands: [],
+		models: [],
 		status: 'idle',
 		statusDetail: null,
 		messages: [],

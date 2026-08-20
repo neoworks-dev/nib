@@ -22,6 +22,8 @@ function applyEvent(state: SessionView, event: AnyAgentEvent): SessionView {
 	switch (event.type) {
 		case 'session.created':
 			return applySessionCreated(state, event.data);
+		case 'session.meta':
+			return applySessionMeta(state, event.data);
 		case 'session.status':
 			return { ...state, status: event.data.status, statusDetail: event.data.detail ?? null };
 		case 'message.started':
@@ -59,6 +61,18 @@ function applySessionCreated(state: SessionView, data: EventDataMap['session.cre
 		title: data.title ?? state.title,
 		nativeSessionId: data.nativeSessionId ?? state.nativeSessionId,
 		capabilities: data.capabilities,
+	};
+}
+
+/** Every field is optional: a partial update must not clear what it omits. */
+function applySessionMeta(state: SessionView, data: EventDataMap['session.meta']): SessionView {
+	return {
+		...state,
+		title: data.label ?? state.title,
+		model: data.model ?? state.model,
+		permissionMode: data.permissionMode ?? state.permissionMode,
+		slashCommands: data.slashCommands ?? state.slashCommands,
+		models: data.models ?? state.models,
 	};
 }
 

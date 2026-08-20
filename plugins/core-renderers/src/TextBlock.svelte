@@ -6,7 +6,7 @@
 	const html = $derived(renderMarkdown(block.text));
 </script>
 
-<div class="text-base leading-relaxed text-default">
+<div class="text-base leading-relaxed text-default [&_li]:my-0.5 [&_p]:my-0 [&_strong]:text-default">
 	{@html html}
 	{#if !block.completed}
 		<span class="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-muted align-text-bottom"></span>

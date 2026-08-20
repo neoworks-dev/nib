@@ -70,9 +70,11 @@
       "name": "@nib-ui/plugin-core-renderers",
       "version": "0.0.0",
       "dependencies": {
+        "@neoworks-dev/ui": "link:@neoworks-dev/ui",
         "@nib-ui/kernel": "workspace:*",
         "@nib-ui/protocol": "workspace:*",
         "@nib-ui/ui-contracts": "workspace:*",
+        "phosphor-svelte": "^3.1.0",
       },
       "devDependencies": {
         "svelte": "^5.56.4",
@@ -85,9 +87,11 @@
       "name": "@nib-ui/plugin-cost-tracker",
       "version": "0.0.0",
       "dependencies": {
+        "@neoworks-dev/ui": "link:@neoworks-dev/ui",
         "@nib-ui/kernel": "workspace:*",
         "@nib-ui/protocol": "workspace:*",
         "@nib-ui/ui-contracts": "workspace:*",
+        "phosphor-svelte": "^3.1.0",
       },
       "devDependencies": {
         "svelte": "^5.56.4",
@@ -100,9 +104,11 @@
       "name": "@nib-ui/plugin-renderer-diff",
       "version": "0.0.0",
       "dependencies": {
+        "@neoworks-dev/ui": "link:@neoworks-dev/ui",
         "@nib-ui/kernel": "workspace:*",
         "@nib-ui/protocol": "workspace:*",
         "@nib-ui/ui-contracts": "workspace:*",
+        "phosphor-svelte": "^3.1.0",
       },
       "devDependencies": {
         "svelte": "^5.56.4",
@@ -115,9 +121,11 @@
       "name": "@nib-ui/plugin-renderer-terminal",
       "version": "0.0.0",
       "dependencies": {
+        "@neoworks-dev/ui": "link:@neoworks-dev/ui",
         "@nib-ui/kernel": "workspace:*",
         "@nib-ui/protocol": "workspace:*",
         "@nib-ui/ui-contracts": "workspace:*",
+        "phosphor-svelte": "^3.1.0",
       },
       "devDependencies": {
         "svelte": "^5.56.4",
@@ -130,9 +138,11 @@
       "name": "@nib-ui/plugin-trajectory-inspector",
       "version": "0.0.0",
       "dependencies": {
+        "@neoworks-dev/ui": "link:@neoworks-dev/ui",
         "@nib-ui/kernel": "workspace:*",
         "@nib-ui/protocol": "workspace:*",
         "@nib-ui/ui-contracts": "workspace:*",
+        "phosphor-svelte": "^3.1.0",
       },
       "devDependencies": {
         "svelte": "^5.56.4",

@@ -3,7 +3,8 @@ import { createContext, type Context } from '@nib-ui/kernel';
 import { claudeCodePlugin } from './plugins/claude-code';
 import { harnessRegistryPlugin } from './plugins/harness-registry';
 import { sessionHostPlugin } from './plugins/session-host';
-import type { HarnessRegistry, SessionHost } from './services';
+import { workspacePlugin } from './plugins/workspace';
+import type { HarnessRegistry, SessionHost, WorkspaceService } from './services';
 
 const logDirectory = join(process.cwd(), '.nib-ui', 'sessions');
 
@@ -16,6 +17,7 @@ export function serverContext(): Context {
 	context.use(harnessRegistryPlugin);
 	context.use(sessionHostPlugin, { logDirectory });
 	context.use(claudeCodePlugin);
+	context.use(workspacePlugin);
 	return context;
 }
 
@@ -25,4 +27,8 @@ export function harnesses(): HarnessRegistry {
 
 export function sessionHost(): SessionHost {
 	return serverContext().require('sessionHost');
+}
+
+export function workspace(): WorkspaceService {
+	return serverContext().require('workspace');
 }

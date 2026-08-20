@@ -1,16 +1,65 @@
 <script lang="ts">
-	import { Button } from '@neoworks-dev/ui';
+	import { Button, Select } from '@neoworks-dev/ui';
+	import PaperPlaneRightIcon from 'phosphor-svelte/lib/PaperPlaneRightIcon';
+	import StopCircleIcon from 'phosphor-svelte/lib/StopCircleIcon';
 	import type { SessionView } from '@nib-ui/protocol';
+	import { fuzzyRank } from '../../fuzzy';
+	import { applyTrigger, detectTrigger, type TriggerItem } from '../composer-trigger';
 	import { clientContext } from '../context';
 	import SlotHost from './SlotHost.svelte';
+	import TriggerPopup from './TriggerPopup.svelte';
 
 	const { session }: { session: SessionView } = $props();
 
 	const sessions = clientContext().require('sessions');
-	let draft = $state('');
 
+	let draft = $state('');
+	let caret = $state(0);
+	let dismissed = $state(false);
+	let activeIndex = $state(0);
+	let fileMatches = $state<string[]>([]);
+	let textarea = $state<HTMLTextAreaElement>();
+
+	const capabilities = $derived(session.capabilities);
 	const busy = $derived(session.status === 'working');
-	const canInterrupt = $derived(session.capabilities?.interrupt === true);
+	const canInterrupt = $derived(capabilities?.interrupt === true && busy);
+	const permissionModes = $derived(capabilities?.permissionModes ?? []);
+	const models = $derived(capabilities?.models ? session.models : []);
+
+	const trigger = $derived(dismissed ? null : detectTrigger(draft, caret));
+	const slashItems = $derived.by((): TriggerItem[] => {
+		if (trigger?.kind !== 'slash' || !capabilities?.slashCommands) return [];
+		return fuzzyRank(session.slashCommands, trigger.query, (command) => command.name, 12).map(({ item }) => ({
+			value: item.name,
+			label: `/${item.name}`,
+			hint: item.argumentHint || item.description,
+		}));
+	});
+	const fileItems = $derived(
+		trigger?.kind === 'file' ? fileMatches.map((path) => ({ value: path, label: path })) : [],
+	);
+	const items = $derived(trigger?.kind === 'slash' ? slashItems : fileItems);
+	const heading = $derived(trigger?.kind === 'slash' ? 'Slash commands' : 'Workspace files');
+
+	$effect(() => {
+		if (trigger?.kind !== 'file') {
+			fileMatches = [];
+			return;
+		}
+		// A keystroke can outrun the probe; drop the answer to a query we left behind.
+		let current = true;
+		void sessions.searchFiles(trigger.query, 12).then((files) => {
+			if (current) fileMatches = files;
+		});
+		return () => {
+			current = false;
+		};
+	});
+
+	$effect(() => {
+		items.length;
+		activeIndex = 0;
+	});
 
 	async function submit() {
 		const text = draft.trim();
@@ -19,28 +68,100 @@
 		await sessions.send(text);
 	}
 
+	function syncCaret() {
+		caret = textarea?.selectionStart ?? draft.length;
+	}
+
+	function pick(item: TriggerItem) {
+		if (!trigger) return;
+		const applied = applyTrigger(draft, trigger, item.value);
+		draft = applied.text;
+		caret = applied.caret;
+		dismissed = true;
+		textarea?.focus();
+		queueMicrotask(() => textarea?.setSelectionRange(applied.caret, applied.caret));
+	}
+
 	function onKeydown(event: KeyboardEvent) {
+		if (items.length > 0 && navigatePopup(event)) return;
 		if (event.key !== 'Enter' || event.shiftKey) return;
 		event.preventDefault();
 		void submit();
 	}
+
+	function navigatePopup(event: KeyboardEvent): boolean {
+		if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+			event.preventDefault();
+			const next = activeIndex + (event.key === 'ArrowDown' ? 1 : -1);
+			activeIndex = Math.max(0, Math.min(next, items.length - 1));
+			return true;
+		}
+		if (event.key === 'Enter' || event.key === 'Tab') {
+			event.preventDefault();
+			pick(items[activeIndex] ?? items[0]!);
+			return true;
+		}
+		if (event.key === 'Escape') {
+			dismissed = true;
+			return true;
+		}
+		return false;
+	}
 </script>
 
 <div class="border-t border-line bg-elevated px-6 py-4">
-	<div class="flex items-end gap-3">
+	<div class="relative flex items-end gap-3">
+		{#if trigger && items.length > 0}
+			<TriggerPopup {items} {activeIndex} {heading} onpick={pick} />
+		{/if}
+
 		<textarea
+			bind:this={textarea}
 			bind:value={draft}
+			oninput={() => {
+				dismissed = false;
+				syncCaret();
+			}}
+			onkeyup={syncCaret}
+			onclick={syncCaret}
 			onkeydown={onKeydown}
 			rows="2"
-			placeholder="Send a message — Enter to send, Shift+Enter for a newline"
-			class="min-h-16 flex-1 resize-y rounded-md border border-line bg-input px-3 py-2 text-base text-default placeholder:text-faint"
+			placeholder="Message the harness — / for commands, @ for files, Enter to send"
+			class="min-h-16 flex-1 resize-y rounded-lg border border-line bg-input px-3 py-2 text-base text-default placeholder:text-faint focus:border-line-strong focus:outline-none"
 		></textarea>
+
 		<div class="flex flex-col gap-2">
-			<Button onclick={submit} disabled={draft.trim().length === 0}>Send</Button>
-			{#if canInterrupt && busy}
-				<Button variant="danger" onclick={() => sessions.interrupt()}>Interrupt</Button>
+			<Button icon={PaperPlaneRightIcon} onclick={submit} disabled={draft.trim().length === 0}>Send</Button>
+			{#if canInterrupt}
+				<Button variant="danger" icon={StopCircleIcon} onclick={() => sessions.interrupt()}>Interrupt</Button>
 			{/if}
 		</div>
-		<SlotHost slot="composer.actions" {session} class="flex flex-col gap-2" />
+	</div>
+
+	<div class="mt-3 flex flex-wrap items-center gap-2">
+		{#if permissionModes.length > 0}
+			<div class="w-44">
+				<Select
+					value={session.permissionMode ?? permissionModes[0] ?? ''}
+					onChange={(value) => sessions.setPermissionMode(value as string)}
+					options={permissionModes.map((mode) => ({ value: mode, label: mode }))}
+					placeholder="Permission mode"
+				/>
+			</div>
+		{/if}
+
+		{#if models.length > 0}
+			<div class="w-56">
+				<Select
+					value={session.model ?? ''}
+					onChange={(value) => sessions.setModel(value as string)}
+					options={models.map((model) => ({ value: model.id, label: model.displayName ?? model.id }))}
+					placeholder="Model"
+					filter={(option, query) => option.label.toLowerCase().includes(query.toLowerCase())}
+				/>
+			</div>
+		{/if}
+
+		<SlotHost slot="composer.actions" {session} class="ml-auto flex items-center gap-2" />
 	</div>
 </div>

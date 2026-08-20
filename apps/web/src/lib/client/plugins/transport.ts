@@ -1,6 +1,6 @@
 import type { Plugin } from '@nib-ui/kernel';
 import { safeParseAgentEvent, type AnyAgentEvent, type HarnessDescriptor, type SessionCommand } from '@nib-ui/protocol';
-import type { SessionSummary, TransportService } from '@nib-ui/ui-contracts';
+import type { CreateSessionInput, DirectoryEntry, SessionSummary, TransportService } from '@nib-ui/ui-contracts';
 
 async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
 	const response = await fetch(input, init);
@@ -19,13 +19,23 @@ class SseTransport implements TransportService {
 		return sessions;
 	}
 
-	async createSession(input: { harnessId: string; cwd: string; options?: Record<string, unknown> }): Promise<string> {
+	async createSession(input: CreateSessionInput): Promise<string> {
 		const { sessionId } = await requestJson<{ sessionId: string }>('/api/sessions', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify(input),
 		});
 		return sessionId;
+	}
+
+	listDirectories(path: string): Promise<{ base: string; entries: DirectoryEntry[] }> {
+		return requestJson(`/api/fs/directories?path=${encodeURIComponent(path)}`);
+	}
+
+	async searchFiles(cwd: string, query: string, limit = 20): Promise<string[]> {
+		const params = new URLSearchParams({ cwd, q: query, limit: String(limit) });
+		const { files } = await requestJson<{ files: { path: string }[] }>(`/api/fs/files?${params}`);
+		return files.map((file) => file.path);
 	}
 
 	/** EventSource reconnects on its own and sends `Last-Event-ID`, so the server resumes the replay. */

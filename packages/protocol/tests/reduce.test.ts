@@ -166,6 +166,70 @@ describe('tolerance', () => {
 	});
 });
 
+describe('session.meta', () => {
+	function meta(seq: number, data: unknown): AnyAgentEvent {
+		return parseAgentEvent({ id: `e${seq}`, sessionId: 's1', seq, ts: seq, type: 'session.meta', data });
+	}
+
+	test('carries label, model, permission mode, slash commands and models', () => {
+		const view = project([
+			meta(1, {
+				label: 'Refactor the reducer',
+				model: 'claude-opus-5',
+				permissionMode: 'acceptEdits',
+				slashCommands: [{ name: 'review', description: 'review the diff', argumentHint: '<path>' }],
+				models: [{ id: 'claude-opus-5', displayName: 'Opus 5' }],
+			}),
+		]);
+
+		expect(view.title).toBe('Refactor the reducer');
+		expect(view.model).toBe('claude-opus-5');
+		expect(view.permissionMode).toBe('acceptEdits');
+		expect(view.slashCommands).toEqual([{ name: 'review', description: 'review the diff', argumentHint: '<path>' }]);
+		expect(view.models).toEqual([{ id: 'claude-opus-5', displayName: 'Opus 5' }]);
+	});
+
+	test('a partial update keeps the fields it omits', () => {
+		const view = project([
+			meta(1, { label: 'first', model: 'claude-opus-5', slashCommands: [{ name: 'review' }] }),
+			meta(2, { permissionMode: 'plan' }),
+		]);
+
+		expect(view.title).toBe('first');
+		expect(view.model).toBe('claude-opus-5');
+		expect(view.slashCommands).toHaveLength(1);
+		expect(view.permissionMode).toBe('plan');
+	});
+
+	test('a later label wins over the one session.created carried', () => {
+		const view = project([
+			parseAgentEvent({
+				id: 'e1',
+				sessionId: 's1',
+				seq: 1,
+				ts: 1,
+				type: 'session.created',
+				data: {
+					harnessId: 'claude-code',
+					cwd: '/tmp/demo',
+					title: 'from create',
+					capabilities: {
+						interrupt: true,
+						permissionModes: ['default'],
+						resume: true,
+						fork: true,
+						slashCommands: true,
+						models: true,
+					},
+				},
+			}),
+			meta(2, { label: 'renamed by the user' }),
+		]);
+
+		expect(view.title).toBe('renamed by the user');
+	});
+});
+
 describe('commands', () => {
 	test('valid commands parse and unknown ones are rejected', () => {
 		expect(sessionCommandSchema.parse({ type: 'session.send', text: 'hi' })).toEqual({
@@ -175,6 +239,12 @@ describe('commands', () => {
 		expect(
 			sessionCommandSchema.parse({ type: 'session.permission.respond', requestId: 'p1', behavior: 'deny' }),
 		).toMatchObject({ behavior: 'deny' });
+		expect(sessionCommandSchema.parse({ type: 'session.setModel', model: 'claude-opus-5' })).toMatchObject({
+			model: 'claude-opus-5',
+		});
+		expect(sessionCommandSchema.parse({ type: 'session.setLabel', label: 'nightly run' })).toMatchObject({
+			label: 'nightly run',
+		});
 		expect(sessionCommandSchema.safeParse({ type: 'session.explode' }).success).toBe(false);
 		expect(sessionCommandSchema.safeParse({ type: 'session.setPermissionMode' }).success).toBe(false);
 	});

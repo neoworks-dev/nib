@@ -16,8 +16,9 @@ class SessionHostService implements SessionHost {
 		private readonly logDirectory: string,
 	) {}
 
-	async create(input: { harnessId: string; cwd: string; options?: Record<string, unknown> }): Promise<string> {
+	async create(input: { harnessId: string; cwd: string; label?: string; options?: Record<string, unknown> }): Promise<string> {
 		const { adapter, hosted, emit } = this.prepare(input.harnessId, input.cwd);
+		if (input.label) emit({ type: 'session.meta', data: { label: input.label } });
 		await this.attach(hosted, () => adapter.createSession({ cwd: input.cwd, options: input.options }, emit));
 		return hosted.id;
 	}
@@ -42,6 +43,12 @@ class SessionHostService implements SessionHost {
 
 	async execute(sessionId: string, command: SessionCommand): Promise<void> {
 		const hosted = this.require(sessionId);
+		// Renaming and closing stay available after the harness process is gone.
+		if (command.type === 'session.setLabel') {
+			return void this.emit(hosted, { type: 'session.meta', data: { label: command.label } });
+		}
+		if (command.type === 'session.close') return this.close(sessionId);
+
 		const session = hosted.harnessSession;
 		if (!session) throw new Error(`session "${sessionId}" has no live harness session`);
 
@@ -58,10 +65,11 @@ class SessionHostService implements SessionHost {
 			case 'session.setPermissionMode':
 				if (!session.setPermissionMode) throw new Error('harness does not support permission modes');
 				return session.setPermissionMode(command.mode);
+			case 'session.setModel':
+				if (!session.setModel) throw new Error('harness does not support model switching');
+				return session.setModel(command.model);
 			case 'session.resume':
 				return this.reattach(hosted, command.nativeSessionId, command.fork);
-			case 'session.close':
-				return this.close(sessionId);
 			case 'session.create':
 				throw new Error('session.create is not a per-session command');
 		}
@@ -112,10 +120,11 @@ class SessionHostService implements SessionHost {
 		if (!adapter) throw new Error(`unknown harness "${harnessId}"`);
 		const hosted = new HostedSession(crypto.randomUUID(), harnessId, cwd, this.logDirectory);
 		this.sessions.set(hosted.id, hosted);
-		const emit = (event: EmittedEvent) => {
-			this.ctx.emit('session/event', hosted.id, hosted.append(event));
-		};
-		return { adapter, hosted, emit };
+		return { adapter, hosted, emit: (event: EmittedEvent) => this.emit(hosted, event) };
+	}
+
+	private emit(hosted: HostedSession, event: EmittedEvent): void {
+		this.ctx.emit('session/event', hosted.id, hosted.append(event));
 	}
 
 	/** Adapter failures become an error event on the log instead of a lost session. */
@@ -135,9 +144,7 @@ class SessionHostService implements SessionHost {
 		if (!adapter?.resumeSession) throw new Error(`harness "${hosted.harnessId}" cannot resume sessions`);
 		await hosted.harnessSession?.dispose();
 		hosted.harnessSession = null;
-		const emit = (event: EmittedEvent) => {
-			this.ctx.emit('session/event', hosted.id, hosted.append(event));
-		};
+		const emit = (event: EmittedEvent) => this.emit(hosted, event);
 		await this.attach(hosted, () =>
 			adapter.resumeSession!(nativeSessionId, { cwd: hosted.cwd, fork }, emit),
 		);

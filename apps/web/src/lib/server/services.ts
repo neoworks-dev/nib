@@ -18,6 +18,7 @@ export interface HarnessSession {
 	interrupt(): Promise<void>;
 	respondToPermission(requestId: string, response: { behavior: PermissionBehavior; updatedInput?: unknown }): void;
 	setPermissionMode?(mode: string): Promise<void>;
+	setModel?(model: string): Promise<void>;
 	dispose(): Promise<void>;
 }
 
@@ -55,7 +56,7 @@ export interface SessionSummary {
 }
 
 export interface SessionHost {
-	create(input: { harnessId: string; cwd: string; options?: Record<string, unknown> }): Promise<string>;
+	create(input: { harnessId: string; cwd: string; label?: string; options?: Record<string, unknown> }): Promise<string>;
 	resume(input: {
 		harnessId: string;
 		cwd: string;
@@ -71,10 +72,18 @@ export interface SessionHost {
 	has(sessionId: string): boolean;
 }
 
+/** Read-only filesystem probe that backs the cwd picker and `@` file references. */
+export interface WorkspaceService {
+	listDirectories(path: string): Promise<{ base: string; entries: { name: string; path: string }[] }>;
+	searchFiles(cwd: string, query: string, limit?: number): Promise<{ path: string }[]>;
+	isDirectory(path: string): Promise<boolean>;
+}
+
 declare module '@nib-ui/kernel' {
 	interface Services {
 		harnesses: HarnessRegistry;
 		sessionHost: SessionHost;
+		workspace: WorkspaceService;
 	}
 	interface Events {
 		'session/event'(sessionId: string, event: AnyAgentEvent): void;
