@@ -18,9 +18,9 @@ otherwise `Bun.which('claude')`. Install Claude Code separately (`npm i -g @anth
 or the native installer) or the session reports an error.
 
 `--omit optional` also drops the native binaries the build toolchain ships as optional deps
-(rollup, `@tailwindcss/oxide`, lightningcss), so `apps/web` depends on the host-platform ones
-explicitly. On a non-`linux-x64-gnu` machine, swap those three devDependencies for the matching
-platform packages.
+(esbuild, rollup, `@tailwindcss/oxide`, lightningcss), so the workspace root depends on the
+host-platform ones explicitly. On a machine that is not `linux-x64-gnu`, swap those four
+devDependencies for the matching platform packages.
 
 ## Layout
 
@@ -28,8 +28,24 @@ platform packages.
 | ------------------------------- | -------------------------------------------------------------- |
 | `packages/kernel`               | Plugin microkernel: scopes, services, events, effects, forks   |
 | `packages/protocol`             | Normalized event/command schemas (zod) + `reduceSession`       |
+| `packages/ui-contracts`         | Frontend service contracts shared by the app and every plugin  |
 | `apps/web`                      | SvelteKit app: server harness host + browser kernel instance   |
 | `plugins/*`                     | Renderers, statusbar, trajectory inspector                     |
+
+`packages/ui-contracts` exists so plugin packages never import from `apps/web`: it holds the
+renderer/slot/command/session service interfaces plus the `@nib-ui/kernel` module augmentation.
+
+## Extension points
+
+| Service     | Contributed by                            | Used for                                        |
+| ----------- | ----------------------------------------- | ----------------------------------------------- |
+| `harnesses` | server adapters (`claude-code`)           | `createSession`/`resumeSession` per harness      |
+| `renderers` | `core-renderers`, `renderer-diff`, `renderer-terminal` | block rendering by `(kind, toolName)` |
+| `slots`     | `cost-tracker`, `trajectory-inspector`    | statusbar, headers, composer actions            |
+| `commands`  | `trajectory-inspector`, dev commands      | command palette (⌘/Ctrl+K)                      |
+
+Every registration goes through `ctx.effect(() => disposer)`, so disposing a plugin removes its
+renderers, slot entries, listeners and commands. `Toggle plugin: <name>` in the palette exercises it.
 
 ## Commands
 

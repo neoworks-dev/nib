@@ -5,7 +5,11 @@
     "": {
       "name": "nib-ui",
       "devDependencies": {
+        "@esbuild/linux-x64": "^0.28.2",
+        "@rollup/rollup-linux-x64-gnu": "^4.62.5",
+        "@tailwindcss/oxide-linux-x64-gnu": "^4.3.3",
         "@types/bun": "^1.4.0",
+        "lightningcss-linux-x64-gnu": "^1.33.0",
         "typescript": "^5.9.3",
       },
     },
@@ -17,19 +21,20 @@
         "@neoworks-dev/ui": "link:@neoworks-dev/ui",
         "@nib-ui/kernel": "workspace:*",
         "@nib-ui/plugin-core-renderers": "workspace:*",
+        "@nib-ui/plugin-cost-tracker": "workspace:*",
+        "@nib-ui/plugin-renderer-diff": "workspace:*",
+        "@nib-ui/plugin-renderer-terminal": "workspace:*",
+        "@nib-ui/plugin-trajectory-inspector": "workspace:*",
         "@nib-ui/protocol": "workspace:*",
         "@nib-ui/ui-contracts": "workspace:*",
         "phosphor-svelte": "^3.1.0",
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@rollup/rollup-linux-x64-gnu": "^4.62.5",
         "@sveltejs/adapter-node": "^5.4.0",
         "@sveltejs/kit": "^2.51.0",
         "@sveltejs/vite-plugin-svelte": "^6.2.4",
-        "@tailwindcss/oxide-linux-x64-gnu": "^4.3.3",
         "@tailwindcss/vite": "^4.2.2",
-        "lightningcss-linux-x64-gnu": "^1.33.0",
         "svelte": "^5.56.4",
         "svelte-check": "^4.4.1",
         "tailwindcss": "^4.2.2",
@@ -63,6 +68,66 @@
     },
     "plugins/core-renderers": {
       "name": "@nib-ui/plugin-core-renderers",
+      "version": "0.0.0",
+      "dependencies": {
+        "@nib-ui/kernel": "workspace:*",
+        "@nib-ui/protocol": "workspace:*",
+        "@nib-ui/ui-contracts": "workspace:*",
+      },
+      "devDependencies": {
+        "svelte": "^5.56.4",
+      },
+      "peerDependencies": {
+        "svelte": "^5.56.4",
+      },
+    },
+    "plugins/cost-tracker": {
+      "name": "@nib-ui/plugin-cost-tracker",
+      "version": "0.0.0",
+      "dependencies": {
+        "@nib-ui/kernel": "workspace:*",
+        "@nib-ui/protocol": "workspace:*",
+        "@nib-ui/ui-contracts": "workspace:*",
+      },
+      "devDependencies": {
+        "svelte": "^5.56.4",
+      },
+      "peerDependencies": {
+        "svelte": "^5.56.4",
+      },
+    },
+    "plugins/renderer-diff": {
+      "name": "@nib-ui/plugin-renderer-diff",
+      "version": "0.0.0",
+      "dependencies": {
+        "@nib-ui/kernel": "workspace:*",
+        "@nib-ui/protocol": "workspace:*",
+        "@nib-ui/ui-contracts": "workspace:*",
+      },
+      "devDependencies": {
+        "svelte": "^5.56.4",
+      },
+      "peerDependencies": {
+        "svelte": "^5.56.4",
+      },
+    },
+    "plugins/renderer-terminal": {
+      "name": "@nib-ui/plugin-renderer-terminal",
+      "version": "0.0.0",
+      "dependencies": {
+        "@nib-ui/kernel": "workspace:*",
+        "@nib-ui/protocol": "workspace:*",
+        "@nib-ui/ui-contracts": "workspace:*",
+      },
+      "devDependencies": {
+        "svelte": "^5.56.4",
+      },
+      "peerDependencies": {
+        "svelte": "^5.56.4",
+      },
+    },
+    "plugins/trajectory-inspector": {
+      "name": "@nib-ui/plugin-trajectory-inspector",
       "version": "0.0.0",
       "dependencies": {
         "@nib-ui/kernel": "workspace:*",
@@ -173,6 +238,14 @@
     "@nib-ui/kernel": ["@nib-ui/kernel@workspace:packages/kernel"],
 
     "@nib-ui/plugin-core-renderers": ["@nib-ui/plugin-core-renderers@workspace:plugins/core-renderers"],
+
+    "@nib-ui/plugin-cost-tracker": ["@nib-ui/plugin-cost-tracker@workspace:plugins/cost-tracker"],
+
+    "@nib-ui/plugin-renderer-diff": ["@nib-ui/plugin-renderer-diff@workspace:plugins/renderer-diff"],
+
+    "@nib-ui/plugin-renderer-terminal": ["@nib-ui/plugin-renderer-terminal@workspace:plugins/renderer-terminal"],
+
+    "@nib-ui/plugin-trajectory-inspector": ["@nib-ui/plugin-trajectory-inspector@workspace:plugins/trajectory-inspector"],
 
     "@nib-ui/protocol": ["@nib-ui/protocol@workspace:packages/protocol"],
 

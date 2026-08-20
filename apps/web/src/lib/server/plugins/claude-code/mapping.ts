@@ -41,6 +41,8 @@ export class ClaudeMessageMapper {
 	private readonly openMessages = new Set<string>();
 	private readonly pendingBlocks = new Map<string, StreamedBlock[]>();
 	private readonly expectedEchoes: string[] = [];
+	/** Lets a tool_result block carry the tool name, which renderers resolve on. */
+	private readonly toolNamesByUseId = new Map<string, string>();
 	private readonly totals = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, costUsd: 0 };
 	private synthesizedBlocks = 0;
 	private localMessages = 0;
@@ -131,7 +133,7 @@ export class ClaudeMessageMapper {
 				messageId,
 				blockId,
 				kind: streamed.kind,
-				toolName: typeof block.name === 'string' ? block.name : undefined,
+				toolName: this.toolNameFor(block),
 				toolUseId: streamed.toolUseId ?? undefined,
 			},
 			raw,
@@ -250,12 +252,21 @@ export class ClaudeMessageMapper {
 				messageId,
 				blockId,
 				kind,
-				toolName: typeof block.name === 'string' ? block.name : undefined,
+				toolName: this.toolNameFor(block),
 				toolUseId: toolUseId ?? (typeof block.tool_use_id === 'string' ? block.tool_use_id : undefined),
 			},
 			raw,
 		});
 		return blockId;
+	}
+
+	private toolNameFor(block: RawBlock): string | undefined {
+		if (typeof block.name === 'string') {
+			if (typeof block.id === 'string') this.toolNamesByUseId.set(block.id, block.name);
+			return block.name;
+		}
+		if (typeof block.tool_use_id === 'string') return this.toolNamesByUseId.get(block.tool_use_id);
+		return undefined;
 	}
 
 	/** Drops the CLI's echo of text we already emitted locally on `send()`. */

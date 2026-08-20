@@ -1,5 +1,5 @@
 {
-	"name": "@nib-ui/plugin-core-renderers",
+	"name": "@nib-ui/plugin-renderer-diff",
 	"version": "0.0.0",
 	"private": true,
 	"type": "module",
