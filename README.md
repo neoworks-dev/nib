@@ -17,6 +17,11 @@ The adapter resolves a system-installed Claude Code binary instead: `$CLAUDE_EXE
 otherwise `Bun.which('claude')`. Install Claude Code separately (`npm i -g @anthropic-ai/claude-code`
 or the native installer) or the session reports an error.
 
+`--omit optional` also drops the native binaries the build toolchain ships as optional deps
+(rollup, `@tailwindcss/oxide`, lightningcss), so `apps/web` depends on the host-platform ones
+explicitly. On a non-`linux-x64-gnu` machine, swap those three devDependencies for the matching
+platform packages.
+
 ## Layout
 
 | Path                            | Purpose                                                        |
