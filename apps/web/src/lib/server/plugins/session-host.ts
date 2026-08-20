@@ -18,7 +18,16 @@ class SessionHostService implements SessionHost {
 
 	async create(input: { harnessId: string; cwd: string; label?: string; options?: Record<string, unknown> }): Promise<string> {
 		const { adapter, hosted, emit } = this.prepare(input.harnessId, input.cwd);
-		if (input.label) emit({ type: 'session.meta', data: { label: input.label } });
+		// Pre-flight: the composer gets modes and models now, not after the first turn.
+		emit({
+			type: 'session.meta',
+			data: {
+				label: input.label,
+				permissionMode: readStringOption(input.options, 'permissionMode') ?? adapter.defaultPermissionMode,
+				model: readStringOption(input.options, 'model') ?? adapter.defaultModel,
+				models: adapter.models,
+			},
+		});
 		await this.attach(hosted, () => adapter.createSession({ cwd: input.cwd, options: input.options }, emit));
 		return hosted.id;
 	}
@@ -90,7 +99,9 @@ class SessionHostService implements SessionHost {
 			cwd: hosted.cwd,
 			title: hosted.view.title,
 			status: hosted.view.status,
+			model: hosted.view.model,
 			createdAt: hosted.createdAt,
+			updatedAt: hosted.updatedAt,
 			lastSeq: hosted.view.lastSeq,
 		}));
 	}
@@ -155,6 +166,11 @@ class SessionHostService implements SessionHost {
 		if (!hosted) throw new Error(`unknown session "${sessionId}"`);
 		return hosted;
 	}
+}
+
+function readStringOption(options: Record<string, unknown> | undefined, key: string): string | undefined {
+	const value = options?.[key];
+	return typeof value === 'string' ? value : undefined;
 }
 
 export const sessionHostPlugin: Plugin<SessionHostConfig> = {

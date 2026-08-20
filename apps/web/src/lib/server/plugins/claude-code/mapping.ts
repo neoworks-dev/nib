@@ -1,5 +1,5 @@
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { BlockContent, BlockKind, HarnessCapabilities, MessageRole } from '@nib-ui/protocol';
+import type { BlockContent, BlockKind, HarnessCapabilities, MessageRole, ModelInfo } from '@nib-ui/protocol';
 import type { EmitEvent } from '../../services';
 
 export const claudeCodeCapabilities: HarnessCapabilities = {
@@ -10,6 +10,17 @@ export const claudeCodeCapabilities: HarnessCapabilities = {
 	slashCommands: true,
 	models: true,
 };
+
+/**
+ * The CLI's stable `--model` aliases. `supportedModels()` replaces these with
+ * resolved display names once the process answers its first control request.
+ */
+export const claudeCodeModels: ModelInfo[] = [
+	{ id: 'default', displayName: 'Default' },
+	{ id: 'opus', displayName: 'Opus' },
+	{ id: 'sonnet', displayName: 'Sonnet' },
+	{ id: 'haiku', displayName: 'Haiku' },
+];
 
 type RawBlock = { type: string; [key: string]: unknown };
 

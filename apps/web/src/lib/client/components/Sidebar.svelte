@@ -1,73 +1,74 @@
 <script lang="ts">
-	import { Button, SectionHeader, Select, StatusBadge } from '@neoworks-dev/ui';
+	import FolderOpenIcon from 'phosphor-svelte/lib/FolderOpenIcon';
 	import PlusIcon from 'phosphor-svelte/lib/PlusIcon';
 	import { clientContext } from '../context';
-	import { statusTone } from '../status-tone';
-	import DirectoryPicker from './DirectoryPicker.svelte';
+	import { groupSessionsByWorkspace } from '../session-groups';
+	import SessionCard from './SessionCard.svelte';
 	import SlotHost from './SlotHost.svelte';
+	import WorkspaceLauncher from './WorkspaceLauncher.svelte';
 
 	const sessions = clientContext().require('sessions');
 
-	let cwd = $state('');
-	let label = $state('');
-	let harnessId = $state('');
+	let launcher = $state<{ cwd: string } | null>(null);
+	let now = $state(Date.now());
 
-	const harnessOptions = $derived(
-		sessions.harnesses.map((harness) => ({ value: harness.id, label: harness.displayName })),
-	);
-	const selectedHarness = $derived(harnessId || (sessions.harnesses[0]?.id ?? ''));
-	const trimmedCwd = $derived(cwd.trim().replace(/\/+$/, '') || cwd.trim());
-	const canStart = $derived(selectedHarness.length > 0 && trimmedCwd.length > 0);
+	const groups = $derived(groupSessionsByWorkspace(sessions.summaries));
+	const activeSummary = $derived(sessions.summaries.find((summary) => summary.id === sessions.activeId));
 
-	async function createSession() {
-		if (!canStart) return;
-		await sessions.create({ harnessId: selectedHarness, cwd: trimmedCwd, label: label.trim() || undefined });
-		label = '';
-	}
+	$effect(() => {
+		// Card ages are relative, so they need a clock of their own.
+		const timer = setInterval(() => (now = Date.now()), 30_000);
+		return () => clearInterval(timer);
+	});
 </script>
 
 <aside class="flex h-full min-h-0 flex-col border-r border-line bg-elevated">
-	<div class="flex flex-col gap-3 border-b border-line px-4 py-4">
-		<SectionHeader title="New session" />
-		<Select
-			value={selectedHarness}
-			onChange={(value) => (harnessId = value as string)}
-			options={harnessOptions}
-			placeholder="Harness"
-		/>
-		<DirectoryPicker value={cwd} recent={sessions.recentDirectories} onChange={(value) => (cwd = value)} />
-		<input
-			bind:value={label}
-			placeholder="Label (optional)"
-			class="rounded-lg border border-line bg-input px-3 py-2 text-sm text-default placeholder:text-faint focus:border-line-strong focus:outline-none"
-		/>
-		<Button full icon={PlusIcon} onclick={createSession} disabled={!canStart}>Start session</Button>
-		{#if sessions.error}
-			<p class="text-xs text-red">{sessions.error}</p>
-		{/if}
+	<div class="flex items-center gap-1 border-b border-line px-3 py-2.5">
+		<span class="text-sm font-semibold text-default">Tasks</span>
+		<button
+			type="button"
+			class="ml-auto flex items-center gap-1 rounded-md px-2 py-1 text-xs text-dim hover:bg-hover hover:text-default"
+			onclick={() => (launcher = { cwd: '' })}
+		>
+			<FolderOpenIcon size={14} />
+			Open workspace
+		</button>
+		<button
+			type="button"
+			class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-dim hover:bg-hover hover:text-default"
+			onclick={() => (launcher = { cwd: activeSummary?.cwd ?? sessions.recentDirectories[0] ?? '' })}
+		>
+			<PlusIcon size={14} />
+			New task
+		</button>
 	</div>
 
+	{#if launcher}
+		{#key launcher.cwd}
+			<WorkspaceLauncher initialCwd={launcher.cwd} onclose={() => (launcher = null)} />
+		{/key}
+	{/if}
+
 	<div class="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-		{#each sessions.summaries as summary (summary.id)}
-			<button
-				type="button"
-				onclick={() => sessions.open(summary.id)}
-				class="flex w-full flex-col gap-1 rounded-lg px-3 py-2 text-left transition-colors duration-fast {summary.id ===
-				sessions.activeId
-					? 'bg-raised'
-					: 'hover:bg-hover'}"
-			>
-				<span class="flex items-center gap-2">
-					<span class="truncate text-sm text-default">{summary.title ?? summary.cwd}</span>
-					<span class="ml-auto shrink-0">
-						<StatusBadge tone={statusTone(summary.status)}>{summary.status}</StatusBadge>
-					</span>
-				</span>
-				<span class="truncate font-mono text-2xs text-faint">{summary.harnessId} · {summary.cwd}</span>
-			</button>
+		{#each groups as group (group.path)}
+			<section class="mb-3">
+				<h2 class="flex items-baseline gap-2 px-2.5 py-1">
+					<span class="truncate text-2xs tracking-caps uppercase text-dim">{group.name}</span>
+					<span class="ml-auto text-2xs tabular-nums text-faint">{group.sessions.length}</span>
+				</h2>
+				{#each group.sessions as summary (summary.id)}
+					<SessionCard
+						{summary}
+						{now}
+						active={summary.id === sessions.activeId}
+						onopen={() => sessions.open(summary.id)}
+					/>
+				{/each}
+			</section>
 		{/each}
-		{#if sessions.summaries.length === 0}
-			<p class="px-2 py-3 text-xs text-dim">No sessions yet.</p>
+
+		{#if groups.length === 0}
+			<p class="px-2.5 py-3 text-xs text-dim">No tasks yet. Open a workspace to start one.</p>
 		{/if}
 	</div>
 

@@ -1,58 +1,73 @@
 <script lang="ts">
-	import TerminalWindowIcon from 'phosphor-svelte/lib/TerminalWindowIcon';
-	import { blockToolInput, blockToolOutput } from '@nib-ui/protocol';
+	import CaretDownIcon from 'phosphor-svelte/lib/CaretDownIcon';
+	import CaretRightIcon from 'phosphor-svelte/lib/CaretRightIcon';
+	import PlayIcon from 'phosphor-svelte/lib/PlayIcon';
+	import { blockToolInput, blockToolOutput, findToolResultBlock, findToolUseBlock } from '@nib-ui/protocol';
 	import type { RendererProps } from '@nib-ui/ui-contracts';
 	import { stripAnsi } from './ansi';
 
-	const collapsedLines = 30;
+	const { block, session }: RendererProps = $props();
 
-	const { block }: RendererProps = $props();
 	let expanded = $state(false);
+
+	// The call owns the strip, so a result whose call is on screen renders nothing.
+	const foldedIntoCall = $derived(block.kind === 'tool_result' && findToolUseBlock(session, block.toolUseId) !== null);
+	const result = $derived(block.kind === 'tool_use' ? findToolResultBlock(session, block.toolUseId) : block);
 
 	const input = $derived((blockToolInput(block) ?? {}) as Record<string, unknown>);
 	const command = $derived(typeof input.command === 'string' ? input.command : '');
 	const description = $derived(typeof input.description === 'string' ? input.description : '');
-	const output = $derived(blockToolOutput(block));
+
+	const output = $derived(result ? blockToolOutput(result) : undefined);
 	const text = $derived(stripAnsi(typeof output === 'string' ? output : output ? JSON.stringify(output, null, 2) : ''));
 	const lines = $derived(text.length > 0 ? text.split('\n') : []);
-	const visible = $derived(expanded ? lines : lines.slice(0, collapsedLines));
+	const failed = $derived(
+		result?.content?.kind === 'tool_result' && (result.content as { isError?: boolean }).isError === true,
+	);
+	const phase = $derived(!block.completed ? 'writing' : !result ? 'running' : failed ? 'failed' : 'done');
+	const phaseTone = $derived(
+		phase === 'failed' ? 'text-red' : phase === 'done' ? 'text-green' : 'text-amber animate-pulse',
+	);
 </script>
 
-<div class="overflow-hidden rounded-lg border border-line-faint bg-input font-mono text-xs">
-	<div class="flex items-center gap-2 border-b border-line-faint bg-raised px-3 py-1.5">
-		<span class="text-green"><TerminalWindowIcon size={14} /></span>
-		<span class="text-2xs tracking-caps uppercase text-dim">
-			{block.kind === 'tool_use' ? 'bash' : 'bash output'}
-		</span>
-		{#if !block.completed}
-			<span class="ml-auto h-1.5 w-1.5 animate-pulse rounded-full bg-amber"></span>
+{#if !foldedIntoCall}
+	<div class="overflow-hidden rounded-lg border border-line-faint bg-input font-mono text-xs">
+		<button
+			type="button"
+			class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-hover"
+			onclick={() => (expanded = !expanded)}
+		>
+			<span class="shrink-0 text-green"><PlayIcon size={12} weight="fill" /></span>
+			<span class="shrink-0 text-2xs tracking-caps uppercase text-dim">Ran</span>
+			<span class="truncate text-default">{command || '…'}</span>
+			<span class="ml-auto shrink-0 text-2xs {phaseTone}">{phase}</span>
+			<span class="shrink-0 text-faint">
+				{#if expanded}
+					<CaretDownIcon size={12} />
+				{:else}
+					<CaretRightIcon size={12} />
+				{/if}
+			</span>
+		</button>
+
+		{#if expanded}
+			<div class="border-t border-line-faint px-3 py-2">
+				<div class="flex gap-2">
+					<span class="select-none text-dim">$</span>
+					<span class="whitespace-pre-wrap text-default">{command}</span>
+				</div>
+				{#if description}
+					<p class="mt-1 text-2xs text-dim">{description}</p>
+				{/if}
+			</div>
+			<div class="max-h-96 overflow-auto border-t border-line-faint px-3 py-2">
+				{#each lines as line, index (index)}
+					<div class="whitespace-pre-wrap {failed ? 'text-red' : 'text-muted'}">{line}</div>
+				{/each}
+				{#if lines.length === 0}
+					<div class="text-dim">{result ? 'no output' : 'waiting for output…'}</div>
+				{/if}
+			</div>
 		{/if}
 	</div>
-	{#if block.kind === 'tool_use'}
-		<div class="flex gap-2 px-3 py-2 text-green">
-			<span class="select-none text-dim">$</span>
-			<span class="whitespace-pre-wrap text-default">{command}</span>
-		</div>
-		{#if description}
-			<p class="border-t border-line-faint px-3 py-1 text-2xs text-dim">{description}</p>
-		{/if}
-	{:else}
-		<div class="max-h-96 overflow-auto px-3 py-2">
-			{#each visible as line, index (index)}
-				<div class="whitespace-pre-wrap text-muted">{line}</div>
-			{/each}
-			{#if lines.length === 0}
-				<div class="text-dim">no output</div>
-			{/if}
-		</div>
-		{#if lines.length > collapsedLines}
-			<button
-				type="button"
-				class="w-full border-t border-line-faint px-3 py-1 text-left text-2xs text-dim hover:text-default"
-				onclick={() => (expanded = !expanded)}
-			>
-				{expanded ? 'collapse' : `show ${lines.length - collapsedLines} more lines`}
-			</button>
-		{/if}
-	{/if}
-</div>
+{/if}

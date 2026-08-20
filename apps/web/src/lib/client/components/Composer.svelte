@@ -1,11 +1,16 @@
 <script lang="ts">
-	import { Button, Select } from '@neoworks-dev/ui';
+	import { Button } from '@neoworks-dev/ui';
+	import CpuIcon from 'phosphor-svelte/lib/CpuIcon';
 	import PaperPlaneRightIcon from 'phosphor-svelte/lib/PaperPlaneRightIcon';
+	import PlugsConnectedIcon from 'phosphor-svelte/lib/PlugsConnectedIcon';
+	import ShieldCheckIcon from 'phosphor-svelte/lib/ShieldCheckIcon';
 	import StopCircleIcon from 'phosphor-svelte/lib/StopCircleIcon';
 	import type { SessionView } from '@nib-ui/protocol';
 	import { fuzzyRank } from '../../fuzzy';
 	import { applyTrigger, detectTrigger, type TriggerItem } from '../composer-trigger';
 	import { clientContext } from '../context';
+	import { permissionModeLabel } from '../permission-modes';
+	import PillSelect from './PillSelect.svelte';
 	import SlotHost from './SlotHost.svelte';
 	import TriggerPopup from './TriggerPopup.svelte';
 
@@ -22,13 +27,15 @@
 
 	const capabilities = $derived(session.capabilities);
 	const busy = $derived(session.status === 'working');
-	const canInterrupt = $derived(capabilities?.interrupt === true && busy);
-	const permissionModes = $derived(capabilities?.permissionModes ?? []);
-	const models = $derived(capabilities?.models ? session.models : []);
+	const canInterrupt = $derived(capabilities?.interrupt !== false && busy);
+	const harness = $derived(sessions.harnesses.find((entry) => entry.id === session.harnessId));
+	// Pre-flight: the harness descriptor answers before the session's own metadata does.
+	const permissionModes = $derived(capabilities?.permissionModes ?? harness?.capabilities.permissionModes ?? []);
+	const models = $derived(session.models.length > 0 ? session.models : (harness?.models ?? []));
 
 	const trigger = $derived(dismissed ? null : detectTrigger(draft, caret));
 	const slashItems = $derived.by((): TriggerItem[] => {
-		if (trigger?.kind !== 'slash' || !capabilities?.slashCommands) return [];
+		if (trigger?.kind !== 'slash') return [];
 		return fuzzyRank(session.slashCommands, trigger.query, (command) => command.name, 12).map(({ item }) => ({
 			value: item.name,
 			label: `/${item.name}`,
@@ -65,7 +72,15 @@
 		const text = draft.trim();
 		if (text.length === 0) return;
 		draft = '';
+		caret = 0;
 		await sessions.send(text);
+	}
+
+	/** Text and caret are read off the event together: a stale pair kills the triggers. */
+	function onInput(event: Event & { currentTarget: HTMLTextAreaElement }) {
+		dismissed = false;
+		draft = event.currentTarget.value;
+		caret = event.currentTarget.selectionStart ?? draft.length;
 	}
 
 	function syncCaret() {
@@ -117,11 +132,8 @@
 
 		<textarea
 			bind:this={textarea}
-			bind:value={draft}
-			oninput={() => {
-				dismissed = false;
-				syncCaret();
-			}}
+			value={draft}
+			oninput={onInput}
 			onkeyup={syncCaret}
 			onclick={syncCaret}
 			onkeydown={onKeydown}
@@ -130,36 +142,50 @@
 			class="min-h-16 flex-1 resize-y rounded-lg border border-line bg-input px-3 py-2 text-base text-default placeholder:text-faint focus:border-line-strong focus:outline-none"
 		></textarea>
 
-		<div class="flex flex-col gap-2">
-			<Button icon={PaperPlaneRightIcon} onclick={submit} disabled={draft.trim().length === 0}>Send</Button>
-			{#if canInterrupt}
+		{#if canInterrupt}
+			<span class="animate-pulse">
 				<Button variant="danger" icon={StopCircleIcon} onclick={() => sessions.interrupt()}>Interrupt</Button>
-			{/if}
-		</div>
+			</span>
+		{:else}
+			<Button
+				variant="primary"
+				icon={PaperPlaneRightIcon}
+				disabled={draft.trim().length === 0}
+				onclick={submit}>Send</Button
+			>
+		{/if}
 	</div>
 
 	<div class="mt-3 flex flex-wrap items-center gap-2">
 		{#if permissionModes.length > 0}
-			<div class="w-44">
-				<Select
-					value={session.permissionMode ?? permissionModes[0] ?? ''}
-					onChange={(value) => sessions.setPermissionMode(value as string)}
-					options={permissionModes.map((mode) => ({ value: mode, label: mode }))}
-					placeholder="Permission mode"
-				/>
-			</div>
+			<PillSelect
+				icon={ShieldCheckIcon}
+				value={session.permissionMode}
+				placeholder="Permission"
+				options={permissionModes.map((mode) => ({ value: mode, label: permissionModeLabel(mode), hint: mode }))}
+				onChange={(mode) => sessions.setPermissionMode(mode)}
+			/>
 		{/if}
 
 		{#if models.length > 0}
-			<div class="w-56">
-				<Select
-					value={session.model ?? ''}
-					onChange={(value) => sessions.setModel(value as string)}
-					options={models.map((model) => ({ value: model.id, label: model.displayName ?? model.id }))}
-					placeholder="Model"
-					filter={(option, query) => option.label.toLowerCase().includes(query.toLowerCase())}
-				/>
-			</div>
+			<PillSelect
+				icon={CpuIcon}
+				value={session.model}
+				placeholder="Model"
+				options={models.map((model) => ({
+					value: model.id,
+					label: model.displayName ?? model.id,
+					hint: model.description,
+				}))}
+				onChange={(model) => sessions.setModel(model)}
+			/>
+		{/if}
+
+		{#if sessions.harnesses.length > 1}
+			<span class="flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-xs text-muted">
+				<span class="text-faint"><PlugsConnectedIcon size={12} /></span>
+				{harness?.displayName ?? session.harnessId}
+			</span>
 		{/if}
 
 		<SlotHost slot="composer.actions" {session} class="ml-auto flex items-center gap-2" />

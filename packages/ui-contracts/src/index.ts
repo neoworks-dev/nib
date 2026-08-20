@@ -6,6 +6,7 @@ import type {
 	BlockView,
 	HarnessDescriptor,
 	PermissionBehavior,
+	PermissionRequestView,
 	SessionCommand,
 	SessionView,
 } from '@nib-ui/protocol';
@@ -16,7 +17,10 @@ export interface SessionSummary {
 	cwd: string;
 	title: string | null;
 	status: SessionView['status'];
+	model: string | null;
 	createdAt: number;
+	/** Timestamp of the newest event, so the sidebar can sort and age sessions. */
+	updatedAt: number;
 	lastSeq: number;
 }
 
@@ -37,7 +41,8 @@ export interface TransportService {
 	listSessions(): Promise<SessionSummary[]>;
 	createSession(input: CreateSessionInput): Promise<string>;
 	listDirectories(path: string): Promise<{ base: string; entries: DirectoryEntry[] }>;
-	searchFiles(cwd: string, query: string, limit?: number): Promise<string[]>;
+	/** Scoped to a session so the server resolves the working directory, not the client. */
+	searchFiles(sessionId: string, query: string, limit?: number): Promise<string[]>;
 	/** Replays from `fromSeq`, then streams live; reconnects on its own. */
 	subscribe(sessionId: string, fromSeq: number, onEvent: (event: AnyAgentEvent) => void): Disposer;
 	command(sessionId: string, command: SessionCommand): Promise<void>;
@@ -57,7 +62,8 @@ export interface SessionsService {
 	open(sessionId: string): void;
 	send(text: string): Promise<void>;
 	interrupt(): Promise<void>;
-	respondToPermission(requestId: string, behavior: PermissionBehavior): Promise<void>;
+	/** `updatedInput` lets an interactive renderer answer the tool, not just approve it. */
+	respondToPermission(requestId: string, behavior: PermissionBehavior, updatedInput?: unknown): Promise<void>;
 	setPermissionMode(mode: string): Promise<void>;
 	setModel(model: string): Promise<void>;
 	setLabel(label: string): Promise<void>;
@@ -79,11 +85,27 @@ export interface RendererRegistration {
 	component: Component<RendererProps>;
 }
 
+export interface PermissionRendererProps {
+	request: PermissionRequestView;
+	session: SessionView;
+	respond: (behavior: PermissionBehavior, updatedInput?: unknown) => void;
+}
+
+/** Without a `toolName` the registration never matches: the app owns the fallback card. */
+export interface PermissionRendererRegistration {
+	toolName: string;
+	priority?: number;
+	component: Component<PermissionRendererProps>;
+}
+
 export interface RendererRegistry {
 	register(registration: RendererRegistration): Disposer;
 	setFallback(component: Component<RendererProps>): Disposer;
 	/** Exact `(kind, toolName)` match first, then `kind`, then the fallback. */
 	resolve(block: BlockView): Component<RendererProps> | null;
+	registerPermission(registration: PermissionRendererRegistration): Disposer;
+	/** Null means no plugin claims the tool, so the generic allow/deny card renders. */
+	resolvePermission(toolName: string): Component<PermissionRendererProps> | null;
 }
 
 export const slotNames = [

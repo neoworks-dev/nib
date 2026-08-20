@@ -107,6 +107,44 @@ export function blockToolOutput(block: BlockView): unknown {
 	return block.text.length > 0 ? block.text : undefined;
 }
 
+/** The result block a tool call produced, once the harness reports it. */
+export function findToolResultBlock(session: SessionView, toolUseId: string | null): BlockView | null {
+	return findBlockByToolUseId(session, 'tool_result', toolUseId);
+}
+
+/** Lets a result renderer detect that its call is already on screen and stay quiet. */
+export function findToolUseBlock(session: SessionView, toolUseId: string | null): BlockView | null {
+	return findBlockByToolUseId(session, 'tool_use', toolUseId);
+}
+
+function findBlockByToolUseId(session: SessionView, kind: BlockKind, toolUseId: string | null): BlockView | null {
+	if (!toolUseId) return null;
+	for (const message of session.messages) {
+		for (const block of message.blocks) {
+			if (block.kind === kind && block.toolUseId === toolUseId) return block;
+		}
+	}
+	return null;
+}
+
+/**
+ * A pending permission describes a tool call that has not entered the message
+ * log yet; shaping it as a block lets the same renderers preview it.
+ */
+export function permissionPreviewBlock(request: PermissionRequestView): BlockView {
+	return {
+		id: `permission:${request.requestId}`,
+		messageId: `permission:${request.requestId}`,
+		kind: 'tool_use',
+		toolName: request.toolName,
+		toolUseId: null,
+		text: '',
+		inputJson: '',
+		content: { kind: 'tool_use', toolName: request.toolName, toolUseId: '', input: request.input },
+		completed: true,
+	};
+}
+
 export function createSessionView(sessionId: string): SessionView {
 	return {
 		sessionId,

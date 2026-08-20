@@ -10,7 +10,7 @@ import type { PermissionBehavior } from '@nib-ui/protocol';
 import type { CreateSessionOptions, EmitEvent, HarnessAdapter, HarnessSession } from '../../services';
 import { resolveClaudeExecutable } from './binary';
 import { AsyncMessageQueue } from './message-queue';
-import { ClaudeMessageMapper, claudeCodeCapabilities } from './mapping';
+import { ClaudeMessageMapper, claudeCodeCapabilities, claudeCodeModels } from './mapping';
 
 interface PermissionResponse {
 	behavior: PermissionBehavior;
@@ -27,6 +27,9 @@ export function createClaudeCodeAdapter(): HarnessAdapter {
 		id: 'claude-code',
 		displayName: 'Claude Code',
 		capabilities: claudeCodeCapabilities,
+		defaultPermissionMode: 'default',
+		models: claudeCodeModels,
+		defaultModel: 'default',
 		createSession: (opts, emit) => startSession(opts, emit),
 		resumeSession: (nativeSessionId, opts, emit) =>
 			startSession(opts, emit, { nativeSessionId, fork: opts.fork }),
@@ -84,7 +87,7 @@ async function startSession(
 		},
 	});
 
-	void publishMetadata(session, emit, (opts.options as Options | undefined)?.permissionMode ?? 'default');
+	void publishMetadata(session, emit);
 
 	const pump = (async () => {
 		for await (const message of session) mapper.handle(message);
@@ -147,16 +150,16 @@ async function startSession(
 
 /**
  * `supportedCommands`/`supportedModels` are control requests, so they only
- * answer once the CLI is up; a failure downgrades the composer to plain text
- * instead of failing the session.
+ * answer once the CLI is up; a failure downgrades the composer to the harness
+ * defaults instead of failing the session. The permission mode is deliberately
+ * not republished here — the user may have changed it while the probe was open.
  */
-async function publishMetadata(session: Query, emit: EmitEvent, permissionMode: string): Promise<void> {
+async function publishMetadata(session: Query, emit: EmitEvent): Promise<void> {
 	try {
 		const [commands, models] = await Promise.all([session.supportedCommands(), session.supportedModels()]);
 		emit({
 			type: 'session.meta',
 			data: {
-				permissionMode,
 				slashCommands: commands.map((command) => ({
 					name: command.name,
 					description: command.description,

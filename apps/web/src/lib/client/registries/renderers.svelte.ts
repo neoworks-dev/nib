@@ -1,9 +1,17 @@
 import type { Component } from 'svelte';
 import type { BlockView } from '@nib-ui/protocol';
-import type { RendererProps, RendererRegistration, RendererRegistry } from '@nib-ui/ui-contracts';
+import type {
+	PermissionRendererProps,
+	PermissionRendererRegistration,
+	RendererProps,
+	RendererRegistration,
+	RendererRegistry,
+} from '@nib-ui/ui-contracts';
+import { matchBlockRenderer, matchPermissionRenderer } from '../renderer-matching';
 
 export class ReactiveRendererRegistry implements RendererRegistry {
 	private registrations = $state<RendererRegistration[]>([]);
+	private permissionRegistrations = $state<PermissionRendererRegistration[]>([]);
 	private fallback = $state<Component<RendererProps> | null>(null);
 
 	register(registration: RendererRegistration) {
@@ -21,16 +29,17 @@ export class ReactiveRendererRegistry implements RendererRegistry {
 	}
 
 	resolve(block: BlockView): Component<RendererProps> | null {
-		const matching = this.registrations.filter((entry) => entry.kind === block.kind);
-		const exact = highestPriority(matching.filter((entry) => entry.toolName && entry.toolName === block.toolName));
-		const generic = highestPriority(matching.filter((entry) => !entry.toolName));
-		return exact?.component ?? generic?.component ?? this.fallback;
+		return matchBlockRenderer(this.registrations, block)?.component ?? this.fallback;
 	}
-}
 
-function highestPriority(entries: RendererRegistration[]): RendererRegistration | undefined {
-	return entries.reduce<RendererRegistration | undefined>(
-		(best, entry) => ((entry.priority ?? 0) > (best?.priority ?? -Infinity) ? entry : best),
-		undefined,
-	);
+	registerPermission(registration: PermissionRendererRegistration) {
+		this.permissionRegistrations = [...this.permissionRegistrations, registration];
+		return () => {
+			this.permissionRegistrations = this.permissionRegistrations.filter((entry) => entry !== registration);
+		};
+	}
+
+	resolvePermission(toolName: string): Component<PermissionRendererProps> | null {
+		return matchPermissionRenderer(this.permissionRegistrations, toolName)?.component ?? null;
+	}
 }

@@ -41,11 +41,26 @@ export {
 	type CreateSessionCommand,
 	type SessionCommand,
 } from './commands';
+export {
+	askQuestionOptionSchema,
+	askQuestionSchema,
+	askUserQuestionInputSchema,
+	askUserQuestionToolName,
+	isAnswerComplete,
+	parseAskUserQuestion,
+	withQuestionAnswers,
+	type AskQuestion,
+	type AskQuestionOption,
+	type AskUserQuestionInput,
+} from './ask-question';
 export { reduceSession, reduceSessionAll } from './reduce';
 export {
 	blockToolInput,
 	blockToolOutput,
 	createSessionView,
+	findToolResultBlock,
+	findToolUseBlock,
+	permissionPreviewBlock,
 	type BlockView,
 	type LogEntryView,
 	type MessageView,

@@ -4,6 +4,7 @@ import type {
 	EmittedEvent,
 	HarnessCapabilities,
 	HarnessDescriptor,
+	ModelInfo,
 	PermissionBehavior,
 	SessionCommand,
 	SessionStatus,
@@ -31,6 +32,10 @@ export interface HarnessAdapter {
 	id: string;
 	displayName: string;
 	capabilities: HarnessCapabilities;
+	/** Announced before the harness process is up, so the composer never starts empty. */
+	defaultPermissionMode: string;
+	models: ModelInfo[];
+	defaultModel?: string;
 	createSession(opts: CreateSessionOptions, emit: EmitEvent): Promise<HarnessSession>;
 	resumeSession?(
 		nativeSessionId: string,
@@ -51,7 +56,9 @@ export interface SessionSummary {
 	cwd: string;
 	title: string | null;
 	status: SessionStatus;
+	model: string | null;
 	createdAt: number;
+	updatedAt: number;
 	lastSeq: number;
 }
 

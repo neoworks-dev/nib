@@ -1,27 +1,25 @@
 <script lang="ts">
-	import { Button, Card } from '@neoworks-dev/ui';
-	import type { PermissionRequestView } from '@nib-ui/protocol';
+	import type { PermissionBehavior, PermissionRequestView, SessionView } from '@nib-ui/protocol';
 	import { clientContext } from '../context';
+	import ToolPermissionCard from './ToolPermissionCard.svelte';
 
-	const { request }: { request: PermissionRequestView } = $props();
+	const { request, session }: { request: PermissionRequestView; session: SessionView } = $props();
 
 	const sessions = clientContext().require('sessions');
+	const renderers = clientContext().require('renderers');
+
+	// A plugin that claims the tool answers it inline; everything else gets allow/deny.
+	const Interactive = $derived(renderers.resolvePermission(request.toolName));
+
+	function respond(behavior: PermissionBehavior, updatedInput?: unknown) {
+		void sessions.respondToPermission(request.requestId, behavior, updatedInput);
+	}
 </script>
 
-<Card surface="raised" padding="md" class="mx-6 mb-4 border border-amber">
-	<div class="flex flex-col gap-3">
-		<div class="flex items-center gap-2 text-sm">
-			<span class="tracking-caps uppercase text-amber">Permission</span>
-			<span class="font-mono text-default">{request.toolName}</span>
-		</div>
-		<pre class="max-h-48 overflow-auto rounded-md bg-input p-3 font-mono text-xs text-muted">{JSON.stringify(
-				request.input,
-				null,
-				2,
-			)}</pre>
-		<div class="flex gap-2">
-			<Button onclick={() => sessions.respondToPermission(request.requestId, 'allow')}>Allow</Button>
-			<Button variant="ghost" onclick={() => sessions.respondToPermission(request.requestId, 'deny')}>Deny</Button>
-		</div>
-	</div>
-</Card>
+<div class="mx-6 mb-4">
+	{#if Interactive}
+		<Interactive {request} {session} {respond} />
+	{:else}
+		<ToolPermissionCard {request} {session} {respond} />
+	{/if}
+</div>

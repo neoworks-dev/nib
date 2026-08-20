@@ -32,9 +32,9 @@ class SseTransport implements TransportService {
 		return requestJson(`/api/fs/directories?path=${encodeURIComponent(path)}`);
 	}
 
-	async searchFiles(cwd: string, query: string, limit = 20): Promise<string[]> {
-		const params = new URLSearchParams({ cwd, q: query, limit: String(limit) });
-		const { files } = await requestJson<{ files: { path: string }[] }>(`/api/fs/files?${params}`);
+	async searchFiles(sessionId: string, query: string, limit = 20): Promise<string[]> {
+		const params = new URLSearchParams({ query, limit: String(limit) });
+		const { files } = await requestJson<{ files: { path: string }[] }>(`/api/sessions/${sessionId}/files?${params}`);
 		return files.map((file) => file.path);
 	}
 

@@ -1,4 +1,6 @@
 import type { Plugin } from '@nib-ui/kernel';
+import { askUserQuestionToolName } from '@nib-ui/protocol';
+import AskQuestionCard from './AskQuestionCard.svelte';
 import ImageBlock from './ImageBlock.svelte';
 import TextBlock from './TextBlock.svelte';
 import ThinkingBlock from './ThinkingBlock.svelte';
@@ -15,5 +17,8 @@ export const coreRenderersPlugin: Plugin = {
 		ctx.effect(() => renderers.register({ kind: 'tool_use', component: ToolUseBlock }));
 		ctx.effect(() => renderers.register({ kind: 'tool_result', component: ToolResultBlock }));
 		ctx.effect(() => renderers.register({ kind: 'image', component: ImageBlock }));
+		ctx.effect(() =>
+			renderers.registerPermission({ toolName: askUserQuestionToolName, component: AskQuestionCard }),
+		);
 	},
 };

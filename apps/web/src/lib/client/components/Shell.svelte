@@ -32,7 +32,7 @@
 			</div>
 
 			{#each session.pendingPermissions as request (request.requestId)}
-				<PermissionPrompt {request} />
+				<PermissionPrompt {request} {session} />
 			{/each}
 
 			<Composer {session} />

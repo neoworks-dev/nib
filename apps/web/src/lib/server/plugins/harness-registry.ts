@@ -18,11 +18,16 @@ class AdapterRegistry implements HarnessRegistry {
 	}
 
 	list(): HarnessDescriptor[] {
-		return [...this.adapters.values()].map(({ id, displayName, capabilities }) => ({
-			id,
-			displayName,
-			capabilities,
-		}));
+		return [...this.adapters.values()].map(
+			({ id, displayName, capabilities, defaultPermissionMode, models, defaultModel }) => ({
+				id,
+				displayName,
+				capabilities,
+				defaultPermissionMode,
+				models,
+				defaultModel,
+			}),
+		);
 	}
 }
 

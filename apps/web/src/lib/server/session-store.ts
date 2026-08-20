@@ -13,6 +13,7 @@ export type EventListener = (event: AnyAgentEvent) => void;
  */
 export class HostedSession {
 	readonly createdAt = Date.now();
+	updatedAt = Date.now();
 	readonly events: AnyAgentEvent[] = [];
 	view: SessionView;
 	harnessSession: HarnessSession | null = null;
@@ -42,6 +43,7 @@ export class HostedSession {
 		} as AnyAgentEvent;
 
 		this.events.push(event);
+		this.updatedAt = event.ts;
 		this.view = reduceSession(this.view, event);
 		this.log.write(`${JSON.stringify(event)}\n`);
 		for (const listener of [...this.subscribers]) listener(event);

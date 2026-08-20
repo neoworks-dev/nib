@@ -83,8 +83,8 @@ export class ReactiveSessionsStore implements SessionsService {
 		return this.dispatch({ type: 'session.interrupt' });
 	}
 
-	respondToPermission(requestId: string, behavior: PermissionBehavior) {
-		return this.dispatch({ type: 'session.permission.respond', requestId, behavior });
+	respondToPermission(requestId: string, behavior: PermissionBehavior, updatedInput?: unknown) {
+		return this.dispatch({ type: 'session.permission.respond', requestId, behavior, updatedInput });
 	}
 
 	setPermissionMode(mode: string) {
@@ -99,12 +99,12 @@ export class ReactiveSessionsStore implements SessionsService {
 		return this.dispatch({ type: 'session.setLabel', label });
 	}
 
-	/** Scoped to the active session's cwd; without one there is nothing to search. */
+	/** Scoped to the active session; the server resolves its working directory. */
 	async searchFiles(query: string, limit?: number): Promise<string[]> {
-		const cwd = this.active?.cwd;
-		if (!cwd) return [];
+		const sessionId = this.activeId;
+		if (!sessionId) return [];
 		try {
-			return await this.transport.searchFiles(cwd, query, limit);
+			return await this.transport.searchFiles(sessionId, query, limit);
 		} catch {
 			return [];
 		}
