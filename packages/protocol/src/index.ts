@@ -39,6 +39,8 @@ export {
 } from './commands';
 export { reduceSession, reduceSessionAll } from './reduce';
 export {
+	blockToolInput,
+	blockToolOutput,
 	createSessionView,
 	type BlockView,
 	type LogEntryView,

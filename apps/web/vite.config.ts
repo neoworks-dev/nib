@@ -6,5 +6,10 @@ export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
 	// Keep the Agent SDK out of the build graph: the server bundle requires it
 	// from node_modules and the client never sees it.
-	ssr: { external: ['@anthropic-ai/claude-agent-sdk'] },
+	ssr: {
+		external: ['@anthropic-ai/claude-agent-sdk'],
+		// Workspace packages ship TypeScript sources; Vite has to compile them
+		// instead of handing extensionless imports to the Node resolver.
+		noExternal: [/^@nib-ui\//],
+	},
 });

@@ -1,5 +1,4 @@
-import type { FileSink } from 'bun';
-import { mkdirSync } from 'node:fs';
+import { createWriteStream, mkdirSync, type WriteStream } from 'node:fs';
 import { join } from 'node:path';
 import { createSessionView, reduceSession, type AnyAgentEvent, type EmittedEvent, type SessionView } from '@nib-ui/protocol';
 import type { Disposer } from '@nib-ui/kernel';
@@ -19,7 +18,7 @@ export class HostedSession {
 	harnessSession: HarnessSession | null = null;
 	private seq = 0;
 	private readonly subscribers = new Set<EventListener>();
-	private readonly sink: FileSink;
+	private readonly log: WriteStream;
 
 	constructor(
 		readonly id: string,
@@ -29,7 +28,7 @@ export class HostedSession {
 	) {
 		this.view = createSessionView(id);
 		mkdirSync(logDirectory, { recursive: true });
-		this.sink = Bun.file(join(logDirectory, `${id}.jsonl`)).writer();
+		this.log = createWriteStream(join(logDirectory, `${id}.jsonl`), { flags: 'a' });
 	}
 
 	append(emitted: EmittedEvent): AnyAgentEvent {
@@ -44,8 +43,7 @@ export class HostedSession {
 
 		this.events.push(event);
 		this.view = reduceSession(this.view, event);
-		this.sink.write(`${JSON.stringify(event)}\n`);
-		this.sink.flush();
+		this.log.write(`${JSON.stringify(event)}\n`);
 		for (const listener of [...this.subscribers]) listener(event);
 		return event;
 	}
@@ -65,6 +63,6 @@ export class HostedSession {
 		this.subscribers.clear();
 		await this.harnessSession?.dispose();
 		this.harnessSession = null;
-		this.sink.end();
+		this.log.end();
 	}
 }

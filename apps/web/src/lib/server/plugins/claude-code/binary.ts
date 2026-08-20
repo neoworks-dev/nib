@@ -1,4 +1,5 @@
-import { isAbsolute } from 'node:path';
+import { accessSync, constants } from 'node:fs';
+import { delimiter, isAbsolute, join } from 'node:path';
 
 const missingBinaryMessage =
 	'Claude Code executable not found. Install Claude Code (npm i -g @anthropic-ai/claude-code) or set CLAUDE_EXECUTABLE to its absolute path.';
@@ -11,7 +12,21 @@ const missingBinaryMessage =
 export function resolveClaudeExecutable(): string {
 	const configured = process.env.CLAUDE_EXECUTABLE?.trim();
 	if (configured && isAbsolute(configured)) return configured;
-	const resolved = configured ? Bun.which(configured) : Bun.which('claude');
+	const resolved = findOnPath(configured || 'claude');
 	if (!resolved) throw new Error(missingBinaryMessage);
 	return resolved;
+}
+
+function findOnPath(command: string): string | null {
+	for (const directory of (process.env.PATH ?? '').split(delimiter)) {
+		if (directory.length === 0) continue;
+		const candidate = join(directory, command);
+		try {
+			accessSync(candidate, constants.X_OK);
+			return candidate;
+		} catch {
+			continue;
+		}
+	}
+	return null;
 }

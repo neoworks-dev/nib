@@ -157,7 +157,7 @@ export class ClaudeMessageMapper {
 	private handleAssistant(message: Extract<SDKMessage, { type: 'assistant' }>): void {
 		const messageId = message.message.id;
 		this.beginMessage(messageId, 'assistant');
-		for (const block of (message.message.content ?? []) as RawBlock[]) {
+		for (const block of (message.message.content ?? []) as unknown as RawBlock[]) {
 			this.completeBlock(messageId, block, message);
 		}
 		const stopReason = message.message.stop_reason;
@@ -175,7 +175,7 @@ export class ClaudeMessageMapper {
 
 	private handleResult(message: Extract<SDKMessage, { type: 'result' }>): void {
 		for (const messageId of [...this.openMessages]) this.finishMessage(messageId, null);
-		const usage = message.usage as Record<string, number> | undefined;
+		const usage = message.usage as unknown as Record<string, number> | undefined;
 		this.totals.inputTokens += usage?.input_tokens ?? 0;
 		this.totals.outputTokens += usage?.output_tokens ?? 0;
 		this.totals.cacheReadTokens += usage?.cache_read_input_tokens ?? 0;

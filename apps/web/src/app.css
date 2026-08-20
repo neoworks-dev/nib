@@ -2,3 +2,4 @@
 @import '@neoworks-dev/ui/styles';
 
 @source '../node_modules/@neoworks-dev/ui/src';
+@source '../../../plugins';

@@ -84,6 +84,22 @@ export interface OrphanBlock {
 	completed: boolean;
 }
 
+/** Completed input when the block finished, otherwise the partial JSON parsed best-effort. */
+export function blockToolInput(block: BlockView): unknown {
+	if (block.content?.kind === 'tool_use') return (block.content as { input?: unknown }).input;
+	if (block.inputJson.length === 0) return undefined;
+	try {
+		return JSON.parse(block.inputJson);
+	} catch {
+		return block.inputJson;
+	}
+}
+
+export function blockToolOutput(block: BlockView): unknown {
+	if (block.content?.kind === 'tool_result') return (block.content as { output?: unknown }).output;
+	return block.text.length > 0 ? block.text : undefined;
+}
+
 export function createSessionView(sessionId: string): SessionView {
 	return {
 		sessionId,

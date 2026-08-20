@@ -16,7 +16,9 @@
         "@anthropic-ai/claude-agent-sdk": "^0.3.238",
         "@neoworks-dev/ui": "link:@neoworks-dev/ui",
         "@nib-ui/kernel": "workspace:*",
+        "@nib-ui/plugin-core-renderers": "workspace:*",
         "@nib-ui/protocol": "workspace:*",
+        "@nib-ui/ui-contracts": "workspace:*",
         "phosphor-svelte": "^3.1.0",
         "zod": "^4.4.3",
       },
@@ -43,6 +45,35 @@
       "version": "0.0.0",
       "dependencies": {
         "zod": "^4.4.3",
+      },
+    },
+    "packages/ui-contracts": {
+      "name": "@nib-ui/ui-contracts",
+      "version": "0.0.0",
+      "dependencies": {
+        "@nib-ui/kernel": "workspace:*",
+        "@nib-ui/protocol": "workspace:*",
+      },
+      "devDependencies": {
+        "svelte": "^5.56.4",
+      },
+      "peerDependencies": {
+        "svelte": "^5.56.4",
+      },
+    },
+    "plugins/core-renderers": {
+      "name": "@nib-ui/plugin-core-renderers",
+      "version": "0.0.0",
+      "dependencies": {
+        "@nib-ui/kernel": "workspace:*",
+        "@nib-ui/protocol": "workspace:*",
+        "@nib-ui/ui-contracts": "workspace:*",
+      },
+      "devDependencies": {
+        "svelte": "^5.56.4",
+      },
+      "peerDependencies": {
+        "svelte": "^5.56.4",
       },
     },
   },
@@ -141,7 +172,11 @@
 
     "@nib-ui/kernel": ["@nib-ui/kernel@workspace:packages/kernel"],
 
+    "@nib-ui/plugin-core-renderers": ["@nib-ui/plugin-core-renderers@workspace:plugins/core-renderers"],
+
     "@nib-ui/protocol": ["@nib-ui/protocol@workspace:packages/protocol"],
+
+    "@nib-ui/ui-contracts": ["@nib-ui/ui-contracts@workspace:packages/ui-contracts"],
 
     "@nib-ui/web": ["@nib-ui/web@workspace:apps/web"],
 

@@ -1,1 +1,5 @@
-<h1 class="p-6 text-xl">nib-ui</h1>
+<script lang="ts">
+	import Shell from '$lib/client/components/Shell.svelte';
+</script>
+
+<Shell />
