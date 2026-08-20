@@ -1,0 +1,7 @@
+node_modules/
+.svelte-kit/
+build/
+dist/
+.nib-ui/
+*.log
+.DS_Store

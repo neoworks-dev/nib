@@ -1,0 +1,22 @@
+{
+	"name": "nib-ui",
+	"private": true,
+	"type": "module",
+	"workspaces": [
+		"packages/*",
+		"apps/*",
+		"plugins/*"
+	],
+	"scripts": {
+		"install:lean": "bun install --omit optional",
+		"dev": "bun --filter @nib-ui/web dev",
+		"build": "bun --filter @nib-ui/web build",
+		"typecheck": "bun --filter '*' typecheck",
+		"test": "bun test",
+		"smoke": "bun apps/web/scripts/smoke.ts"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.4.0",
+		"typescript": "^5.9.3"
+	}
+}
