@@ -28,6 +28,7 @@ export function categorizeEvent(event: AnyAgentEvent, blockKinds: Map<string, st
 			return event.data.status === 'error' ? 'error' : 'state';
 		case 'session.created':
 		case 'session.meta':
+		case 'session.cleared':
 		case 'usage.updated':
 			return 'state';
 		case 'permission.requested':
@@ -54,6 +55,8 @@ export function eventSummary(event: AnyAgentEvent): string {
 			return `${event.data.harnessId} · ${event.data.cwd}`;
 		case 'session.meta':
 			return [event.data.label, event.data.model, event.data.permissionMode].filter(Boolean).join(' · ');
+		case 'session.cleared':
+			return event.data.reason ?? 'conversation cleared';
 		case 'session.status':
 			return event.data.detail ? `${event.data.status} — ${event.data.detail}` : event.data.status;
 		case 'message.started':

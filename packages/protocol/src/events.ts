@@ -56,6 +56,10 @@ export const eventDataSchemas = {
 		slashCommands: z.array(slashCommandSchema).optional(),
 		models: z.array(modelInfoSchema).optional(),
 	}),
+	/** The harness dropped its conversation (`/clear`); the projection follows suit. */
+	'session.cleared': z.object({
+		reason: z.string().optional(),
+	}),
 	'session.status': z.object({
 		status: sessionStatusSchema,
 		detail: z.string().optional(),

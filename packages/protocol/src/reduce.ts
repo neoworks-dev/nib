@@ -24,6 +24,9 @@ function applyEvent(state: SessionView, event: AnyAgentEvent): SessionView {
 			return applySessionCreated(state, event.data);
 		case 'session.meta':
 			return applySessionMeta(state, event.data);
+		case 'session.cleared':
+			// Usage and metadata survive: only the conversation went away.
+			return { ...state, messages: [], orphanBlocks: {}, pendingPermissions: [], resolvedPermissions: [] };
 		case 'session.status':
 			return { ...state, status: event.data.status, statusDetail: event.data.detail ?? null };
 		case 'message.started':

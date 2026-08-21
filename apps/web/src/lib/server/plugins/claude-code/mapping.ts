@@ -64,6 +64,11 @@ export class ClaudeMessageMapper {
 	) {}
 
 	handle(message: SDKMessage): void {
+		// `/clear` makes the CLI announce a new conversation; the projection follows.
+		if ((message.type as string) === 'conversation_reset') {
+			this.emit({ type: 'session.cleared', data: { reason: 'conversation_reset' }, raw: message });
+			return;
+		}
 		switch (message.type) {
 			case 'system':
 				return this.handleSystem(message);

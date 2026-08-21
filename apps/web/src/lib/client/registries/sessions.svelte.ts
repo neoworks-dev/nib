@@ -42,6 +42,10 @@ export class ReactiveSessionsStore implements SessionsService {
 		return this.logs[sessionId] ?? [];
 	}
 
+	view(sessionId: string): SessionView | null {
+		return this.views[sessionId] ?? null;
+	}
+
 	async refresh(): Promise<void> {
 		const [harnesses, summaries] = await Promise.all([
 			this.transport.listHarnesses(),
@@ -65,6 +69,10 @@ export class ReactiveSessionsStore implements SessionsService {
 
 	open(sessionId: string): void {
 		this.activeId = sessionId;
+		this.watch(sessionId);
+	}
+
+	watch(sessionId: string): void {
 		if (this.subscriptions.has(sessionId)) return;
 		this.views[sessionId] ??= createSessionView(sessionId);
 		this.logs[sessionId] ??= [];
@@ -77,6 +85,10 @@ export class ReactiveSessionsStore implements SessionsService {
 
 	send(text: string) {
 		return this.dispatch({ type: 'session.send', text });
+	}
+
+	sendTo(sessionId: string, text: string) {
+		return this.dispatchTo(sessionId, { type: 'session.send', text });
 	}
 
 	interrupt() {
@@ -135,9 +147,13 @@ export class ReactiveSessionsStore implements SessionsService {
 		this.logs = { ...this.logs, [sessionId]: [...(this.logs[sessionId] ?? []), event] };
 	}
 
-	private async dispatch(command: SessionCommand): Promise<void> {
+	private dispatch(command: SessionCommand): Promise<void> {
 		const sessionId = this.activeId;
 		if (!sessionId) throw new Error('no active session');
+		return this.dispatchTo(sessionId, command);
+	}
+
+	private async dispatchTo(sessionId: string, command: SessionCommand): Promise<void> {
 		this.error = null;
 		try {
 			await this.transport.command(sessionId, command);

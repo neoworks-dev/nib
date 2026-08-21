@@ -1,6 +1,8 @@
 import type { Plugin } from '@nib-ui/kernel';
+import ChatPane from '../components/ChatPane.svelte';
 import FallbackRenderer from '../components/FallbackRenderer.svelte';
 import { ReactiveCommandRegistry } from '../registries/commands.svelte';
+import { chatPaneId, ReactivePaneRegistry } from '../registries/panes.svelte';
 import { ReactiveRendererRegistry } from '../registries/renderers.svelte';
 import { ReactiveSessionsStore } from '../registries/sessions.svelte';
 import { ReactiveSlotRegistry } from '../registries/slots.svelte';
@@ -29,6 +31,17 @@ export const slotsPlugin: Plugin = {
 	name: 'slots',
 	apply(ctx) {
 		ctx.provide('slots', new ReactiveSlotRegistry());
+	},
+};
+
+export const panesPlugin: Plugin = {
+	name: 'panes',
+	apply(ctx) {
+		const registry = new ReactivePaneRegistry();
+		ctx.provide('panes', registry);
+		// The chat is a pane like any other, so it tiles with whatever a plugin adds.
+		ctx.effect(() => registry.register({ id: chatPaneId, title: 'Chat', component: ChatPane }));
+		registry.open(chatPaneId);
 	},
 };
 

@@ -1,15 +1,19 @@
 <script lang="ts">
+	import { FileIcon } from '@nib-ui/file-icons';
 	import type { TriggerItem } from '../composer-trigger';
 
 	const {
 		items,
 		activeIndex,
 		heading,
+		files = false,
 		onpick,
 	}: {
 		items: TriggerItem[];
 		activeIndex: number;
 		heading: string;
+		/** File rows get the Material icon for their extension; commands do not. */
+		files?: boolean;
 		onpick: (item: TriggerItem) => void;
 	} = $props();
 </script>
@@ -27,14 +31,18 @@
 					type="button"
 					role="option"
 					aria-selected={index === activeIndex}
-					class="flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-sm {index === activeIndex
+					class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm {index === activeIndex
 						? 'bg-hover text-default'
 						: 'text-muted'}"
 					onclick={() => onpick(item)}
 				>
-					<span class="truncate font-mono">{item.label}</span>
+					{#if files}
+						<FileIcon path={item.value} size={14} />
+					{/if}
+					<span class="max-w-[65%] shrink-0 truncate font-mono">{item.label}</span>
 					{#if item.hint}
-						<span class="ml-auto truncate text-xs text-faint">{item.hint}</span>
+						<!-- The name is the thing being picked, so the description gives up the space. -->
+						<span class="min-w-0 flex-1 truncate text-right text-xs text-faint">{item.hint}</span>
 					{/if}
 				</button>
 			</li>

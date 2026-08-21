@@ -29,8 +29,9 @@ devDependencies for the matching platform packages.
 | `packages/kernel`               | Plugin microkernel: scopes, services, events, effects, forks   |
 | `packages/protocol`             | Normalized event/command schemas (zod) + `reduceSession`       |
 | `packages/ui-contracts`         | Frontend service contracts shared by the app and every plugin  |
+| `packages/file-icons`           | Material icon subset + extension lookup, shared by app/plugins |
 | `apps/web`                      | SvelteKit app: server harness host + browser kernel instance   |
-| `plugins/*`                     | Renderers, statusbar, trajectory inspector                     |
+| `plugins/*`                     | Renderers, statusbar, trajectory, git, file browser and viewer |
 
 `packages/ui-contracts` exists so plugin packages never import from `apps/web`: it holds the
 renderer/slot/command/session service interfaces plus the `@nib-ui/kernel` module augmentation.
@@ -41,9 +42,11 @@ renderer/slot/command/session service interfaces plus the `@nib-ui/kernel` modul
 | ----------- | ----------------------------------------- | ----------------------------------------------- |
 | `harnesses` | server adapters (`claude-code`)           | `createSession`/`resumeSession` per harness      |
 | `workspace` | `workspace` (server)                      | cwd autocomplete + `@` file search over the cwd  |
+| `git`       | `git` (server)                            | status, diff, stage, commit for the session cwd  |
 | `renderers` | `core-renderers`, `renderer-diff`, `renderer-terminal` | block rendering by `(kind, toolName)`, plus interactive permission cards by `toolName` |
-| `slots`     | `cost-tracker`, `trajectory-inspector`    | statusbar, headers, composer actions            |
-| `commands`  | `trajectory-inspector`, dev commands      | command palette (⌘/Ctrl+K)                      |
+| `slots`     | `cost-tracker`, `trajectory-inspector`, `git-panel`, `file-browser`, `file-viewer` | statusbar, headers, sidebar, composer and per-message footers |
+| `commands`  | `trajectory-inspector`, `git-panel`, dev commands | command palette (⌘/Ctrl+K)              |
+| `fileViewer`| `file-viewer`                             | `open(sessionId, path)` for any other plugin     |
 
 Every registration goes through `ctx.effect(() => disposer)`, so disposing a plugin removes its
 renderers, slot entries, listeners and commands. `Toggle plugin: <name>` in the palette exercises it.
@@ -65,6 +68,28 @@ claims a tool answers it inline — `core-renderers` registers an `AskUserQuesti
 picks resolve the request with `{ behavior: 'allow', updatedInput: { …input, answers } }`. Everything
 else falls back to the app's allow/deny card, which previews the pending call through the same block
 renderers that draw it once it runs (`permissionPreviewBlock`).
+
+## Trajectory
+
+The inspector folds the flat log into the call tree it describes: one row per message, its blocks
+nested underneath, and each tool call carrying the result of its own `toolUseId`. Streaming deltas
+disappear into the row they were filling. Selecting a row opens Summary / Payload / Result / Raw for
+that step, where Raw lists the underlying events with consecutive deltas merged.
+
+## Session-scoped HTTP
+
+Everything a panel needs is addressed by session, so the server resolves the working directory and a
+client can never reach outside it:
+
+```text
+GET  /api/sessions/[id]/files?query=      fuzzy file search for `@` references
+GET  /api/sessions/[id]/tree?path=        one directory level, each entry tagged with its git status
+GET  /api/sessions/[id]/file?path=        one file's text for the viewer (1 MB cap)
+GET  /api/sessions/[id]/git               branch, ahead/behind, changed files with +/- counts
+GET  /api/sessions/[id]/git/diff?path=    unified patch for one file
+POST /api/sessions/[id]/git/stage         stage or unstage paths
+POST /api/sessions/[id]/git/commit        commit staged work (local only — nothing is pushed)
+```
 
 ## Commands
 

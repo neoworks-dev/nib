@@ -1,4 +1,5 @@
 import type { Disposer } from '@nib-ui/kernel';
+import type { GitCommitResult, GitLogEntry, GitStatus } from './git-cli';
 import type {
 	AnyAgentEvent,
 	EmittedEvent,
@@ -79,6 +80,16 @@ export interface SessionHost {
 	has(sessionId: string): boolean;
 }
 
+/** Working-tree inspection and commits for the session's repository. */
+export interface GitService {
+	status(cwd: string): Promise<GitStatus>;
+	diff(cwd: string, path: string, staged: boolean): Promise<string>;
+	stage(cwd: string, paths: string[]): Promise<GitCommitResult>;
+	unstage(cwd: string, paths: string[]): Promise<GitCommitResult>;
+	commit(cwd: string, message: string, paths?: string[]): Promise<GitCommitResult>;
+	log(cwd: string, limit: number): Promise<GitLogEntry[]>;
+}
+
 /** Read-only filesystem probe that backs the cwd picker and `@` file references. */
 export interface WorkspaceService {
 	listDirectories(path: string): Promise<{ base: string; entries: { name: string; path: string }[] }>;
@@ -91,6 +102,7 @@ declare module '@nib-ui/kernel' {
 		harnesses: HarnessRegistry;
 		sessionHost: SessionHost;
 		workspace: WorkspaceService;
+		git: GitService;
 	}
 	interface Events {
 		'session/event'(sessionId: string, event: AnyAgentEvent): void;

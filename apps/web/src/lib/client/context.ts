@@ -1,15 +1,28 @@
 import { createContext, type Context, type ForkHandle, type Plugin } from '@nib-ui/kernel';
 import { coreRenderersPlugin } from '@nib-ui/plugin-core-renderers';
 import { costTrackerPlugin } from '@nib-ui/plugin-cost-tracker';
+import { fileBrowserPlugin } from '@nib-ui/plugin-file-browser';
+import { fileViewerPlugin } from '@nib-ui/plugin-file-viewer';
+import { gitGraphPlugin } from '@nib-ui/plugin-git-graph';
+import { gauntletLoopPlugin } from '@nib-ui/plugin-gauntlet-loop';
+import { gitPanelPlugin } from '@nib-ui/plugin-git-panel';
+import { webBrowserPlugin } from '@nib-ui/plugin-web-browser';
 import { rendererDiffPlugin } from '@nib-ui/plugin-renderer-diff';
 import { rendererTerminalPlugin } from '@nib-ui/plugin-renderer-terminal';
 import { trajectoryInspectorPlugin } from '@nib-ui/plugin-trajectory-inspector';
-import { commandsPlugin, renderersPlugin, sessionsPlugin, slotsPlugin } from './plugins/core-services';
+import { commandsPlugin, panesPlugin, renderersPlugin, sessionsPlugin, slotsPlugin } from './plugins/core-services';
 import { devCommandsPlugin } from './plugins/dev-commands';
 import { transportPlugin } from './plugins/transport';
 
 /** Statically loaded plugin manifest. Order is irrelevant — `inject` gates activation. */
-const corePlugins: Plugin[] = [transportPlugin, sessionsPlugin, renderersPlugin, slotsPlugin, commandsPlugin];
+const corePlugins: Plugin[] = [
+	transportPlugin,
+	sessionsPlugin,
+	renderersPlugin,
+	slotsPlugin,
+	commandsPlugin,
+	panesPlugin,
+];
 
 const featurePlugins: Plugin[] = [
 	coreRenderersPlugin,
@@ -17,6 +30,12 @@ const featurePlugins: Plugin[] = [
 	rendererTerminalPlugin,
 	costTrackerPlugin,
 	trajectoryInspectorPlugin,
+	gitPanelPlugin,
+	gitGraphPlugin,
+	fileViewerPlugin,
+	fileBrowserPlugin,
+	gauntletLoopPlugin,
+	webBrowserPlugin,
 ];
 
 let context: Context | undefined;

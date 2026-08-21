@@ -124,10 +124,12 @@
 	}
 </script>
 
-<div class="border-t border-line bg-elevated px-6 py-4">
-	<div class="relative flex items-end gap-3">
+<div class="px-8 pb-5">
+	<div
+		class="relative flex flex-col gap-2 rounded-2xl border border-line bg-elevated px-3 py-2 focus-within:border-line-strong"
+	>
 		{#if trigger && items.length > 0}
-			<TriggerPopup {items} {activeIndex} {heading} onpick={pick} />
+			<TriggerPopup {items} {activeIndex} {heading} files={trigger.kind === 'file'} onpick={pick} />
 		{/if}
 
 		<textarea
@@ -138,56 +140,61 @@
 			onclick={syncCaret}
 			onkeydown={onKeydown}
 			rows="2"
-			placeholder="Message the harness — / for commands, @ for files, Enter to send"
-			class="min-h-16 flex-1 resize-y rounded-lg border border-line bg-input px-3 py-2 text-base text-default placeholder:text-faint focus:border-line-strong focus:outline-none"
+			placeholder="Ask for follow-up changes — / for commands, @ for files"
+			class="min-h-14 w-full resize-y bg-transparent px-1 py-1 text-base text-default placeholder:text-faint focus:outline-none"
 		></textarea>
 
-		{#if canInterrupt}
-			<span class="animate-pulse">
-				<Button variant="danger" icon={StopCircleIcon} onclick={() => sessions.interrupt()}>Interrupt</Button>
+		<div class="flex flex-wrap items-center gap-2">
+			{#if permissionModes.length > 0}
+				<PillSelect
+					icon={ShieldCheckIcon}
+					value={session.permissionMode}
+					placeholder="Permission"
+					options={permissionModes.map((mode) => ({ value: mode, label: permissionModeLabel(mode), hint: mode }))}
+					onChange={(mode) => sessions.setPermissionMode(mode)}
+				/>
+			{/if}
+
+			{#if models.length > 0}
+				<PillSelect
+					icon={CpuIcon}
+					value={session.model}
+					placeholder="Model"
+					options={models.map((model) => ({
+						value: model.id,
+						label: model.displayName ?? model.id,
+						hint: model.description,
+					}))}
+					onChange={(model) => sessions.setModel(model)}
+				/>
+			{/if}
+
+			{#if sessions.harnesses.length > 1}
+				<span class="flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-xs text-muted">
+					<span class="text-faint"><PlugsConnectedIcon size={12} /></span>
+					{harness?.displayName ?? session.harnessId}
+				</span>
+			{/if}
+
+			<SlotHost slot="composer.actions" {session} class="flex items-center gap-2" />
+
+			<span class="ml-auto">
+				{#if canInterrupt}
+					<span class="animate-pulse">
+						<Button size="sm" variant="danger" icon={StopCircleIcon} onclick={() => sessions.interrupt()}>
+							Interrupt
+						</Button>
+					</span>
+				{:else}
+					<Button
+						size="sm"
+						variant="primary"
+						icon={PaperPlaneRightIcon}
+						disabled={draft.trim().length === 0}
+						onclick={submit}>Send</Button
+					>
+				{/if}
 			</span>
-		{:else}
-			<Button
-				variant="primary"
-				icon={PaperPlaneRightIcon}
-				disabled={draft.trim().length === 0}
-				onclick={submit}>Send</Button
-			>
-		{/if}
-	</div>
-
-	<div class="mt-3 flex flex-wrap items-center gap-2">
-		{#if permissionModes.length > 0}
-			<PillSelect
-				icon={ShieldCheckIcon}
-				value={session.permissionMode}
-				placeholder="Permission"
-				options={permissionModes.map((mode) => ({ value: mode, label: permissionModeLabel(mode), hint: mode }))}
-				onChange={(mode) => sessions.setPermissionMode(mode)}
-			/>
-		{/if}
-
-		{#if models.length > 0}
-			<PillSelect
-				icon={CpuIcon}
-				value={session.model}
-				placeholder="Model"
-				options={models.map((model) => ({
-					value: model.id,
-					label: model.displayName ?? model.id,
-					hint: model.description,
-				}))}
-				onChange={(model) => sessions.setModel(model)}
-			/>
-		{/if}
-
-		{#if sessions.harnesses.length > 1}
-			<span class="flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-xs text-muted">
-				<span class="text-faint"><PlugsConnectedIcon size={12} /></span>
-				{harness?.displayName ?? session.harnessId}
-			</span>
-		{/if}
-
-		<SlotHost slot="composer.actions" {session} class="ml-auto flex items-center gap-2" />
+		</div>
 	</div>
 </div>

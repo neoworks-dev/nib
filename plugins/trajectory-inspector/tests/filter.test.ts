@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { parseAgentEvent, type AnyAgentEvent } from '@nib-ui/protocol';
 import { categorizeEvent, eventSummary, filterEvents, indexBlockKinds } from '../src/filter';
+import { mergeDeltas } from '../src/merge-deltas';
 
 let seq = 0;
 function event(type: string, data: unknown): AnyAgentEvent {
@@ -71,5 +72,49 @@ describe('eventSummary', () => {
 		expect(eventSummary(log[5]!)).toBe('Bash');
 		expect(eventSummary(log[6]!)).toBe('spawn failed');
 		expect(eventSummary(log[7]!)).toBe('harness.telepathy');
+	});
+});
+
+describe('mergeDeltas', () => {
+	const delta = (seq: number, blockId: string, textDelta: string): AnyAgentEvent => ({
+		id: `d${seq}`,
+		sessionId: 's1',
+		seq,
+		ts: seq,
+		type: 'block.delta',
+		data: { blockId, textDelta },
+	});
+
+	test('folds consecutive deltas of one block into a single row', () => {
+		const rows = mergeDeltas([delta(1, 'b1', 'He'), delta(2, 'b1', 'llo'), delta(3, 'b1', '!')]);
+
+		expect(rows).toHaveLength(1);
+		expect(rows[0]!.mergedCount).toBe(3);
+		expect(rows[0]!.firstSeq).toBe(1);
+		expect((rows[0]!.event.data as { textDelta: string }).textDelta).toBe('Hello!');
+	});
+
+	test('breaks the run on a different block or another event type', () => {
+		const rows = mergeDeltas([
+			delta(1, 'b1', 'a'),
+			delta(2, 'b2', 'b'),
+			{ id: 'e3', sessionId: 's1', seq: 3, ts: 3, type: 'session.status', data: { status: 'idle' } },
+			delta(4, 'b2', 'c'),
+		]);
+
+		expect(rows.map((row) => row.mergedCount)).toEqual([1, 1, 1, 1]);
+		expect(rows.map((row) => row.event.type)).toEqual([
+			'block.delta',
+			'block.delta',
+			'session.status',
+			'block.delta',
+		]);
+	});
+
+	test('leaves a log without deltas untouched', () => {
+		const events: AnyAgentEvent[] = [
+			{ id: 'e1', sessionId: 's1', seq: 1, ts: 1, type: 'log', data: { level: 'info', message: 'hi' } },
+		];
+		expect(mergeDeltas(events)).toEqual([{ event: events[0]!, mergedCount: 1, firstSeq: 1 }]);
 	});
 });

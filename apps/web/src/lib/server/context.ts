@@ -1,10 +1,11 @@
 import { join } from 'node:path';
 import { createContext, type Context } from '@nib-ui/kernel';
 import { claudeCodePlugin } from './plugins/claude-code';
+import { gitPlugin } from './plugins/git';
 import { harnessRegistryPlugin } from './plugins/harness-registry';
 import { sessionHostPlugin } from './plugins/session-host';
 import { workspacePlugin } from './plugins/workspace';
-import type { HarnessRegistry, SessionHost, WorkspaceService } from './services';
+import type { GitService, HarnessRegistry, SessionHost, WorkspaceService } from './services';
 
 const logDirectory = join(process.cwd(), '.nib-ui', 'sessions');
 
@@ -18,6 +19,7 @@ export function serverContext(): Context {
 	context.use(sessionHostPlugin, { logDirectory });
 	context.use(claudeCodePlugin);
 	context.use(workspacePlugin);
+	context.use(gitPlugin);
 	return context;
 }
 
@@ -31,4 +33,8 @@ export function sessionHost(): SessionHost {
 
 export function workspace(): WorkspaceService {
 	return serverContext().require('workspace');
+}
+
+export function git(): GitService {
+	return serverContext().require('git');
 }

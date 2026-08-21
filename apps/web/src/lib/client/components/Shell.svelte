@@ -1,22 +1,28 @@
 <script lang="ts">
 	import { clientContext } from '../context';
+	import { paneDrag } from '../layout/drag.svelte';
+	import type { ReactivePaneRegistry } from '../registries/panes.svelte';
 	import CommandPalette from './CommandPalette.svelte';
-	import Composer from './Composer.svelte';
-	import MessageList from './MessageList.svelte';
-	import PermissionPrompt from './PermissionPrompt.svelte';
+	import PaneLauncher from './PaneLauncher.svelte';
 	import SessionHeader from './SessionHeader.svelte';
 	import Sidebar from './Sidebar.svelte';
 	import SlotHost from './SlotHost.svelte';
+	import TileHost from './TileHost.svelte';
 
-	const sessions = clientContext().require('sessions');
+	const context = clientContext();
+	const sessions = context.require('sessions');
+	const panes = context.require('panes') as ReactivePaneRegistry;
 	const session = $derived(sessions.active);
 
-	let feed = $state<HTMLDivElement>();
-
 	$effect(() => {
-		// Follow the tail while new events land; `lastSeq` ticks on every one.
-		session?.lastSeq;
-		feed?.scrollTo({ top: feed.scrollHeight });
+		// A drag that ends outside every pane must not leave the layout armed.
+		const cancel = () => paneDrag.clear();
+		window.addEventListener('pointerup', cancel);
+		window.addEventListener('pointercancel', cancel);
+		return () => {
+			window.removeEventListener('pointerup', cancel);
+			window.removeEventListener('pointercancel', cancel);
+		};
 	});
 </script>
 
@@ -26,20 +32,20 @@
 	<main class="flex min-h-0 flex-col">
 		{#if session}
 			<SessionHeader {session} />
+		{/if}
 
-			<div bind:this={feed} class="min-h-0 flex-1 overflow-y-auto">
-				<MessageList {session} />
-			</div>
+		<div class="flex min-h-0 flex-1 flex-col">
+			{#if panes.layout}
+				<TileHost node={panes.layout} {session} />
+			{:else}
+				<div class="flex flex-1 items-center justify-center text-sm text-dim">Every pane is closed.</div>
+			{/if}
+		</div>
 
-			{#each session.pendingPermissions as request (request.requestId)}
-				<PermissionPrompt {request} {session} />
-			{/each}
-
-			<Composer {session} />
-		{:else}
-			<div class="flex flex-1 items-center justify-center text-sm text-dim">
-				Pick a session or start a new one. Press ⌘/Ctrl+K for commands.
-			</div>
+		{#if paneDrag.paneId}
+			<p class="border-t border-line bg-elevated px-4 py-1 text-2xs text-dim">
+				Drop on a pane edge to tile — release outside to cancel.
+			</p>
 		{/if}
 
 		<SlotHost
@@ -50,4 +56,5 @@
 	</main>
 </div>
 
+<PaneLauncher />
 <CommandPalette />

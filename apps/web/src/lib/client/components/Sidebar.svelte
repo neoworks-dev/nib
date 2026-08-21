@@ -72,5 +72,9 @@
 		{/if}
 	</div>
 
-	<SlotHost slot="sidebar.nav" session={sessions.active} class="border-t border-line px-4 py-3" />
+	<SlotHost
+		slot="sidebar.nav"
+		session={sessions.active}
+		class="flex max-h-[45%] min-h-0 shrink-0 flex-col overflow-y-auto border-t border-line py-2"
+	/>
 </aside>

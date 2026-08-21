@@ -1,0 +1,66 @@
+<script lang="ts">
+	import ArrowsClockwiseIcon from 'phosphor-svelte/lib/ArrowsClockwiseIcon';
+	import type { SlotProps } from '@nib-ui/ui-contracts';
+	import { fileBrowserState } from './state.svelte';
+	import { fetchTree, type TreeEntry } from './tree';
+	import TreeNode from './TreeNode.svelte';
+
+	const { session }: SlotProps = $props();
+
+	let entries = $state<TreeEntry[]>([]);
+	let error = $state<string | null>(null);
+	let activePath = $state<string | null>(null);
+
+	const sessionId = $derived(session?.sessionId ?? null);
+	const workspace = $derived(session?.cwd?.slice(session.cwd.lastIndexOf('/') + 1) ?? '');
+
+	$effect(() => {
+		// The tree carries git status, so it refreshes as the agent edits files.
+		if (!sessionId) return;
+		session?.lastSeq;
+		void load(sessionId);
+	});
+
+	async function load(id: string) {
+		try {
+			entries = (await fetchTree(id, '')).entries;
+			error = null;
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : String(cause);
+		}
+	}
+
+	function open(path: string) {
+		activePath = path;
+		if (sessionId) void fileBrowserState.viewer?.open(sessionId, path);
+	}
+</script>
+
+{#if sessionId}
+	<section class="flex min-h-0 flex-col">
+		<header class="flex items-center gap-1.5 px-2 py-1">
+			<span class="truncate text-2xs tracking-caps uppercase text-dim">{workspace || 'Files'}</span>
+			<button
+				type="button"
+				class="ml-auto text-faint hover:text-default"
+				aria-label="Refresh the file tree"
+				onclick={() => sessionId && load(sessionId)}
+			>
+				<ArrowsClockwiseIcon size={12} />
+			</button>
+		</header>
+
+		{#if error}
+			<p class="px-2 py-1 text-2xs text-red">{error}</p>
+		{/if}
+
+		<div class="max-h-72 min-h-0 overflow-y-auto">
+			{#each entries as entry (entry.path)}
+				<TreeNode {entry} {sessionId} depth={0} {activePath} onopen={open} />
+			{/each}
+			{#if entries.length === 0 && !error}
+				<p class="px-2 py-1 text-2xs text-faint">Nothing to show.</p>
+			{/if}
+		</div>
+	</section>
+{/if}

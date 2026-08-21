@@ -1,5 +1,6 @@
 import type { SessionsService } from '@nib-ui/ui-contracts';
 import type { EventCategory } from './filter';
+import type { TimeRange } from './timeline';
 
 /**
  * Slot components only receive the session, so the plugin parks the services it
@@ -10,6 +11,8 @@ class InspectorState {
 	query = $state('');
 	categories = $state<EventCategory[]>([]);
 	selectedEventId = $state<string | null>(null);
+	/** Brushed window on the timeline; null means the whole session. */
+	range = $state<TimeRange | null>(null);
 	sessions = $state<SessionsService | null>(null);
 
 	toggle(open?: boolean): void {
@@ -27,6 +30,7 @@ class InspectorState {
 		this.query = '';
 		this.categories = [];
 		this.selectedEventId = null;
+		this.range = null;
 	}
 }
 

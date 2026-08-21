@@ -1,0 +1,25 @@
+{
+	"name": "@nib-ui/file-icons",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"main": "./src/index.ts",
+	"types": "./src/index.ts",
+	"svelte": "./src/index.ts",
+	"exports": {
+		".": {
+			"svelte": "./src/index.ts",
+			"types": "./src/index.ts",
+			"default": "./src/index.ts"
+		}
+	},
+	"dependencies": {
+		"material-icon-theme": "^5.37.0"
+	},
+	"peerDependencies": {
+		"svelte": "^5.56.4"
+	},
+	"devDependencies": {
+		"svelte": "^5.56.4"
+	}
+}

@@ -5,6 +5,7 @@ import type {
 	BlockKind,
 	BlockView,
 	HarnessDescriptor,
+	MessageView,
 	PermissionBehavior,
 	PermissionRequestView,
 	SessionCommand,
@@ -57,10 +58,15 @@ export interface SessionsService {
 	/** Working directories used before, most recent first; survives a reload. */
 	readonly recentDirectories: string[];
 	events(sessionId: string): AnyAgentEvent[];
+	/** Projection of any subscribed session, not just the active one. */
+	view(sessionId: string): SessionView | null;
 	refresh(): Promise<void>;
 	create(input: CreateSessionInput): Promise<void>;
 	open(sessionId: string): void;
+	/** Subscribes without making the session active — for side-by-side views. */
+	watch(sessionId: string): void;
 	send(text: string): Promise<void>;
+	sendTo(sessionId: string, text: string): Promise<void>;
 	interrupt(): Promise<void>;
 	/** `updatedInput` lets an interactive renderer answer the tool, not just approve it. */
 	respondToPermission(requestId: string, behavior: PermissionBehavior, updatedInput?: unknown): Promise<void>;
@@ -113,6 +119,7 @@ export const slotNames = [
 	'session.header',
 	'composer.actions',
 	'message.actions',
+	'message.footer',
 	'statusbar',
 	'settings.section',
 ] as const;
@@ -121,6 +128,8 @@ export type SlotName = (typeof slotNames)[number];
 
 export interface SlotProps {
 	session: SessionView | null;
+	/** Set for the per-message slots, so a plugin can summarise the turn it belongs to. */
+	message?: MessageView;
 }
 
 export interface SlotRegistration {
@@ -134,11 +143,45 @@ export interface SlotRegistry {
 	entries(slot: SlotName, session: SessionView | null): SlotRegistration[];
 }
 
+export interface PaneProps {
+	session: SessionView | null;
+}
+
+export interface PaneDefinition {
+	id: string;
+	title: string;
+	/** Phosphor icon component shown in the pane's title bar and in its trigger. */
+	icon?: Component<{ size?: number }>;
+	component: Component<PaneProps>;
+}
+
+/**
+ * Panes tile the main area. A plugin contributes a definition and asks for it to
+ * be shown; where it lands in the layout is the user's business, not the plugin's.
+ */
+export interface PaneRegistry {
+	register(definition: PaneDefinition): Disposer;
+	list(): PaneDefinition[];
+	open(paneId: string): void;
+	close(paneId: string): void;
+	toggle(paneId: string): void;
+	isOpen(paneId: string): boolean;
+}
+
 export interface CommandRegistration {
 	id: string;
 	title: string;
 	keybinding?: string;
 	run(): void | Promise<void>;
+}
+
+/**
+ * Contributed by the file-viewer plugin. It lives here so another plugin can
+ * ask for a file to be opened without importing the viewer itself.
+ */
+export interface FileViewerService {
+	open(sessionId: string, path: string): void | Promise<void>;
+	close(path: string): void;
 }
 
 export interface CommandRegistry {
@@ -156,6 +199,8 @@ declare module '@nib-ui/kernel' {
 		renderers: RendererRegistry;
 		slots: SlotRegistry;
 		commands: CommandRegistry;
+		panes: PaneRegistry;
+		fileViewer: FileViewerService;
 	}
 	interface Events {
 		'session/opened'(sessionId: string): void;

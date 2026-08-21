@@ -1,8 +1,8 @@
 <script lang="ts">
 	import CaretDownIcon from 'phosphor-svelte/lib/CaretDownIcon';
 	import CaretRightIcon from 'phosphor-svelte/lib/CaretRightIcon';
-	import FileCodeIcon from 'phosphor-svelte/lib/FileCodeIcon';
 	import { blockToolInput, findToolResultBlock } from '@nib-ui/protocol';
+	import { FileIcon } from '@nib-ui/file-icons';
 	import type { RendererProps } from '@nib-ui/ui-contracts';
 	import { diffLines } from './diff';
 
@@ -44,7 +44,7 @@
 		class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-hover"
 		onclick={() => (expanded = !expanded)}
 	>
-		<span class="shrink-0 text-blue"><FileCodeIcon size={14} /></span>
+		<FileIcon path={filePath} size={14} />
 		<span class="shrink-0 text-2xs tracking-caps uppercase text-dim">{verb}</span>
 		<span class="truncate font-mono text-xs text-default">{filePath}</span>
 		<span class="ml-auto shrink-0 font-mono text-xs text-green">+{added}</span>

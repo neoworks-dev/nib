@@ -5,7 +5,7 @@
 	const { session }: { session: SessionView } = $props();
 </script>
 
-<div class="mx-auto flex max-w-4xl flex-col gap-5 px-6 py-6">
+<div class="flex w-full flex-col gap-5 px-8 py-6">
 	{#each session.messages as message (message.id)}
 		<MessageTurn {message} {session} />
 	{/each}
