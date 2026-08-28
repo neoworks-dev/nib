@@ -1,7 +1,15 @@
 import type { Context, Disposer, Plugin } from '@nib-ui/kernel';
-import type { AnyAgentEvent, EmittedEvent, SessionCommand, SessionView } from '@nib-ui/protocol';
-import { HostedSession } from '../session-store';
-import type { CreateSessionOptions, HarnessRegistry, SessionHost, SessionSummary } from '../services';
+import { checkpointBefore, createSessionView, deriveTaskTitle, reduceSession } from '@nib-ui/protocol';
+import type { AnyAgentEvent, EmittedEvent, MessageAttachment, SessionCommand, SessionView } from '@nib-ui/protocol';
+import { deleteSessionLog, HostedSession, readSessionLogs } from '../session-store';
+import type {
+	CreateSessionOptions,
+	HarnessRegistry,
+	HarnessSession,
+	SessionAttachment,
+	SessionHost,
+	SessionSummary,
+} from '../services';
 
 export interface SessionHostConfig {
 	logDirectory: string;
@@ -9,6 +17,7 @@ export interface SessionHostConfig {
 
 class SessionHostService implements SessionHost {
 	private readonly sessions = new Map<string, HostedSession>();
+	private readonly reviving = new Map<string, Promise<void>>();
 
 	constructor(
 		private readonly ctx: Context,
@@ -18,6 +27,13 @@ class SessionHostService implements SessionHost {
 
 	async create(input: { harnessId: string; cwd: string; label?: string; options?: Record<string, unknown> }): Promise<string> {
 		const { adapter, hosted, emit } = this.prepare(input.harnessId, input.cwd);
+		// The log has to describe its own session: without this the harness owns the
+		// only record of which adapter and directory it belongs to, and a session
+		// whose process never starts could never be restored after a restart.
+		emit({
+			type: 'session.created',
+			data: { harnessId: input.harnessId, cwd: input.cwd, capabilities: adapter.capabilities },
+		});
 		// Pre-flight: the composer gets modes and models now, not after the first turn.
 		emit({
 			type: 'session.meta',
@@ -41,6 +57,20 @@ class SessionHostService implements SessionHost {
 	}): Promise<string> {
 		const { adapter, hosted, emit } = this.prepare(input.harnessId, input.cwd);
 		if (!adapter.resumeSession) throw new Error(`harness "${input.harnessId}" cannot resume sessions`);
+		// A forked session is a session of its own, so its log has to describe itself
+		// the same way a created one does — without this it is skipped on restore.
+		emit({
+			type: 'session.created',
+			data: { harnessId: input.harnessId, cwd: input.cwd, capabilities: adapter.capabilities },
+		});
+		emit({
+			type: 'session.meta',
+			data: {
+				permissionMode: readStringOption(input.options, 'permissionMode') ?? adapter.defaultPermissionMode,
+				model: readStringOption(input.options, 'model') ?? adapter.defaultModel,
+				models: adapter.models,
+			},
+		});
 		const opts: CreateSessionOptions & { fork?: boolean } = {
 			cwd: input.cwd,
 			options: input.options,
@@ -52,18 +82,33 @@ class SessionHostService implements SessionHost {
 
 	async execute(sessionId: string, command: SessionCommand): Promise<void> {
 		const hosted = this.require(sessionId);
-		// Renaming and closing stay available after the harness process is gone.
+		// Renaming, closing and resuming stay available after the harness process
+		// is gone — reattaching a detached session is the whole point of resume.
 		if (command.type === 'session.setLabel') {
 			return void this.emit(hosted, { type: 'session.meta', data: { label: command.label } });
 		}
+		if (command.type === 'session.setArchived') {
+			return void this.emit(hosted, { type: 'session.meta', data: { archived: command.archived } });
+		}
 		if (command.type === 'session.close') return this.close(sessionId);
+		if (command.type === 'session.resume') {
+			return this.reattach(hosted, command.nativeSessionId ?? hosted.view.nativeSessionId, command.fork);
+		}
 
-		const session = hosted.harnessSession;
-		if (!session) throw new Error(`session "${sessionId}" has no live harness session`);
+		// Everything below drives the harness. A detached task reattaches on demand:
+		// the user asked for work, not for a process.
+		const session = hosted.harnessSession ?? (await this.revive(hosted));
 
 		switch (command.type) {
-			case 'session.send':
-				return session.send(command.text);
+			case 'session.send': {
+				// A task is named by what it was asked to do, so the first prompt titles it.
+				if (!hosted.view.title) {
+					const label = deriveTaskTitle(command.text);
+					if (label) this.emit(hosted, { type: 'session.meta', data: { label } });
+				}
+				const attachments = await this.resolveAttachments(hosted, command.attachments);
+				return session.send(command.text, attachments);
+			}
 			case 'session.interrupt':
 				return session.interrupt();
 			case 'session.permission.respond':
@@ -77,11 +122,64 @@ class SessionHostService implements SessionHost {
 			case 'session.setModel':
 				if (!session.setModel) throw new Error('harness does not support model switching');
 				return session.setModel(command.model);
-			case 'session.resume':
-				return this.reattach(hosted, command.nativeSessionId, command.fork);
+			case 'session.setEffort':
+				if (!session.setEffort) throw new Error('harness does not support reasoning effort');
+				return session.setEffort(command.effort);
+			case 'session.rewind':
+				return this.rewind(hosted, session, command.messageId);
 			case 'session.create':
 				throw new Error('session.create is not a per-session command');
 		}
+	}
+
+	/**
+	 * Turns the metadata a command carries into files on disk. An asset that is no
+	 * longer in the store is dropped with a note on the log rather than failing the
+	 * send: the user asked for the prompt to go out, and the rest of it still can.
+	 */
+	private async resolveAttachments(
+		hosted: HostedSession,
+		attachments: MessageAttachment[] | undefined,
+	): Promise<SessionAttachment[]> {
+		if (!attachments || attachments.length === 0) return [];
+		const assets = this.ctx.require('assets');
+		const resolved: SessionAttachment[] = [];
+		for (const attachment of attachments) {
+			const path = await assets.path(attachment.assetId);
+			if (!path) {
+				this.emit(hosted, {
+					type: 'log',
+					data: { level: 'warn', message: `attachment "${attachment.name}" is no longer stored and was not sent` },
+				});
+				continue;
+			}
+			resolved.push({ ...attachment, path });
+		}
+		return resolved;
+	}
+
+	/**
+	 * Only the working tree moves: the transcript keeps describing edits that are
+	 * no longer on disk, so the outcome is logged where the turn can show it.
+	 */
+	private async rewind(hosted: HostedSession, session: HarnessSession, messageId: string): Promise<void> {
+		const checkpointId = checkpointBefore(hosted.view, messageId);
+		if (!session.rewind) throw new Error('harness does not support checkpoints');
+		if (!checkpointId) throw new Error(`message "${messageId}" has no checkpoint to rewind to`);
+
+		const result = await session.rewind(checkpointId);
+		// A rewind that only deletes files reports no changed paths, so the count
+		// is mentioned only when the harness actually named some.
+		const changed = result.filesChanged.length;
+		this.emit(hosted, {
+			type: 'log',
+			data: {
+				level: result.ok ? 'info' : 'warn',
+				message: result.ok
+					? `restored the working tree to the state before this turn${changed > 0 ? ` (${changed} file(s))` : ''}`
+					: `rewind failed: ${result.error ?? 'unknown error'}`,
+			},
+		});
 	}
 
 	eventsSince(sessionId: string, fromSeq: number): AnyAgentEvent[] {
@@ -100,9 +198,13 @@ class SessionHostService implements SessionHost {
 			title: hosted.view.title,
 			status: hosted.view.status,
 			model: hosted.view.model,
+			archived: hosted.view.archived,
 			createdAt: hosted.createdAt,
 			updatedAt: hosted.updatedAt,
 			lastSeq: hosted.view.lastSeq,
+			live: hosted.harnessSession !== null,
+			resumable: this.harnesses.get(hosted.harnessId)?.resumeSession !== undefined,
+			nativeSessionId: hosted.view.nativeSessionId,
 		}));
 	}
 
@@ -114,16 +216,46 @@ class SessionHostService implements SessionHost {
 		return this.sessions.has(sessionId);
 	}
 
+	/** Stops the harness process but keeps the transcript listable and resumable. */
 	async close(sessionId: string): Promise<void> {
 		const hosted = this.sessions.get(sessionId);
 		if (!hosted) return;
-		hosted.append({ type: 'session.status', data: { status: 'closed' } });
-		await hosted.dispose();
+		this.emit(hosted, { type: 'session.status', data: { status: 'closed' } });
+		await hosted.harnessSession?.dispose();
+		hosted.harnessSession = null;
+	}
+
+	async remove(sessionId: string): Promise<void> {
+		const hosted = this.sessions.get(sessionId);
+		if (!hosted) return;
 		this.sessions.delete(sessionId);
+		await hosted.dispose();
+		deleteSessionLog(this.logDirectory, sessionId);
 	}
 
 	async disposeAll(): Promise<void> {
-		await Promise.all([...this.sessions.keys()].map((id) => this.close(id)));
+		await Promise.all([...this.sessions.values()].map((hosted) => hosted.dispose()));
+	}
+
+	/** Rebuilds every session the previous process logged, detached from any harness. */
+	restore(): void {
+		for (const { id, events } of readSessionLogs(this.logDirectory)) {
+			if (this.sessions.has(id)) continue;
+			const view = events.reduce(reduceSession, createSessionView(id));
+			if (!view.harnessId || !view.cwd) continue;
+			const hosted = new HostedSession(id, view.harnessId, view.cwd, this.logDirectory);
+			hosted.restore(events);
+			this.sessions.set(id, hosted);
+			// Tasks logged before titles existed would read as "Untitled" forever.
+			if (!view.title) {
+				const label = deriveTaskTitle(firstPrompt(view));
+				if (label) this.emit(hosted, { type: 'session.meta', data: { label } });
+			}
+			// A log that ends mid-turn would otherwise claim to still be working.
+			if (view.status === 'working' || view.status === 'awaiting-permission') {
+				this.emit(hosted, { type: 'session.status', data: { status: 'idle', detail: 'harness process is not attached' } });
+			}
+		}
 	}
 
 	private prepare(harnessId: string, cwd: string) {
@@ -150,9 +282,24 @@ class SessionHostService implements SessionHost {
 		}
 	}
 
-	private async reattach(hosted: HostedSession, nativeSessionId: string, fork?: boolean): Promise<void> {
+	/** Concurrent commands on one detached session share a single reattach. */
+	private async revive(hosted: HostedSession): Promise<HarnessSession> {
+		let pending = this.reviving.get(hosted.id);
+		if (!pending) {
+			pending = this.reattach(hosted, hosted.view.nativeSessionId).finally(() => this.reviving.delete(hosted.id));
+			this.reviving.set(hosted.id, pending);
+		}
+		await pending;
+
+		const session = hosted.harnessSession;
+		if (!session) throw new Error(`session "${hosted.id}" could not be reattached to its harness`);
+		return session;
+	}
+
+	private async reattach(hosted: HostedSession, nativeSessionId: string | null, fork?: boolean): Promise<void> {
 		const adapter = this.harnesses.get(hosted.harnessId);
 		if (!adapter?.resumeSession) throw new Error(`harness "${hosted.harnessId}" cannot resume sessions`);
+		if (!nativeSessionId) throw new Error(`session "${hosted.id}" has no harness session id to resume from`);
 		await hosted.harnessSession?.dispose();
 		hosted.harnessSession = null;
 		const emit = (event: EmittedEvent) => this.emit(hosted, event);
@@ -168,6 +315,16 @@ class SessionHostService implements SessionHost {
 	}
 }
 
+/** The text of the first thing the user asked for, which is what names the task. */
+function firstPrompt(view: SessionView): string {
+	const message = view.messages.find((candidate) => candidate.role === 'user');
+	if (!message) return '';
+	return message.blocks
+		.filter((block) => block.kind === 'text')
+		.map((block) => (block.content?.kind === 'text' ? block.content.text : block.text))
+		.join('\n');
+}
+
 function readStringOption(options: Record<string, unknown> | undefined, key: string): string | undefined {
 	const value = options?.[key];
 	return typeof value === 'string' ? value : undefined;
@@ -175,9 +332,10 @@ function readStringOption(options: Record<string, unknown> | undefined, key: str
 
 export const sessionHostPlugin: Plugin<SessionHostConfig> = {
 	name: 'session-host',
-	inject: ['harnesses'],
+	inject: ['harnesses', 'assets'],
 	apply(ctx, config) {
 		const host = new SessionHostService(ctx, ctx.require('harnesses'), config.logDirectory);
+		host.restore();
 		ctx.provide('sessionHost', host);
 		ctx.effect(() => () => void host.disposeAll());
 	},

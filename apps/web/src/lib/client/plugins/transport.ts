@@ -1,6 +1,14 @@
 import type { Plugin } from '@nib-ui/kernel';
 import { safeParseAgentEvent, type AnyAgentEvent, type HarnessDescriptor, type SessionCommand } from '@nib-ui/protocol';
-import type { CreateSessionInput, DirectoryEntry, SessionSummary, TransportService } from '@nib-ui/ui-contracts';
+import type {
+	BoardDoc,
+	BoardSummary,
+	CreateSessionInput,
+	DirectoryEntry,
+	SessionSummary,
+	TransportService,
+	UserPreferences,
+} from '@nib-ui/ui-contracts';
 
 async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
 	const response = await fetch(input, init);
@@ -28,8 +36,39 @@ class SseTransport implements TransportService {
 		return sessionId;
 	}
 
+	async deleteSession(sessionId: string): Promise<void> {
+		await requestJson(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+	}
+
 	listDirectories(path: string): Promise<{ base: string; entries: DirectoryEntry[] }> {
 		return requestJson(`/api/fs/directories?path=${encodeURIComponent(path)}`);
+	}
+
+	async workspaceBranch(path: string): Promise<string | null> {
+		const { branch } = await requestJson<{ branch: string | null }>(
+			`/api/fs/branch?path=${encodeURIComponent(path)}`,
+		);
+		return branch;
+	}
+
+	readUserConfig(): Promise<UserPreferences> {
+		return requestJson('/api/config');
+	}
+
+	async saveDefaultModel(harnessId: string, model: string): Promise<void> {
+		await requestJson('/api/config', {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ defaultModels: { [harnessId]: model } }),
+		});
+	}
+
+	async saveLastProject(cwd: string): Promise<void> {
+		await requestJson('/api/config', {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ lastProject: cwd }),
+		});
 	}
 
 	async searchFiles(sessionId: string, query: string, limit = 20): Promise<string[]> {
@@ -54,6 +93,40 @@ class SseTransport implements TransportService {
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify(command),
 		});
+	}
+
+	async listBoards(): Promise<BoardSummary[]> {
+		const { boards } = await requestJson<{ boards: BoardSummary[] }>('/api/boards/list');
+		return boards;
+	}
+
+	async reviewWorkstream(cwd: string, workstreamId: string, reviewed: boolean): Promise<void> {
+		await requestJson('/api/boards/review', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ cwd, workstreamId, reviewed }),
+		});
+	}
+
+	loadBoard(cwd: string): Promise<BoardDoc> {
+		return requestJson(`/api/boards?cwd=${encodeURIComponent(cwd)}`);
+	}
+
+	saveBoard(board: BoardDoc): Promise<BoardDoc> {
+		return requestJson(`/api/boards?cwd=${encodeURIComponent(board.cwd)}`, {
+			method: 'PUT',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(board),
+		});
+	}
+
+	subscribeBoard(cwd: string, fromRev: number, onBoard: (board: BoardDoc) => void) {
+		const params = new URLSearchParams({ cwd, fromRev: String(fromRev) });
+		const source = new EventSource(`/api/boards/events?${params}`);
+		source.addEventListener('board', (message) => {
+			onBoard(JSON.parse((message as MessageEvent<string>).data) as BoardDoc);
+		});
+		return () => source.close();
 	}
 }
 

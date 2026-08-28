@@ -10,7 +10,7 @@ export const gauntletLoopPlugin: Plugin = {
 		const panes = ctx.require('panes');
 		gauntletState.sessions = ctx.require('sessions');
 		gauntletState.renderers = ctx.require('renderers');
-		ctx.effect(() => panes.register({ id: 'gauntlet', title: 'Gauntlet', icon: SwordIcon, component: GauntletPanel }));
+		ctx.effect(() => panes.register({ id: 'gauntlet', kind: 'gauntlet', title: 'Gauntlet', icon: SwordIcon, component: GauntletPanel }));
 		ctx.effect(() =>
 			ctx.require('commands').register({
 				id: 'gauntlet.toggle',

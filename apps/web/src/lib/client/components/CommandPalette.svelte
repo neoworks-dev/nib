@@ -1,11 +1,13 @@
 <script lang="ts">
-	import { clientContext } from '../context';
+	import { kernelContext } from '@nib-ui/ui-contracts/svelte';
 
-	const commands = clientContext().require('commands');
+	const commands = kernelContext().require('commands');
 	let query = $state('');
 
 	const matches = $derived(
-		commands.list().filter((command) => command.title.toLowerCase().includes(query.toLowerCase())),
+		commands
+			.list()
+			.filter((command) => command.when?.() !== false && command.title.toLowerCase().includes(query.toLowerCase())),
 	);
 
 	async function run(id: string) {

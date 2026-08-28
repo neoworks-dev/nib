@@ -2,14 +2,12 @@
 	import { StatusBadge } from '@neoworks-dev/ui';
 	import PencilSimpleIcon from 'phosphor-svelte/lib/PencilSimpleIcon';
 	import type { SessionView } from '@nib-ui/protocol';
-	import { clientContext } from '../context';
-	import { workspaceName } from '../session-groups';
-	import { statusTone } from '../status-tone';
-	import SlotHost from './SlotHost.svelte';
+	import { statusTone, workspaceName } from '@nib-ui/ui-contracts';
+	import { kernelContext, SlotHost } from '@nib-ui/ui-contracts/svelte';
 
 	const { session }: { session: SessionView } = $props();
 
-	const sessions = clientContext().require('sessions');
+	const sessions = kernelContext().require('sessions');
 
 	let renaming = $state(false);
 	let draft = $state('');
@@ -29,7 +27,7 @@
 	}
 </script>
 
-<header class="flex flex-wrap items-center gap-2 border-b border-line px-6 py-3">
+<header class="flex flex-wrap items-center gap-2 px-2 py-2">
 	<nav class="flex min-w-0 items-center gap-2 text-sm" aria-label="Breadcrumb">
 		<span class="truncate text-dim" title={session.cwd ?? ''}>{workspace}</span>
 		<span class="text-faint">/</span>

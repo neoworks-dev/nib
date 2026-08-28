@@ -5,7 +5,7 @@
 	import type { SlotProps } from '@nib-ui/ui-contracts';
 	import { categorizeEvent, eventCategories, indexBlockKinds } from './filter';
 	import { buildTrace, type TraceNode } from './trace';
-	import { withinRange } from './timeline';
+	import { buildTimeline, markIndex, withinRange } from './timeline';
 	import DetailPane from './DetailPane.svelte';
 	import TimelineStrip from './TimelineStrip.svelte';
 	import TraceRow from './TraceRow.svelte';
@@ -16,11 +16,12 @@
 	const events = $derived(session ? (inspectorState.sessions?.events(session.sessionId) ?? []) : []);
 	const blockKinds = $derived(indexBlockKinds(events));
 	const trace = $derived(buildTrace(events));
+	const marks = $derived(markIndex(buildTimeline(trace)));
 	const visible = $derived(trace.filter(matches));
 	const selected = $derived(visible.find((node) => node.id === inspectorState.selectedEventId) ?? null);
 
 	function matches(node: TraceNode): boolean {
-		if (!withinRange(node, inspectorState.range)) return false;
+		if (!withinRange(marks.get(node.id), inspectorState.range)) return false;
 
 		const categories = inspectorState.categories;
 		if (categories.length > 0 && !node.events.some((event) => categories.includes(categorizeEvent(event, blockKinds))))

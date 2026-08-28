@@ -1,4 +1,11 @@
-import { isKnownEvent, type AnyAgentEvent, type BlockContent, type EventDataMap, type MessageRole } from './events';
+import {
+	isKnownEvent,
+	type AnyAgentEvent,
+	type BlockContent,
+	type EventDataMap,
+	type MessageAttachment,
+	type MessageRole,
+} from './events';
 import type { BlockView, MessageView, OrphanBlock, SessionView } from './session-view';
 
 const emptyOrphan: OrphanBlock = { text: '', inputJson: '', content: null, completed: false };
@@ -30,13 +37,18 @@ function applyEvent(state: SessionView, event: AnyAgentEvent): SessionView {
 		case 'session.status':
 			return { ...state, status: event.data.status, statusDetail: event.data.detail ?? null };
 		case 'message.started':
-			return ensureMessage(state, event.data.messageId, event.data.role);
+			return ensureMessage(state, event.data.messageId, event.data.role, event.data.attachments);
 		case 'message.completed':
 			return mapMessage(state, event.data.messageId, (message) => ({
 				...message,
 				completed: true,
 				stopReason: event.data.stopReason ?? null,
 			}));
+		case 'message.checkpoint':
+			return {
+				...state,
+				checkpoints: { ...state.checkpoints, [event.data.messageId]: event.data.checkpointId },
+			};
 		case 'block.started':
 			return applyBlockStarted(state, event.data);
 		case 'block.delta':
@@ -74,6 +86,8 @@ function applySessionMeta(state: SessionView, data: EventDataMap['session.meta']
 		title: data.label ?? state.title,
 		model: data.model ?? state.model,
 		permissionMode: data.permissionMode ?? state.permissionMode,
+		effort: data.effort ?? state.effort,
+		archived: data.archived ?? state.archived,
 		slashCommands: data.slashCommands ?? state.slashCommands,
 		models: data.models ?? state.models,
 	};
@@ -159,9 +173,21 @@ function applyUsage(state: SessionView, data: EventDataMap['usage.updated']): Se
 	};
 }
 
-function ensureMessage(state: SessionView, messageId: string, role: MessageRole): SessionView {
+function ensureMessage(
+	state: SessionView,
+	messageId: string,
+	role: MessageRole,
+	attachments?: MessageAttachment[],
+): SessionView {
 	if (state.messages.some((message) => message.id === messageId)) return state;
-	const message: MessageView = { id: messageId, role, blocks: [], completed: false, stopReason: null };
+	const message: MessageView = {
+		id: messageId,
+		role,
+		blocks: [],
+		completed: false,
+		stopReason: null,
+		attachments: attachments ?? [],
+	};
 	return { ...state, messages: [...state.messages, message] };
 }
 

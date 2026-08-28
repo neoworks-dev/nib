@@ -1,13 +1,22 @@
 import type {
 	CanUseTool,
+	EffortLevel,
 	Options,
 	PermissionMode,
 	PermissionResult,
 	Query,
 	SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk';
+import { readFile } from 'node:fs/promises';
 import type { PermissionBehavior } from '@nib-ui/protocol';
-import type { CreateSessionOptions, EmitEvent, HarnessAdapter, HarnessSession } from '../../services';
+import { attachmentMetadata, composeAttachmentPrompt } from '../../attachments';
+import type {
+	CreateSessionOptions,
+	EmitEvent,
+	HarnessAdapter,
+	HarnessSession,
+	SessionAttachment,
+} from '../../services';
 import { resolveClaudeExecutable } from './binary';
 import { AsyncMessageQueue } from './message-queue';
 import { ClaudeMessageMapper, claudeCodeCapabilities, claudeCodeModels } from './mapping';
@@ -81,6 +90,8 @@ async function startSession(
 			cwd: opts.cwd,
 			abortController,
 			includePartialMessages: true,
+			// Snapshots each turn's writes, which is what makes undoing a turn possible.
+			enableFileCheckpointing: true,
 			pathToClaudeCodeExecutable: executable,
 			canUseTool,
 			...(resume ? { resume: resume.nativeSessionId, forkSession: resume.fork } : {}),
@@ -97,9 +108,21 @@ async function startSession(
 	});
 
 	return {
-		async send(text) {
-			mapper.emitUserText(text);
-			queue.push({ type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null });
+		async send(text, attachments = []) {
+			// The prompt carries its own uuid so the turn has a rewind target from
+			// the moment it is sent, without depending on the CLI replaying it back.
+			const messageId = crypto.randomUUID();
+			// The model sees an attached image itself; everything else it has to open,
+			// so only the rest of the attachments become path references in the text.
+			const { images, referenced } = await readImageBlocks(attachments, emit);
+			const prompt = composeAttachmentPrompt(text, referenced);
+			mapper.emitUserText(prompt, messageId, attachmentMetadata(attachments));
+			queue.push({
+				type: 'user',
+				uuid: messageId,
+				message: { role: 'user', content: userContent(prompt, images) },
+				parent_tool_use_id: null,
+			});
 			emit({ type: 'session.status', data: { status: 'working' } });
 		},
 
@@ -136,6 +159,20 @@ async function startSession(
 		async setModel(model) {
 			await session.setModel(model);
 			emit({ type: 'session.meta', data: { model } });
+		},
+
+		async setEffort(effort) {
+			await session.applyFlagSettings({ effortLevel: effort as EffortLevel });
+			emit({ type: 'session.meta', data: { effort } });
+		},
+
+		async rewind(checkpointId) {
+			const result = await session.rewindFiles(checkpointId);
+			return {
+				ok: result.canRewind && !result.error,
+				filesChanged: result.filesChanged ?? [],
+				error: result.error,
+			};
 		},
 
 		async dispose() {
@@ -176,6 +213,53 @@ async function publishMetadata(session: Query, emit: EmitEvent): Promise<void> {
 	} catch (error) {
 		emit({ type: 'log', data: { level: 'debug', message: `capability probe failed: ${describeError(error)}` } });
 	}
+}
+
+type UserContent = SDKUserMessage['message']['content'];
+type ImageBlock = Extract<Exclude<UserContent, string>[number], { type: 'image' }>;
+type ImageMediaType = Extract<ImageBlock['source'], { type: 'base64' }>['media_type'];
+
+/** The API rejects an empty text block, so a prompt that is only images carries none. */
+function userContent(prompt: string, images: ImageBlock[]): UserContent {
+	if (images.length === 0) return prompt;
+	if (prompt.length === 0) return images;
+	return [...images, { type: 'text', text: prompt }];
+}
+
+/** The media types the Messages API accepts as an image block; the rest are files. */
+function nativeMediaType(mime: string): ImageMediaType | null {
+	return mime === 'image/png' || mime === 'image/jpeg' || mime === 'image/gif' || mime === 'image/webp' ? mime : null;
+}
+
+/**
+ * Splits the attachments into what the model can look at and what it has to open.
+ * An image whose bytes cannot be read falls back to a path reference rather than
+ * dropping out of the prompt.
+ */
+async function readImageBlocks(
+	attachments: readonly SessionAttachment[],
+	emit: EmitEvent,
+): Promise<{ images: ImageBlock[]; referenced: SessionAttachment[] }> {
+	const images: ImageBlock[] = [];
+	const referenced: SessionAttachment[] = [];
+	for (const attachment of attachments) {
+		const mediaType = nativeMediaType(attachment.mime);
+		if (!mediaType) {
+			referenced.push(attachment);
+			continue;
+		}
+		try {
+			const data = (await readFile(attachment.path)).toString('base64');
+			images.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data } });
+		} catch (error) {
+			emit({
+				type: 'log',
+				data: { level: 'warn', message: `attachment "${attachment.name}" was sent as a path: ${describeError(error)}` },
+			});
+			referenced.push(attachment);
+		}
+	}
+	return { images, referenced };
 }
 
 function toPermissionResult(response: PermissionResponse): PermissionResult {

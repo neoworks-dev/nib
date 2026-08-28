@@ -1,67 +1,21 @@
 import type { Disposer } from '@nib-ui/kernel';
+import type { BoardDoc, BoardSummary } from '@nib-ui/ui-contracts';
+import type { StoreAssetOptions, StoredAsset } from './asset-store';
 import type { GitCommitResult, GitLogEntry, GitStatus } from './git-cli';
-import type {
-	AnyAgentEvent,
-	EmittedEvent,
-	HarnessCapabilities,
-	HarnessDescriptor,
-	ModelInfo,
-	PermissionBehavior,
-	SessionCommand,
-	SessionStatus,
-	SessionView,
+import type { LinkPreview } from './link-preview';
+import type { WorkspaceIcon } from './workspace-icon';
+import type { AnyAgentEvent, HarnessRegistry, SessionCommand, SessionSummary, SessionView } from '@nib-ui/protocol';
+
+export type {
+	CreateSessionOptions,
+	EmitEvent,
+	HarnessAdapter,
+	HarnessRegistry,
+	HarnessSession,
+	RewindResult,
+	SessionAttachment,
+	SessionSummary,
 } from '@nib-ui/protocol';
-
-/** What an adapter calls to push a normalized event; the host stamps id/seq/sessionId/ts. */
-export type EmitEvent = (event: EmittedEvent) => void;
-
-export interface HarnessSession {
-	send(text: string): Promise<void>;
-	interrupt(): Promise<void>;
-	respondToPermission(requestId: string, response: { behavior: PermissionBehavior; updatedInput?: unknown }): void;
-	setPermissionMode?(mode: string): Promise<void>;
-	setModel?(model: string): Promise<void>;
-	dispose(): Promise<void>;
-}
-
-export interface CreateSessionOptions {
-	cwd: string;
-	options?: Record<string, unknown>;
-}
-
-export interface HarnessAdapter {
-	id: string;
-	displayName: string;
-	capabilities: HarnessCapabilities;
-	/** Announced before the harness process is up, so the composer never starts empty. */
-	defaultPermissionMode: string;
-	models: ModelInfo[];
-	defaultModel?: string;
-	createSession(opts: CreateSessionOptions, emit: EmitEvent): Promise<HarnessSession>;
-	resumeSession?(
-		nativeSessionId: string,
-		opts: CreateSessionOptions & { fork?: boolean },
-		emit: EmitEvent,
-	): Promise<HarnessSession>;
-}
-
-export interface HarnessRegistry {
-	register(adapter: HarnessAdapter): Disposer;
-	get(id: string): HarnessAdapter | undefined;
-	list(): HarnessDescriptor[];
-}
-
-export interface SessionSummary {
-	id: string;
-	harnessId: string;
-	cwd: string;
-	title: string | null;
-	status: SessionStatus;
-	model: string | null;
-	createdAt: number;
-	updatedAt: number;
-	lastSeq: number;
-}
 
 export interface SessionHost {
 	create(input: { harnessId: string; cwd: string; label?: string; options?: Record<string, unknown> }): Promise<string>;
@@ -78,11 +32,14 @@ export interface SessionHost {
 	list(): SessionSummary[];
 	view(sessionId: string): SessionView | undefined;
 	has(sessionId: string): boolean;
+	/** Discards the session and its log; `session.close` only detaches the process. */
+	remove(sessionId: string): Promise<void>;
 }
 
 /** Working-tree inspection and commits for the session's repository. */
 export interface GitService {
 	status(cwd: string): Promise<GitStatus>;
+	branch(cwd: string): Promise<string | null>;
 	diff(cwd: string, path: string, staged: boolean): Promise<string>;
 	stage(cwd: string, paths: string[]): Promise<GitCommitResult>;
 	unstage(cwd: string, paths: string[]): Promise<GitCommitResult>;
@@ -95,6 +52,35 @@ export interface WorkspaceService {
 	listDirectories(path: string): Promise<{ base: string; entries: { name: string; path: string }[] }>;
 	searchFiles(cwd: string, query: string, limit?: number): Promise<{ path: string }[]>;
 	isDirectory(path: string): Promise<boolean>;
+	findIcon(path: string): Promise<WorkspaceIcon | null>;
+}
+
+/**
+ * One board per working directory, persisted as JSON. Writes are guarded by
+ * `rev` and broadcast, so every window on the same directory stays in step.
+ */
+export interface BoardService {
+	read(cwd: string): Promise<BoardDoc>;
+	/** Every board on disk, reduced to its directory and the workstreams on it. */
+	list(): Promise<BoardSummary[]>;
+	/** Throws when `board.rev` is not exactly the stored revision plus one. */
+	write(board: BoardDoc): Promise<BoardDoc>;
+	/** Sets or clears a workstream's review mark; throws when the workstream is gone. */
+	reviewWorkstream(cwd: string, workstreamId: string, reviewed: boolean): Promise<BoardDoc>;
+	subscribe(cwd: string, listener: (board: BoardDoc) => void): Disposer;
+}
+
+/** Content-addressed blobs pasted or dropped onto a board, or attached to a prompt. */
+export interface AssetService {
+	store(bytes: Uint8Array, options?: StoreAssetOptions): Promise<StoredAsset>;
+	read(assetId: string): Promise<{ bytes: Buffer; contentType: string } | null>;
+	/** Absolute path of the stored bytes; null once the asset is gone. */
+	path(assetId: string): Promise<string | null>;
+}
+
+export interface LinkPreviewService {
+	/** Cached by url: a board that reloads must not re-scrape every card. */
+	preview(url: string): Promise<LinkPreview>;
 }
 
 declare module '@nib-ui/kernel' {
@@ -103,6 +89,9 @@ declare module '@nib-ui/kernel' {
 		sessionHost: SessionHost;
 		workspace: WorkspaceService;
 		git: GitService;
+		boards: BoardService;
+		assets: AssetService;
+		linkPreviews: LinkPreviewService;
 	}
 	interface Events {
 		'session/event'(sessionId: string, event: AnyAgentEvent): void;

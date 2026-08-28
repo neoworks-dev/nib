@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { buildTimeline, fractionsOfRange, laneOf, rangeFromFractions, withinRange } from '../src/timeline';
+import { buildTimeline, laneOf, markIndex, rangeFromFractions, withinRange } from '../src/timeline';
 import type { TraceNode } from '../src/trace';
 
 function node(overrides: Partial<TraceNode>): TraceNode {
@@ -40,15 +40,27 @@ describe('laneOf', () => {
 });
 
 describe('buildTimeline', () => {
-	test('spans from the first step to the end of the last', () => {
-		const timeline = buildTimeline([node({ id: 'a', ts: 1_000, durationMs: 500 }), node({ id: 'b', ts: 2_000, durationMs: 0 })]);
-		expect(timeline.marks).toHaveLength(2);
+	test('reports the wall-clock span but lays steps out on activity time', () => {
+		const timeline = buildTimeline([node({ id: 'a', ts: 1_000, durationMs: 500 }), node({ id: 'b', ts: 2_000, durationMs: 500 })]);
 
-		expect(timeline.from).toBe(1_000);
-		expect(timeline.to).toBe(2_000);
-		expect(timeline.marks[0]).toMatchObject({ nodeId: 'a', start: 0 });
-		expect(timeline.marks[0]!.end).toBeCloseTo(0.5);
-		expect(timeline.marks[1]!.start).toBeCloseTo(1);
+		expect(timeline).toMatchObject({ from: 1_000, to: 2_500 });
+		expect(timeline.marks).toHaveLength(2);
+		// The 500 ms idle gap collapses, so two equal steps split the axis evenly.
+		expect(timeline.marks[0]!.start).toBe(0);
+		expect(timeline.marks[0]!.end).toBeCloseTo(0.48, 1);
+		expect(timeline.marks[1]!.end).toBeCloseTo(1);
+	});
+
+	test('a long idle stretch never dominates the axis', () => {
+		const packed = buildTimeline([node({ id: 'a', ts: 0, durationMs: 100 }), node({ id: 'b', ts: 600_000, durationMs: 100 })]);
+
+		expect(packed.marks[1]!.start).toBeLessThan(0.6);
+		expect(packed.marks[1]!.end).toBeCloseTo(1);
+	});
+
+	test('orders by timestamp regardless of input order', () => {
+		const timeline = buildTimeline([node({ id: 'late', ts: 5_000 }), node({ id: 'early', ts: 1_000 })]);
+		expect(timeline.marks.map((mark) => mark.nodeId)).toEqual(['early', 'late']);
 	});
 
 	test('gives a zero-length step a visible width', () => {
@@ -60,34 +72,36 @@ describe('buildTimeline', () => {
 		expect(buildTimeline([])).toEqual({ from: 0, to: 0, marks: [] });
 	});
 
-	test('spans the whole session even when only some steps have a lane', () => {
+	test('keeps a slot for lane-less steps so filtering still sees them', () => {
 		const timeline = buildTimeline([
 			node({ id: 'a', kind: 'state', ts: 1_000, durationMs: 0 }),
 			node({ id: 'b', kind: 'tool', ts: 3_000, durationMs: 0 }),
 		]);
 
 		expect(timeline).toMatchObject({ from: 1_000, to: 3_000 });
-		expect(timeline.marks.map((mark) => mark.nodeId)).toEqual(['b']);
-		expect(timeline.marks[0]!.start).toBeCloseTo(1);
+		expect(timeline.marks.map((mark) => mark.lane)).toEqual([null, 'tools']);
 	});
 });
 
 describe('range constraints', () => {
-	test('keeps steps that overlap the window', () => {
-		const range = { from: 1_500, to: 2_500 };
+	const timeline = buildTimeline([
+		node({ id: 'a', ts: 0, durationMs: 100 }),
+		node({ id: 'b', ts: 200, durationMs: 100 }),
+		node({ id: 'c', ts: 400, durationMs: 100 }),
+	]);
+	const marks = markIndex(timeline);
 
-		expect(withinRange(node({ ts: 1_000, durationMs: 600 }), range)).toBe(true);
-		expect(withinRange(node({ ts: 2_400, durationMs: 0 }), range)).toBe(true);
-		expect(withinRange(node({ ts: 1_000, durationMs: 100 }), range)).toBe(false);
-		expect(withinRange(node({ ts: 3_000 }), range)).toBe(false);
-		expect(withinRange(node({ ts: 3_000 }), null)).toBe(true);
+	test('keeps the steps whose slot overlaps the window', () => {
+		const range = { from: 0, to: 0.4 };
+
+		expect(withinRange(marks.get('a'), range)).toBe(true);
+		expect(withinRange(marks.get('c'), range)).toBe(false);
+		expect(withinRange(marks.get('c'), null)).toBe(true);
+		expect(withinRange(undefined, range)).toBe(false);
 	});
 
-	test('converts brushed fractions to a time window and back', () => {
-		const timeline = buildTimeline([node({ ts: 1_000, durationMs: 0 }), node({ id: 'b', ts: 2_000, durationMs: 0 })]);
-		const range = rangeFromFractions(timeline, 0.75, 0.25);
-
-		expect(range).toEqual({ from: 1_250, to: 1_750 });
-		expect(fractionsOfRange(timeline, range)).toEqual({ start: 0.25, end: 0.75 });
+	test('a brush normalises whichever way it was dragged', () => {
+		expect(rangeFromFractions(0.75, 0.25)).toEqual({ from: 0.25, to: 0.75 });
+		expect(rangeFromFractions(-0.2, 1.4)).toEqual({ from: 0, to: 1 });
 	});
 });

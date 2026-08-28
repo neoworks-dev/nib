@@ -1,0 +1,29 @@
+{
+	"name": "@nib-ui/plugin-task-progress",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"main": "./src/index.ts",
+	"types": "./src/index.ts",
+	"svelte": "./src/index.ts",
+	"exports": {
+		".": {
+			"svelte": "./src/index.ts",
+			"types": "./src/index.ts",
+			"default": "./src/index.ts"
+		}
+	},
+	"dependencies": {
+		"@neoworks-dev/ui": "link:@neoworks-dev/ui",
+		"@nib-ui/kernel": "workspace:*",
+		"@nib-ui/protocol": "workspace:*",
+		"@nib-ui/ui-contracts": "workspace:*",
+		"phosphor-svelte": "^3.1.0"
+	},
+	"peerDependencies": {
+		"svelte": "^5.56.4"
+	},
+	"devDependencies": {
+		"svelte": "^5.56.4"
+	}
+}

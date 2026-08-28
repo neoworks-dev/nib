@@ -18,9 +18,13 @@ const viewerLinkPlugin: Plugin = {
 
 export const rendererDiffPlugin: Plugin = {
 	name: 'renderer-diff',
-	inject: ['renderers', 'slots'],
+	inject: ['renderers', 'slots', 'sessions'],
 	apply(ctx) {
 		const renderers = ctx.require('renderers');
+		diffState.sessions = ctx.require('sessions');
+		ctx.effect(() => () => {
+			diffState.sessions = null;
+		});
 		ctx.effect(() => ctx.require('slots').register('message.footer', { component: ChangedFilesPanel }));
 		for (const toolName of ['Edit', 'Write']) {
 			ctx.effect(() => renderers.register({ kind: 'tool_use', toolName, priority: 10, component: DiffBlock }));

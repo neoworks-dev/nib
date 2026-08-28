@@ -1,0 +1,29 @@
+[package]
+name = "nib-overlay"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Native half of the nib-ui desktop agent: capture, the Wayland overlay, and capability probes"
+
+[[bin]]
+name = "nib-overlay"
+path = "src/main.rs"
+
+[dependencies]
+# The wire protocol's other end. No `serde` derive: messages are built and read as
+# `Value`, which is what the hand-written parser on the host side does too.
+serde_json = "1"
+# Registry enumeration, and the protocol binding the overlay is built on.
+wayland-client = "0.31"
+# wlr-layer-shell surfaces, output geometry and shm pools. The reason the sidecar exists.
+smithay-client-toolkit = "0.19"
+# Software rasteriser for the highlight and pointer surfaces; no GPU context needed.
+tiny-skia = "0.11"
+# Decode and re-encode a capture, to black out a password field before it reaches disk.
+png = "0.17"
+# The desktop portal and the accessibility bus, both spoken directly rather than through
+# `ashpd` and `atspi` — see the module comments for why.
+zbus = { version = "5", features = ["blocking-api"] }
+
+[profile.release]
+strip = true

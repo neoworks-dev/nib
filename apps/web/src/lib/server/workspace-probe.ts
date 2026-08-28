@@ -1,7 +1,7 @@
 import { readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
-import { fuzzyRank } from '../fuzzy';
+import { fuzzyRank } from '@nib-ui/ui-contracts';
 
 export interface DirectoryEntry {
 	name: string;

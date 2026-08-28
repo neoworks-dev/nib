@@ -106,10 +106,37 @@ Verify every behavioral change with targeted automated tests.
    bun test
    ```
 
-2. **Additional Checks:** Run type-checking (`bun run typecheck` or `tsc --noEmit`), linting, and build steps when relevant.
-3. **Playwright:** Resolve base URLs strictly from Playwright configuration (`playwright.config.ts`). Never hardcode `http://localhost:...` inside test files.
-4. **Integrity:** Never weaken, skip, or remove valid tests to force a green suite. If a test is fundamentally obsolete due to an intentional API change, explain why before editing it.
-5. **Zero Tests Justification:** If an edit does not include tests (e.g., pure documentation, comment fix, config change), provide a one-sentence rationale.
+2. **Lint (required):** Every change that touches JS/TS/JSON must pass Biome before it is reported as done:
+
+   ```bash
+   bun run lint
+   ```
+
+   Always pass `--reporter=concise` (already wired into the script). Use `bun run lint:fix` to apply safe fixes. Never disable a rule or add a `biome-ignore` comment to silence a finding without stating why in the response. `biome.json` at the repo root is user-owned configuration — do not edit it to make a check pass.
+
+3. **Svelte check (required):** Every change that touches `.svelte` files or anything under `apps/web` must pass:
+
+   ```bash
+   bun run check:svelte
+   ```
+
+   This runs `svelte-kit sync && svelte-check` for `@nib-ui/web`. Biome does not analyze `.svelte` templates, so it does not substitute for this.
+
+4. **Svelte formatting (required):** Every change that touches `.svelte` files must pass:
+
+   ```bash
+   bun run format:svelte
+   ```
+
+   Prettier with `prettier-plugin-svelte` owns `.svelte` formatting because Biome 2.x has no Svelte formatter. Use `bun run format:svelte:fix` to apply. The two formatters are scoped disjointly by `.prettierignore` — never widen Prettier's scope to a language Biome already formats.
+
+5. **Additional Checks:** Run type-checking (`bun run typecheck` or `tsc --noEmit`) and build steps when relevant.
+6. **Playwright:** Resolve base URLs strictly from Playwright configuration (`playwright.config.ts`). Never hardcode `http://localhost:...` inside test files.
+7. **Integrity:** Never weaken, skip, or remove valid tests to force a green suite. If a test is fundamentally obsolete due to an intentional API change, explain why before editing it.
+8. **Zero Tests Justification:** If an edit does not include tests (e.g., pure documentation, comment fix, config change), provide a one-sentence rationale.
+9. **No Browser Driving:** Do not verify UI changes by driving a browser. This means no Claude in Chrome (`mcp__claude-in-chrome__*`) and no ad-hoc scripts that launch or attach to a headless browser (CDP, Puppeteer, Playwright `chromium.launch()`, screenshot harnesses). The user runs the app and reports what is broken.
+
+   Verify UI work with `bun run lint`, `bun run format:svelte`, `bun run check:svelte`, `bun run typecheck`, `bun test`, and reading the code. When a change genuinely cannot be verified that way, say so and hand it to the user to check.
 
 ---
 

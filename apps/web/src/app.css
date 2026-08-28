@@ -2,6 +2,7 @@
 @import '@neoworks-dev/ui/styles';
 
 @source '../node_modules/@neoworks-dev/ui/src';
+@source '../../../packages';
 @source '../../../plugins';
 
 /* The design system defines the z scale as `--z-*`; Tailwind builds `z-…` utilities

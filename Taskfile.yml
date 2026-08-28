@@ -1,0 +1,53 @@
+version: '3'
+
+tasks:
+  build:web:
+    desc: Build the SvelteKit client and bundled server entry into apps/web/build
+    cmd: bun run build
+
+  build:runtime-deps:
+    desc: Copy the agent SDKs into apps/web/build/node_modules, dereferencing bun's symlinks
+    deps: [build:web]
+    cmds:
+      - rm -rf apps/web/build/node_modules
+      - mkdir -p apps/web/build/node_modules
+      - cp -RL apps/web/node_modules/@anthropic-ai apps/web/build/node_modules/
+      - cp -RL apps/web/node_modules/@openai apps/web/build/node_modules/
+
+  build:desktop:
+    desc: Build the Electron main and preload bundles into apps/desktop/out
+    cmd: bun --filter @nib-ui/desktop build
+
+  build:linux:
+    desc: Build installable Linux binaries (AppImage, deb, pacman) into dist/
+    deps: [build:runtime-deps, build:desktop]
+    cmd: bunx electron-builder --linux --config electron-builder.yml
+
+  build:linux:appimage:
+    desc: Build only the AppImage
+    deps: [build:runtime-deps, build:desktop]
+    cmd: bunx electron-builder --linux AppImage --config electron-builder.yml
+
+  build:linux:rpm:
+    desc: Build the rpm (requires the `rpm-tools` package, which provides rpmbuild)
+    deps: [build:runtime-deps, build:desktop]
+    preconditions:
+      - sh: command -v rpmbuild
+        msg: rpmbuild not found - install rpm-tools first
+    cmd: bunx electron-builder --linux rpm --config electron-builder.yml
+
+  build:linux:dir:
+    desc: Package an unpacked Linux app into dist/linux-unpacked for quick testing
+    deps: [build:runtime-deps, build:desktop]
+    cmd: bunx electron-builder --linux dir --config electron-builder.yml
+
+  build:overlay:
+    desc: Build the Wayland overlay sidecar (needs a Rust toolchain and wayland-client headers)
+    dir: plugins/desktop-agent/sidecar
+    cmds:
+      - cargo build --release
+      - echo "Built $(pwd)/target/release/nib-overlay - put it on $PATH or set NIB_OVERLAY_EXECUTABLE to it"
+
+  clean:dist:
+    desc: Remove build outputs
+    cmd: rm -rf dist apps/desktop/out apps/web/build

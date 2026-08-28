@@ -278,6 +278,86 @@ describe('services and events', () => {
 		]);
 	});
 
+	test('a plugin cannot require a service it did not declare', () => {
+		const ctx = createContext();
+		ctx.use(counterProvider);
+		let error: unknown;
+
+		ctx.use({
+			name: 'undeclared',
+			apply(inner) {
+				try {
+					inner.require('counter');
+				} catch (thrown) {
+					error = thrown;
+				}
+			},
+		});
+
+		expect((error as Error).message).toBe(`service "counter" is not declared in this plugin's inject`);
+	});
+
+	test('get stays permissive where require refuses', () => {
+		const ctx = createContext();
+		ctx.use(counterProvider);
+		let seen: unknown;
+
+		ctx.use({
+			name: 'undeclared-get',
+			apply(inner) {
+				seen = inner.get('counter');
+			},
+		});
+
+		expect(seen).toEqual({ value: 1 });
+	});
+
+	test('a plugin reads what a plugin above it declared', () => {
+		const ctx = createContext();
+		ctx.use(counterProvider);
+		let seen: unknown;
+
+		ctx.use({
+			name: 'parent',
+			inject: ['counter'],
+			apply(inner) {
+				inner.use({
+					name: 'child',
+					apply(grandchild) {
+						seen = grandchild.require('counter');
+					},
+				});
+			},
+		});
+
+		expect(seen).toEqual({ value: 1 });
+	});
+
+	test('a declared service stays readable while the withdrawal that unloaded the plugin unwinds', () => {
+		const ctx = createContext();
+		let withdraw: Disposer | undefined;
+		ctx.use({
+			name: 'provider',
+			apply(inner) {
+				withdraw = inner.provide('counter', { value: 1 });
+			},
+		});
+
+		let readDuringTeardown: unknown;
+		ctx.use({
+			name: 'consumer',
+			inject: ['counter'],
+			apply(inner) {
+				inner.effect(() => () => {
+					readDuringTeardown = inner.require('counter');
+				});
+			},
+		});
+
+		withdraw!();
+		expect(readDuringTeardown).toEqual({ value: 1 });
+	});
+
 	test('a listener disposer returned to the plugin removes it early', () => {
 		const ctx = createContext();
 		let calls = 0;

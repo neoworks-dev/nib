@@ -1,5 +1,12 @@
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { BlockContent, BlockKind, HarnessCapabilities, MessageRole, ModelInfo } from '@nib-ui/protocol';
+import type {
+	BlockContent,
+	BlockKind,
+	HarnessCapabilities,
+	MessageAttachment,
+	MessageRole,
+	ModelInfo,
+} from '@nib-ui/protocol';
 import type { EmitEvent } from '../../services';
 
 export const claudeCodeCapabilities: HarnessCapabilities = {
@@ -9,6 +16,8 @@ export const claudeCodeCapabilities: HarnessCapabilities = {
 	fork: true,
 	slashCommands: true,
 	models: true,
+	effortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+	checkpoints: true,
 };
 
 /**
@@ -51,12 +60,11 @@ export class ClaudeMessageMapper {
 	private readonly startedMessages = new Set<string>();
 	private readonly openMessages = new Set<string>();
 	private readonly pendingBlocks = new Map<string, StreamedBlock[]>();
-	private readonly expectedEchoes: string[] = [];
+	private readonly expectedEchoes: { text: string; messageId: string }[] = [];
 	/** Lets a tool_result block carry the tool name, which renderers resolve on. */
 	private readonly toolNamesByUseId = new Map<string, string>();
 	private readonly totals = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, costUsd: 0 };
 	private synthesizedBlocks = 0;
-	private localMessages = 0;
 
 	constructor(
 		private readonly emit: EmitEvent,
@@ -85,16 +93,20 @@ export class ClaudeMessageMapper {
 		}
 	}
 
-	/** The local echo of text we pushed into the input queue, so the UI shows it immediately. */
-	emitUserText(text: string): void {
-		this.localMessages += 1;
-		const messageId = `local-user-${this.localMessages}`;
+	/**
+	 * The local echo of text we pushed into the input queue, so the UI shows it
+	 * immediately. `messageId` is the uuid the prompt carries into the CLI, which
+	 * is also what `rewindFiles` restores to — the CLI does not echo prompts back
+	 * in streaming input mode, so waiting for one would never yield a checkpoint.
+	 */
+	emitUserText(text: string, messageId: string, attachments?: MessageAttachment[]): void {
 		const blockId = `${messageId}:0`;
-		this.expectedEchoes.push(text);
-		this.emit({ type: 'message.started', data: { messageId, role: 'user' } });
+		this.expectedEchoes.push({ text, messageId });
+		this.emit({ type: 'message.started', data: { messageId, role: 'user', attachments } });
 		this.emit({ type: 'block.started', data: { messageId, blockId, kind: 'text' } });
 		this.emit({ type: 'block.completed', data: { blockId, content: { kind: 'text', text } } });
 		this.emit({ type: 'message.completed', data: { messageId } });
+		this.emit({ type: 'message.checkpoint', data: { messageId, checkpointId: messageId } });
 	}
 
 	private handleSystem(message: Extract<SDKMessage, { type: 'system' }>): void {
@@ -285,12 +297,17 @@ export class ClaudeMessageMapper {
 		return undefined;
 	}
 
-	/** Drops the CLI's echo of text we already emitted locally on `send()`. */
+	/**
+	 * Drops the CLI's replay of a prompt we already emitted locally on `send()`.
+	 * Attached images ride along as blocks of their own, so the match is on the one
+	 * text block rather than on the message being a single block.
+	 */
 	private consumeEcho(blocks: RawBlock[]): boolean {
 		const expected = this.expectedEchoes[0];
-		if (expected === undefined || blocks.length !== 1) return false;
-		const [block] = blocks;
-		if (block?.type !== 'text' || block.text !== expected) return false;
+		if (expected === undefined) return false;
+		if (blocks.some((block) => block.type !== 'text' && block.type !== 'image')) return false;
+		const texts = blocks.filter((block) => block.type === 'text');
+		if (texts.length !== 1 || texts[0]!.text !== expected.text) return false;
 		this.expectedEchoes.shift();
 		return true;
 	}

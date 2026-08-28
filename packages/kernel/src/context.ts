@@ -12,6 +12,26 @@ import type {
 	Services,
 } from './types';
 
+/**
+ * What a plugin's declared services resolved to when it activated, and the chain
+ * of plugins it was created under. Reads go against this rather than the live
+ * store, which is what keeps a service readable to a plugin whose teardown was
+ * triggered by that same service going away.
+ */
+interface Fiber {
+	readonly parent: Fiber | null;
+	/** Keyed by the plugin's `inject`; a key absent here was never declared. */
+	readonly committed: Map<string, unknown>;
+}
+
+/** A plugin may read what any plugin above it declared, as well as its own. */
+function owningFiber(fiber: Fiber | null, name: string): Fiber | null {
+	for (let current = fiber; current; current = current.parent) {
+		if (current.committed.has(name)) return current;
+	}
+	return null;
+}
+
 class Fork<C> implements EvaluableFork, ForkHandle {
 	active = false;
 	ready: Promise<void> = Promise.resolve();
@@ -21,12 +41,12 @@ class Fork<C> implements EvaluableFork, ForkHandle {
 
 	constructor(
 		private readonly kernel: Kernel,
-		private readonly parentScope: Scope,
+		private readonly parent: Context,
 		private readonly plugin: Plugin<C>,
 		private config: C,
 	) {
 		kernel.forks.add(this);
-		this.detach = parentScope.register(() => {
+		this.detach = parent.scope.register(() => {
 			this.settling = true;
 			kernel.forks.delete(this);
 			this.deactivate();
@@ -48,11 +68,16 @@ class Fork<C> implements EvaluableFork, ForkHandle {
 	}
 
 	private activate(): void {
-		const scope = this.parentScope.fork();
+		const scope = this.parent.scope.fork();
 		this.childScope = scope;
 		this.active = true;
+		// `evaluate` has already established that every declared service is bound,
+		// so this snapshot is complete for the whole of the fork's active life.
+		const committed = new Map<string, unknown>();
+		for (const name of this.plugin.inject ?? []) committed.set(name, this.kernel.services.get(name));
 		try {
-			const result = this.plugin.apply(new Context(this.kernel, scope), this.config);
+			const fiber: Fiber = { parent: this.parent.fiber, committed };
+			const result = this.plugin.apply(new Context(this.kernel, scope, fiber), this.config);
 			this.ready = Promise.resolve(result).then(() => undefined);
 			this.ready.catch(() => undefined);
 		} catch (error) {
@@ -89,10 +114,16 @@ export class Context {
 	constructor(
 		readonly kernel: Kernel,
 		readonly scope: Scope,
+		/**
+		 * Null on the root context. The root is the orchestrator that assembles the
+		 * system rather than a component within it, so it declares nothing and every
+		 * service stays readable through it.
+		 */
+		readonly fiber: Fiber | null = null,
 	) {}
 
 	use<C>(plugin: Plugin<C>, ...config: ConfigArgs<C>): ForkHandle {
-		const fork = new Fork(this.kernel, this.scope, plugin, config[0] as C);
+		const fork = new Fork(this.kernel, this, plugin, config[0] as C);
 		fork.evaluate();
 		this.kernel.flush();
 		return fork;
@@ -111,11 +142,22 @@ export class Context {
 		return remove;
 	}
 
+	/** The reflective lookup: undeclared reads are answered, and it never throws. */
 	get<K extends ServiceName>(name: K): Services[K] | undefined {
+		const owner = owningFiber(this.fiber, name);
+		if (owner) return owner.committed.get(name) as Services[K];
 		return this.kernel.services.get(name) as Services[K] | undefined;
 	}
 
+	/**
+	 * Enforces the plugin's `inject`. An undeclared read would hand back a service
+	 * whose withdrawal cannot deactivate this plugin, leaving it holding a
+	 * reference to something already torn down.
+	 */
 	require<K extends ServiceName>(name: K): Services[K] {
+		const owner = owningFiber(this.fiber, name);
+		if (owner) return owner.committed.get(name) as Services[K];
+		if (this.fiber) throw new Error(`service "${name}" is not declared in this plugin's inject`);
 		if (!this.kernel.services.has(name)) throw new Error(`service "${name}" is not available`);
 		return this.kernel.services.get(name) as Services[K];
 	}
@@ -136,7 +178,7 @@ export class Context {
 
 	/** Child scope for callers that need their own disposal boundary without a plugin. */
 	fork(): Context {
-		return new Context(this.kernel, this.scope.fork());
+		return new Context(this.kernel, this.scope.fork(), this.fiber);
 	}
 
 	dispose(): void {

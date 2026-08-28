@@ -6,9 +6,10 @@
 	import type { RendererProps } from '@nib-ui/ui-contracts';
 	import { stripAnsi } from './ansi';
 
-	const { block, session }: RendererProps = $props();
+	const { block, session, detail = false }: RendererProps = $props();
 
 	let expanded = $state(false);
+	const open = $derived(detail || expanded);
 
 	// The call owns the strip, so a result whose call is on screen renders nothing.
 	const foldedIntoCall = $derived(block.kind === 'tool_result' && findToolUseBlock(session, block.toolUseId) !== null);
@@ -31,38 +32,48 @@
 </script>
 
 {#if !foldedIntoCall}
-	<div class="overflow-hidden rounded-lg border border-line-faint bg-input font-mono text-xs">
-		<button
-			type="button"
-			class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-hover"
-			onclick={() => (expanded = !expanded)}
-		>
-			<span class="shrink-0 text-green"><PlayIcon size={12} weight="fill" /></span>
-			<span class="shrink-0 text-2xs tracking-caps uppercase text-dim">Ran</span>
-			<span class="truncate text-default">{command || '…'}</span>
-			<span class="ml-auto shrink-0 text-2xs {phaseTone}">{phase}</span>
-			<span class="shrink-0 text-faint">
-				{#if expanded}
-					<CaretDownIcon size={12} />
-				{:else}
-					<CaretRightIcon size={12} />
-				{/if}
-			</span>
-		</button>
+	<div
+		class="overflow-hidden border border-line-faint bg-input font-mono {detail
+			? 'rounded-xl p-4 text-sm leading-relaxed'
+			: 'rounded-lg text-xs'}"
+	>
+		{#if !detail}
+			<button
+				type="button"
+				class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-hover"
+				onclick={() => (expanded = !expanded)}
+			>
+				<span class="shrink-0 text-green"><PlayIcon size={12} weight="fill" /></span>
+				<span class="shrink-0 text-2xs tracking-caps uppercase text-dim">Ran</span>
+				<span class="truncate text-default">{command || '…'}</span>
+				<span class="ml-auto shrink-0 text-2xs {phaseTone}">{phase}</span>
+				<span class="shrink-0 text-faint">
+					{#if expanded}
+						<CaretDownIcon size={12} />
+					{:else}
+						<CaretRightIcon size={12} />
+					{/if}
+				</span>
+			</button>
+		{/if}
 
-		{#if expanded}
-			<div class="border-t border-line-faint px-3 py-2">
+		{#if open}
+			<div class={detail ? '' : 'border-t border-line-faint px-3 py-2'}>
 				<div class="flex gap-2">
-					<span class="select-none text-dim">$</span>
+					<span class="shrink-0 select-none text-dim">$</span>
 					<span class="whitespace-pre-wrap text-default">{command}</span>
 				</div>
 				{#if description}
-					<p class="mt-1 text-2xs text-dim">{description}</p>
+					<p class="mt-1 text-xs text-dim">{description}</p>
 				{/if}
 			</div>
-			<div class="max-h-96 overflow-auto border-t border-line-faint px-3 py-2">
+			<div
+				class="overflow-auto {detail
+					? 'mt-4 max-h-64'
+					: 'max-h-96 border-t border-line-faint px-3 py-2'}"
+			>
 				{#each lines as line, index (index)}
-					<div class="whitespace-pre-wrap {failed ? 'text-red' : 'text-muted'}">{line}</div>
+					<div class="whitespace-pre-wrap {failed ? 'text-red' : 'text-dim'}">{line}</div>
 				{/each}
 				{#if lines.length === 0}
 					<div class="text-dim">{result ? 'no output' : 'waiting for output…'}</div>

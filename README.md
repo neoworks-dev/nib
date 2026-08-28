@@ -22,6 +22,25 @@ or the native installer) or the session reports an error.
 host-platform ones explicitly. On a machine that is not `linux-x64-gnu`, swap those four
 devDependencies for the matching platform packages.
 
+### The desktop sidecar (optional)
+
+The desktop pane talks to the host compositor through `nib-overlay`, a small Rust binary that is
+resolved at runtime and never bundled — the same stance taken for the Claude Code CLI. Without it
+the pane still mounts and reports which capabilities are missing and why.
+
+```bash
+task build:overlay   # cargo build --release in plugins/desktop-agent/sidecar
+```
+
+Then put `plugins/desktop-agent/sidecar/target/release/nib-overlay` on `$PATH`, or point
+`$NIB_OVERLAY_EXECUTABLE` at it. Building it needs a Rust toolchain and the `wayland-client`
+development headers.
+
+Two optional system tools widen what it can do, and each absence is reported rather than assumed:
+`grim` (capturing one output or a region without a portal dialog) and a compositor with an IPC
+socket — Hyprland or sway — for the focused window and the cursor position. Per-application capture
+rules live in `~/.config/nib/desktop-agent.json` and are edited in Settings.
+
 ## Layout
 
 | Path                            | Purpose                                                        |
@@ -31,7 +50,7 @@ devDependencies for the matching platform packages.
 | `packages/ui-contracts`         | Frontend service contracts shared by the app and every plugin  |
 | `packages/file-icons`           | Material icon subset + extension lookup, shared by app/plugins |
 | `apps/web`                      | SvelteKit app: server harness host + browser kernel instance   |
-| `plugins/*`                     | Renderers, statusbar, trajectory, git, file browser and viewer |
+| `plugins/*`                     | Sidebar, board, renderers, statusbar, trajectory, git, viewers  |
 
 `packages/ui-contracts` exists so plugin packages never import from `apps/web`: it holds the
 renderer/slot/command/session service interfaces plus the `@nib-ui/kernel` module augmentation.
@@ -43,23 +62,85 @@ renderer/slot/command/session service interfaces plus the `@nib-ui/kernel` modul
 | `harnesses` | server adapters (`claude-code`)           | `createSession`/`resumeSession` per harness      |
 | `workspace` | `workspace` (server)                      | cwd autocomplete + `@` file search over the cwd  |
 | `git`       | `git` (server)                            | status, diff, stage, commit for the session cwd  |
-| `renderers` | `core-renderers`, `renderer-diff`, `renderer-terminal` | block rendering by `(kind, toolName)`, plus interactive permission cards by `toolName` |
-| `slots`     | `cost-tracker`, `trajectory-inspector`, `git-panel`, `file-browser`, `file-viewer` | statusbar, headers, sidebar, composer and per-message footers |
+| `renderers` | `core-renderers`, `renderer-diff`, `renderer-terminal`, `task-progress` | block rendering by `(kind, toolName)`, plus interactive permission cards by `toolName` |
+| `slots`     | `sidebar`, `cost-tracker`, `trajectory-inspector`, `git-panel`, `file-browser`, `file-viewer` | the left rail, statusbar, headers, composer and per-message footers |
+| `boards`    | `boards` (server)                         | one board per directory, plus the project index the rail reads |
+| `canvas`    | `canvas`                                  | board object kinds, tools, paste/drop handlers, `openBoard`     |
+| `panes`     | `git-panel`, `file-browser`, `file-viewer`, `task-progress`, `web-browser` | tiles in the main area, opened and moved by the user |
 | `commands`  | `trajectory-inspector`, `git-panel`, dev commands | command palette (⌘/Ctrl+K)              |
 | `fileViewer`| `file-viewer`                             | `open(sessionId, path)` for any other plugin     |
 
 Every registration goes through `ctx.effect(() => disposer)`, so disposing a plugin removes its
 renderers, slot entries, listeners and commands. `Toggle plugin: <name>` in the palette exercises it.
 
+## Projects and workstreams
+
+A project is a directory, and its board is the project: one board per `cwd`, holding the
+workstreams on it. A workstream is a goal with at most one harness session behind it, so a
+directory with no session yet is still a project you can open and write goals on.
+
+There is no start screen and no task list. The app opens on the board it was last in, and the
+left rail — contributed by the `sidebar` plugin into the `app.sidebar` slot — lists the projects
+with the workstreams that still want attention: anything running or waiting on the user, plus
+anything not yet marked read. Marking a workstream read writes `reviewedAt` onto the board object
+through `POST /api/boards/review`, server-side, because the rail can mark a workstream in a board
+no window has open. A reviewed workstream that starts working again comes back: being active
+outranks the mark.
+
+```text
+GET  /api/boards/list                     every board with its workstreams — the project index
+POST /api/boards/review                   set or clear one workstream's review mark
+```
+
 ## Session metadata
 
-Slash commands, models, the active permission mode and the user's label all travel as
-`session.meta` events on the same log — no side channel. The host emits the harness descriptor's
+Slash commands, models, the active permission mode, the reasoning-effort level, the archived flag
+and the user's label all travel as `session.meta` events on the same log — no side channel. The host emits the harness descriptor's
 defaults (`defaultPermissionMode`, `models`) as the session's first event, so the composer's pills
 are populated before the harness process is up. The Claude Code adapter then probes
 `supportedCommands()`/`supportedModels()` and emits the resolved lists; `setPermissionMode`,
 `setModel` and `setLabel` each emit a partial update, and the reducer keeps whatever a partial omits.
 A harness that answers none of this simply leaves the composer's capability controls hidden.
+
+A task is named by what it was asked to do: the first `session.send` derives a label from the
+prompt, and a log restored from an earlier process backfills one the same way. Renaming by hand
+sets a label, and a label already on the log is never overwritten.
+
+## Reviewing in the editor
+
+`file-viewer` reads the session log rather than a git diff: the newest turn's `Edit`/`Write` calls
+for the open file are located in the text by their replacement string, drawn as a hunk with the
+removed lines above the added ones, and given Accept/Deny. Deny deliberately leaves the file alone
+— once every hunk in the file has a verdict, the rejections go back to the agent as a message
+asking it to revert them, so the harness stays the only thing writing to disk. An all-accepted
+review says nothing: that is already the state of the world.
+
+Selecting lines with nothing left to review opens a prompt above the selection. The question
+carries the path, the line range and the selected text, so the agent answers about what is on
+screen instead of re-reading the file. The range is painted by the viewer, not left to the
+browser's own selection, which collapses the moment the prompt takes focus.
+
+## Detached sessions
+
+A session's harness is a subprocess, and the SDK's `resume` is an argument to starting one, not a
+handle on a running one — so a server restart or an explicit stop leaves a task with a transcript
+and no process. That is the host's problem, not the user's: any command that needs the harness
+reattaches first (`revive`), and concurrent commands on the same task share one reattach. Nothing
+in the UI asks to be resumed. File checkpoints are stored by the CLI per session, so a turn stays
+undoable across a reattach.
+
+The one case still worth saying out loud is a harness that cannot resume at all: its transcript is
+readable and nothing more, so the composer says so.
+
+## Checkpoints and undo
+
+Each prompt is pushed into the harness carrying a uuid we generate, and the same uuid goes out as a
+`message.checkpoint` event. That is what makes a turn undoable: `session.rewind` hands the id back
+to the harness, which restores the working tree to how it looked before the turn. The transcript is
+deliberately untouched — the turn still describes edits that are no longer on disk, so the outcome
+is written to the log as well. The Claude Code adapter backs this with the SDK's file checkpointing
+(`enableFileCheckpointing` + `rewindFiles`); a harness that has no equivalent leaves `checkpoints`
+off its capabilities and the changed-files card never offers Undo.
 
 ## Permission rendering
 
@@ -95,7 +176,9 @@ POST /api/sessions/[id]/git/commit        commit staged work (local only — not
 
 ```bash
 bun test          # kernel + protocol tests
-bun run dev       # SvelteKit dev server
+bun run dev       # Electron desktop shell
+bun run dev:web   # SvelteKit dev server
 bun run build     # production build
+bun run typecheck # tsc across every workspace
 bun run smoke "list the files here"   # headless adapter smoke test (JSONL to stdout)
 ```

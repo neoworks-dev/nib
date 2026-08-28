@@ -3,6 +3,7 @@ import type {
 	AnyAgentEvent,
 	BlockContent,
 	BlockKind,
+	MessageAttachment,
 	MessageRole,
 	ModelInfo,
 	PermissionBehavior,
@@ -30,6 +31,12 @@ export interface MessageView {
 	blocks: BlockView[];
 	completed: boolean;
 	stopReason: string | null;
+	/**
+	 * Files sent with the prompt; the reducer always fills it, empty for anything
+	 * the harness produced. Optional so a consumer that builds a message by hand
+	 * does not have to name it.
+	 */
+	attachments?: MessageAttachment[];
 }
 
 export interface UsageView {
@@ -67,6 +74,10 @@ export interface SessionView {
 	capabilities: HarnessCapabilities | null;
 	/** Active permission mode, as last reported by the harness. */
 	permissionMode: string | null;
+	/** Active reasoning-effort level, when the harness has any. */
+	effort: string | null;
+	/** Archived tasks stay listable and resumable; the sidebar just stops showing them. */
+	archived: boolean;
 	model: string | null;
 	slashCommands: SlashCommandInfo[];
 	models: ModelInfo[];
@@ -81,6 +92,8 @@ export interface SessionView {
 	unhandled: AnyAgentEvent[];
 	/** Deltas that arrived before their `block.started`; merged in when the block appears. */
 	orphanBlocks: Record<string, OrphanBlock>;
+	/** Message id → the harness's restore point for the working tree as it was before it. */
+	checkpoints: Record<string, string>;
 	lastSeq: number;
 }
 
@@ -154,6 +167,8 @@ export function createSessionView(sessionId: string): SessionView {
 		nativeSessionId: null,
 		capabilities: null,
 		permissionMode: null,
+		effort: null,
+		archived: false,
 		model: null,
 		slashCommands: [],
 		models: [],
@@ -166,6 +181,22 @@ export function createSessionView(sessionId: string): SessionView {
 		logs: [],
 		unhandled: [],
 		orphanBlocks: {},
+		checkpoints: {},
 		lastSeq: 0,
 	};
+}
+
+/**
+ * The restore point that undoes a turn. An assistant message's edits belong to
+ * the user message that asked for them, so the search walks back from the given
+ * message to the nearest checkpointed one.
+ */
+export function checkpointBefore(session: SessionView, messageId: string): string | null {
+	const index = session.messages.findIndex((message) => message.id === messageId);
+	if (index < 0) return null;
+	for (let cursor = index; cursor >= 0; cursor -= 1) {
+		const checkpoint = session.checkpoints[session.messages[cursor]!.id];
+		if (checkpoint) return checkpoint;
+	}
+	return null;
 }

@@ -1,8 +1,8 @@
 import type { Plugin } from '@nib-ui/kernel';
-import { commit, diff, log, stage, status, unstage } from '../git-cli';
+import { branch, commit, diff, log, stage, status, unstage } from '../git-cli';
 import type { GitService } from '../services';
 
-const git: GitService = { status, diff, stage, unstage, commit, log };
+const git: GitService = { status, branch, diff, stage, unstage, commit, log };
 
 export const gitPlugin: Plugin = {
 	name: 'git',

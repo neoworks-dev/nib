@@ -1,8 +1,8 @@
 import type { Plugin } from '@nib-ui/kernel';
-import ChatPane from '../components/ChatPane.svelte';
 import FallbackRenderer from '../components/FallbackRenderer.svelte';
+import { PaneAttachments } from '../registries/attachments';
 import { ReactiveCommandRegistry } from '../registries/commands.svelte';
-import { chatPaneId, ReactivePaneRegistry } from '../registries/panes.svelte';
+import { ReactivePaneRegistry } from '../registries/panes.svelte';
 import { ReactiveRendererRegistry } from '../registries/renderers.svelte';
 import { ReactiveSessionsStore } from '../registries/sessions.svelte';
 import { ReactiveSlotRegistry } from '../registries/slots.svelte';
@@ -14,6 +14,7 @@ export const sessionsPlugin: Plugin = {
 		const store = new ReactiveSessionsStore(ctx.require('transport'));
 		ctx.provide('sessions', store);
 		ctx.effect(() => () => store.disposeAll());
+		ctx.effect(() => store.startPolling());
 		void store.refresh();
 	},
 };
@@ -39,9 +40,9 @@ export const panesPlugin: Plugin = {
 	apply(ctx) {
 		const registry = new ReactivePaneRegistry();
 		ctx.provide('panes', registry);
-		// The chat is a pane like any other, so it tiles with whatever a plugin adds.
-		ctx.effect(() => registry.register({ id: chatPaneId, title: 'Chat', component: ChatPane }));
-		registry.open(chatPaneId);
+		// Reading what a pane sits next to is a different job from opening panes, and
+		// a plugin that only wants its neighbours should not get the whole registry.
+		ctx.provide('attachments', new PaneAttachments(registry));
 	},
 };
 

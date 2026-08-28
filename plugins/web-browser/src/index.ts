@@ -10,7 +10,7 @@ export const webBrowserPlugin: Plugin = {
 	inject: ['panes', 'commands'],
 	apply(ctx) {
 		const panes = ctx.require('panes');
-		ctx.effect(() => panes.register({ id: paneId, title: 'Browser', icon: GlobeIcon, component: BrowserPanel }));
+		ctx.effect(() => panes.register({ id: paneId, kind: 'browser', title: 'Browser', icon: GlobeIcon, component: BrowserPanel }));
 		ctx.effect(() =>
 			ctx.require('commands').register({
 				id: 'browser.toggle',

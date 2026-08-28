@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { TraceNode } from './trace';
-	import { buildTimeline, fractionsOfRange, rangeFromFractions, type TimeRange, type TimelineLane } from './timeline';
+	import { buildTimeline, rangeFromFractions, type TimeRange, type TimelineLane } from './timeline';
 
 	const {
 		nodes,
@@ -27,7 +27,7 @@
 	let cursor = $state<number | null>(null);
 
 	const timeline = $derived(buildTimeline(nodes));
-	const brush = $derived(range ? fractionsOfRange(timeline, range) : null);
+	const drawn = $derived(timeline.marks.filter((mark) => mark.lane !== null));
 	const seconds = $derived(Math.round((timeline.to - timeline.from) / 100) / 10);
 	const dragging = $derived(anchor !== null && cursor !== null);
 
@@ -52,7 +52,7 @@
 		if (anchor === null || cursor === null) return;
 		// A click without a drag scrubs back out to the whole session.
 		if (Math.abs(cursor - anchor) < 0.005) onbrush(null);
-		else onbrush(rangeFromFractions(timeline, anchor, cursor));
+		else onbrush(rangeFromFractions(anchor, cursor));
 		anchor = null;
 		cursor = null;
 	}
@@ -66,7 +66,7 @@
 
 <div class="flex flex-col gap-1.5 border-b border-line px-4 py-2">
 	<div class="flex items-center gap-2 text-2xs text-faint">
-		<span class="tabular-nums">{timeline.marks.length} steps · {seconds}s</span>
+		<span class="tabular-nums">{drawn.length} steps · {seconds}s elapsed · idle compressed</span>
 		{#if range}
 			<button
 				type="button"
@@ -81,9 +81,9 @@
 	</div>
 
 	<div class="flex items-stretch gap-2">
-		<div class="flex w-12 shrink-0 flex-col justify-between py-0.5 text-2xs text-faint">
+		<div class="flex w-12 shrink-0 flex-col py-px text-2xs text-faint">
 			{#each lanes as lane (lane.id)}
-				<span class="leading-4">{lane.label}</span>
+				<span class="flex h-8 items-center">{lane.label}</span>
 			{/each}
 		</div>
 
@@ -94,7 +94,7 @@
 			aria-label="Session timeline"
 			aria-valuemin={0}
 			aria-valuemax={100}
-			aria-valuenow={brush ? Math.round(brush.start * 100) : 0}
+			aria-valuenow={range ? Math.round(range.from * 100) : 0}
 			class="relative min-w-0 flex-1 cursor-crosshair overflow-hidden rounded-md border border-line bg-input select-none"
 			onpointerdown={startBrush}
 			onpointermove={moveBrush}
@@ -105,15 +105,15 @@
 			}}
 		>
 			{#each lanes as lane (lane.id)}
-				<div class="relative h-4 border-b border-line-faint last:border-b-0">
+				<div class="relative h-8 border-b border-line-faint last:border-b-0">
 					{#each timeline.marks.filter((mark) => mark.lane === lane.id) as mark (mark.nodeId)}
 						<button
 							type="button"
 							aria-label="Step at {Math.round(mark.start * 100)} percent"
-							class="absolute top-1 h-2 rounded-xs {markTone(mark.status, lane.tone)} {selectedId === mark.nodeId
-								? 'ring-1 ring-action'
+							class="absolute top-1.5 h-5 rounded-sm {markTone(mark.status, lane.tone)} {selectedId === mark.nodeId
+								? 'ring-2 ring-action'
 								: ''}"
-							style="left: {mark.start * 100}%; width: {(mark.end - mark.start) * 100}%; min-width: 3px"
+							style="left: {mark.start * 100}%; width: {(mark.end - mark.start) * 100}%; min-width: 8px"
 							onclick={(event) => {
 								event.stopPropagation();
 								onselect(mark.nodeId);
@@ -123,7 +123,7 @@
 				</div>
 			{/each}
 
-			{#if timeline.marks.length === 0}
+			{#if drawn.length === 0}
 				<p class="absolute inset-0 flex items-center justify-center text-2xs text-faint">No steps yet.</p>
 			{/if}
 
@@ -132,10 +132,10 @@
 					class="pointer-events-none absolute inset-y-0 border-x border-action bg-raised/50"
 					style="left: {Math.min(anchor!, cursor!) * 100}%; width: {Math.abs(cursor! - anchor!) * 100}%"
 				></div>
-			{:else if brush}
+			{:else if range}
 				<div
 					class="pointer-events-none absolute inset-y-0 border-x border-action bg-raised/40"
-					style="left: {brush.start * 100}%; width: {(brush.end - brush.start) * 100}%"
+					style="left: {range.from * 100}%; width: {(range.to - range.from) * 100}%"
 				></div>
 			{/if}
 		</div>

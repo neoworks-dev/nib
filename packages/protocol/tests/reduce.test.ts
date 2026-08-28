@@ -230,6 +230,68 @@ describe('session.meta', () => {
 	});
 });
 
+describe('attachments', () => {
+	function started(seq: number, data: unknown): AnyAgentEvent {
+		return parseAgentEvent({ id: `e${seq}`, sessionId: 's1', seq, ts: seq, type: 'message.started', data });
+	}
+
+	const shot = { assetId: `${'a'.repeat(64)}.png`, mime: 'image/png', name: 'shot.png' };
+
+	test('a user message carries what was attached to it', () => {
+		const view = project([
+			started(1, { messageId: 'm1', role: 'user', attachments: [shot] }),
+			parseAgentEvent({
+				id: 'e2',
+				sessionId: 's1',
+				seq: 2,
+				ts: 2,
+				type: 'block.completed',
+				data: { blockId: 'm1:0', content: { kind: 'text', text: 'look at this' } },
+			}),
+		]);
+
+		expect(view.messages[0]!.attachments).toEqual([shot]);
+	});
+
+	test('an event logged before attachments existed reduces to none', () => {
+		const view = project([started(1, { messageId: 'm1', role: 'user' })]);
+
+		expect(view.messages[0]!.attachments).toEqual([]);
+	});
+
+	test('a message the harness produced is never given attachments', () => {
+		const view = project([
+			started(1, { messageId: 'm1', role: 'user', attachments: [shot] }),
+			started(2, { messageId: 'm2', role: 'assistant' }),
+		]);
+
+		expect(view.messages[1]!.attachments).toEqual([]);
+	});
+
+	test('a replayed message.started does not restate the attachments', () => {
+		const view = project([
+			started(1, { messageId: 'm1', role: 'user', attachments: [shot] }),
+			started(2, { messageId: 'm1', role: 'user', attachments: [shot, shot] }),
+		]);
+
+		expect(view.messages).toHaveLength(1);
+		expect(view.messages[0]!.attachments).toEqual([shot]);
+	});
+
+	test('malformed attachment metadata fails to parse rather than corrupting the message', () => {
+		expect(
+			safeParseAgentEvent({
+				id: 'x',
+				sessionId: 's1',
+				seq: 1,
+				ts: 1,
+				type: 'message.started',
+				data: { messageId: 'm1', role: 'user', attachments: [{ assetId: 'a.png' }] },
+			}),
+		).toBeNull();
+	});
+});
+
 describe('commands', () => {
 	test('valid commands parse and unknown ones are rejected', () => {
 		expect(sessionCommandSchema.parse({ type: 'session.send', text: 'hi' })).toEqual({
@@ -247,5 +309,23 @@ describe('commands', () => {
 		});
 		expect(sessionCommandSchema.safeParse({ type: 'session.explode' }).success).toBe(false);
 		expect(sessionCommandSchema.safeParse({ type: 'session.setPermissionMode' }).success).toBe(false);
+	});
+
+	test('session.send takes attachments, and text stays required', () => {
+		const attachments = [{ assetId: `${'a'.repeat(64)}.png`, mime: 'image/png', name: 'shot.png' }];
+
+		expect(sessionCommandSchema.parse({ type: 'session.send', text: 'look', attachments })).toEqual({
+			type: 'session.send',
+			text: 'look',
+			attachments,
+		});
+		expect(sessionCommandSchema.safeParse({ type: 'session.send', attachments }).success).toBe(false);
+		expect(
+			sessionCommandSchema.safeParse({ type: 'session.send', text: 'look', attachments: [{ assetId: 'a.png' }] })
+				.success,
+		).toBe(false);
+		expect(sessionCommandSchema.safeParse({ type: 'session.send', text: 'look', attachments: 'shot.png' }).success).toBe(
+			false,
+		);
 	});
 });

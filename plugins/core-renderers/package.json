@@ -15,11 +15,12 @@
 	},
 	"dependencies": {
 		"@neoworks-dev/ui": "link:@neoworks-dev/ui",
+		"@nib-ui/file-icons": "workspace:*",
 		"@nib-ui/kernel": "workspace:*",
 		"@nib-ui/protocol": "workspace:*",
 		"@nib-ui/ui-contracts": "workspace:*",
-		"phosphor-svelte": "^3.1.0",
-		"@nib-ui/file-icons": "workspace:*"
+		"marked": "^18.0.10",
+		"phosphor-svelte": "^3.1.0"
 	},
 	"peerDependencies": {
 		"svelte": "^5.56.4"

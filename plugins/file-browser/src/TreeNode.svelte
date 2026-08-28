@@ -3,6 +3,7 @@
 	import CaretRightIcon from 'phosphor-svelte/lib/CaretRightIcon';
 	import FolderIcon from 'phosphor-svelte/lib/FolderIcon';
 	import { FileIcon } from '@nib-ui/file-icons';
+	import { workspaceFileTransferType } from '@nib-ui/ui-contracts';
 	import { fetchTree, statusMark, statusTone, type TreeEntry } from './tree';
 	import TreeNode from './TreeNode.svelte';
 
@@ -38,6 +39,19 @@
 		if (entry.directory) return void (expanded = !expanded);
 		onopen(entry.path);
 	}
+
+	/**
+	 * The reference travels, not the bytes: whatever catches the drop reads the
+	 * file out of the workspace itself. The plain-text fallback is the `@path`
+	 * form a composer already understands.
+	 */
+	function startDrag(event: DragEvent) {
+		const transfer = event.dataTransfer;
+		if (!transfer) return;
+		transfer.effectAllowed = 'copy';
+		transfer.setData(workspaceFileTransferType, JSON.stringify([{ sessionId, path: entry.path }]));
+		transfer.setData('text/plain', `@${entry.path}`);
+	}
 </script>
 
 <button
@@ -46,6 +60,8 @@
 		? 'bg-raised'
 		: ''}"
 	style="padding-left: {6 + depth * 12}px"
+	draggable={!entry.directory}
+	ondragstart={startDrag}
 	onclick={activate}
 >
 	{#if entry.directory}

@@ -11,6 +11,10 @@
 			"svelte": "./src/index.ts",
 			"types": "./src/index.ts",
 			"default": "./src/index.ts"
+		},
+		"./changed-files": {
+			"types": "./src/changed-files.ts",
+			"default": "./src/changed-files.ts"
 		}
 	},
 	"dependencies": {

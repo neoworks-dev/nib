@@ -1,25 +1,45 @@
 import { join } from 'node:path';
 import { createContext, type Context } from '@nib-ui/kernel';
+import { migrateLegacySessionLogs, sessionsDirectory } from './data-dir';
+import { assetsPlugin } from './plugins/assets';
+import { boardsPlugin } from './plugins/boards';
+import { linkPreviewsPlugin } from './plugins/link-previews';
 import { claudeCodePlugin } from './plugins/claude-code';
+import { codexPlugin } from './plugins/codex';
 import { gitPlugin } from './plugins/git';
 import { harnessRegistryPlugin } from './plugins/harness-registry';
+import { nibPlugin } from './plugins/nib';
 import { sessionHostPlugin } from './plugins/session-host';
 import { workspacePlugin } from './plugins/workspace';
-import type { GitService, HarnessRegistry, SessionHost, WorkspaceService } from './services';
-
-const logDirectory = join(process.cwd(), '.nib-ui', 'sessions');
+import type {
+	AssetService,
+	BoardService,
+	GitService,
+	HarnessRegistry,
+	LinkPreviewService,
+	SessionHost,
+	WorkspaceService,
+} from './services';
 
 let context: Context | undefined;
 
 /** The server kernel instance. Plugins are loaded statically from this manifest. */
 export function serverContext(): Context {
 	if (context) return context;
+	migrateLegacySessionLogs(join(process.cwd(), '.nib-ui', 'sessions'));
+
 	context = createContext();
 	context.use(harnessRegistryPlugin);
-	context.use(sessionHostPlugin, { logDirectory });
+	// Before the host: a prompt's attachments are resolved against the store.
+	context.use(assetsPlugin);
+	context.use(sessionHostPlugin, { logDirectory: sessionsDirectory() });
 	context.use(claudeCodePlugin);
+	context.use(codexPlugin);
+	context.use(nibPlugin);
 	context.use(workspacePlugin);
 	context.use(gitPlugin);
+	context.use(boardsPlugin);
+	context.use(linkPreviewsPlugin);
 	return context;
 }
 
@@ -37,4 +57,16 @@ export function workspace(): WorkspaceService {
 
 export function git(): GitService {
 	return serverContext().require('git');
+}
+
+export function boards(): BoardService {
+	return serverContext().require('boards');
+}
+
+export function assets(): AssetService {
+	return serverContext().require('assets');
+}
+
+export function linkPreviews(): LinkPreviewService {
+	return serverContext().require('linkPreviews');
 }

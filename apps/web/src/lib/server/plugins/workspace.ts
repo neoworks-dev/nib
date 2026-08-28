@@ -1,4 +1,5 @@
 import type { Plugin } from '@nib-ui/kernel';
+import { findWorkspaceIcon } from '../workspace-icon';
 import { isDirectory, listDirectories, searchFiles } from '../workspace-probe';
 import type { WorkspaceService } from '../services';
 
@@ -6,6 +7,7 @@ const workspace: WorkspaceService = {
 	listDirectories: (path) => listDirectories(path),
 	searchFiles: (cwd, query, limit) => searchFiles(cwd, query, limit),
 	isDirectory,
+	findIcon: findWorkspaceIcon,
 };
 
 export const workspacePlugin: Plugin = {

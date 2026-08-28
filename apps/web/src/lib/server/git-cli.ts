@@ -68,6 +68,14 @@ export async function status(cwd: string): Promise<GitStatus> {
 	};
 }
 
+/** `HEAD` while detached, `null` when the directory is not a repository. */
+export async function branch(cwd: string): Promise<string | null> {
+	const result = await git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']);
+	if (!result.ok) return null;
+	const name = result.stdout.trim();
+	return name.length > 0 ? name : null;
+}
+
 export async function diff(cwd: string, path: string, staged: boolean): Promise<string> {
 	const args = ['diff', '--no-color', ...(staged ? ['--cached'] : []), '--', path];
 	const result = await git(cwd, args);

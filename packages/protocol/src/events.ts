@@ -17,6 +17,18 @@ export type MessageRole = z.infer<typeof messageRoleSchema>;
 export const permissionBehaviorSchema = z.enum(['allow', 'deny']);
 export type PermissionBehavior = z.infer<typeof permissionBehaviorSchema>;
 
+/**
+ * A file sent along with a prompt. Only the metadata travels: the bytes stay in
+ * the asset store, addressed by `assetId`, so a transcript restored from the log
+ * can still describe — and fetch — what was attached.
+ */
+export const messageAttachmentSchema = z.object({
+	assetId: z.string(),
+	mime: z.string(),
+	name: z.string(),
+});
+export type MessageAttachment = z.infer<typeof messageAttachmentSchema>;
+
 export { modelInfoSchema, slashCommandSchema, type ModelInfo, type SlashCommandInfo } from './metadata';
 
 const blockContentSchema = z.union([
@@ -53,6 +65,8 @@ export const eventDataSchemas = {
 		label: z.string().optional(),
 		model: z.string().optional(),
 		permissionMode: z.string().optional(),
+		effort: z.string().optional(),
+		archived: z.boolean().optional(),
 		slashCommands: z.array(slashCommandSchema).optional(),
 		models: z.array(modelInfoSchema).optional(),
 	}),
@@ -67,10 +81,17 @@ export const eventDataSchemas = {
 	'message.started': z.object({
 		messageId: z.string(),
 		role: messageRoleSchema,
+		/** Absent on every event logged before attachments existed, which reduces to none. */
+		attachments: z.array(messageAttachmentSchema).optional(),
 	}),
 	'message.completed': z.object({
 		messageId: z.string(),
 		stopReason: z.string().optional(),
+	}),
+	/** The harness can restore the working tree to how it looked before this message. */
+	'message.checkpoint': z.object({
+		messageId: z.string(),
+		checkpointId: z.string(),
 	}),
 	'block.started': z.object({
 		messageId: z.string(),

@@ -6,7 +6,6 @@ import ImageBlock from './ImageBlock.svelte';
 import ReadBlock from './ReadBlock.svelte';
 import TextBlock from './TextBlock.svelte';
 import ThinkingBlock from './ThinkingBlock.svelte';
-import ToolResultBlock from './ToolResultBlock.svelte';
 import ToolUseBlock from './ToolUseBlock.svelte';
 
 const readTools = ['Read', 'NotebookRead'];
@@ -19,18 +18,15 @@ export const coreRenderersPlugin: Plugin = {
 		ctx.effect(() => renderers.register({ kind: 'text', component: TextBlock }));
 		ctx.effect(() => renderers.register({ kind: 'thinking', component: ThinkingBlock }));
 		ctx.effect(() => renderers.register({ kind: 'tool_use', component: ToolUseBlock }));
-		ctx.effect(() => renderers.register({ kind: 'tool_result', component: ToolResultBlock }));
+		// A result belongs to the call that made it, and the turn already shows that
+		// call: only an orphan or a failure earns a row of its own.
+		ctx.effect(() => renderers.register({ kind: 'tool_result', component: FoldedResultBlock }));
 		ctx.effect(() => renderers.register({ kind: 'image', component: ImageBlock }));
 		for (const toolName of readTools) {
 			ctx.effect(() => renderers.register({ kind: 'tool_use', toolName, priority: 10, component: ReadBlock }));
-			ctx.effect(() =>
-				renderers.register({ kind: 'tool_result', toolName, priority: 10, component: FoldedResultBlock }),
-			);
 		}
 		ctx.effect(() =>
 			renderers.registerPermission({ toolName: askUserQuestionToolName, component: AskQuestionCard }),
 		);
 	},
 };
-
-export { isReadBlock, readPath, readRun, type ReadEntry } from './read-group';

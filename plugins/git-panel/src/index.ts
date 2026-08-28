@@ -8,7 +8,7 @@ export const gitPanelPlugin: Plugin = {
 	inject: ['panes', 'commands'],
 	apply(ctx) {
 		const panes = ctx.require('panes');
-		ctx.effect(() => panes.register({ id: 'git', title: 'Git', icon: GitBranchIcon, component: GitPanel }));
+		ctx.effect(() => panes.register({ id: 'git', kind: 'git', title: 'Git', icon: GitBranchIcon, component: GitPanel }));
 		ctx.effect(() =>
 			ctx.require('commands').register({
 				id: 'git.toggle',

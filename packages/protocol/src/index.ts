@@ -11,6 +11,7 @@ export {
 	isKnownEvent,
 	isKnownEventType,
 	knownBlockKinds,
+	messageAttachmentSchema,
 	messageRoleSchema,
 	modelInfoSchema,
 	parseAgentEvent,
@@ -27,6 +28,7 @@ export {
 	type KnownAgentEvent,
 	type KnownBlockKind,
 	type KnownEventType,
+	type MessageAttachment,
 	type MessageRole,
 	type ModelInfo,
 	type PermissionBehavior,
@@ -53,10 +55,42 @@ export {
 	type AskQuestionOption,
 	type AskUserQuestionInput,
 } from './ask-question';
+export type {
+	Annotation,
+	Asset,
+	AssetAnnotation,
+	AssetPayload,
+	BlobPayload,
+	Edge,
+	LinkPayload,
+	NotePayload,
+	Placed,
+	Project,
+	ProjectObject,
+	Session,
+	StoredObject,
+	StrokePayload,
+	TurnAnnotation,
+} from './schema';
+export type { BlobBytes, BlobRef, BlobStore, LocalBlobStore, PutBlobOptions } from './blobs';
+export type { AssetProvider, AssetRegistry, AssetSource, PromptPart } from './assets';
+export type {
+	CreateSessionOptions,
+	EmitEvent,
+	HarnessAdapter,
+	HarnessRegistry,
+	HarnessSession,
+	RewindResult,
+	SessionAttachment,
+} from './harness';
+export type { CreateSessionInput, SessionStore, SessionSummary } from './sessions';
+export type { ProjectStore, ProjectSummary } from './project';
 export { reduceSession, reduceSessionAll } from './reduce';
+export { deriveTaskTitle } from './title';
 export {
 	blockToolInput,
 	blockToolOutput,
+	checkpointBefore,
 	createSessionView,
 	findToolResultBlock,
 	findToolUseBlock,

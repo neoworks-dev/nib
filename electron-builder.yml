@@ -1,0 +1,56 @@
+appId: dev.neoworks.nib-ui
+productName: NIB Harness
+copyright: NeoWorks
+
+directories:
+  output: dist
+  buildResources: build/electron
+
+# The root package.json is a private workspace root with no `main`, so the
+# packaged metadata is overridden here instead of mutating it.
+extraMetadata:
+  name: nib-ui
+  version: 0.0.0
+  description: Agent harness GUI
+  author: Moritz Utcke <moritz.utcke@ib-cornelsen.de>
+  homepage: https://neoworks.dev
+  desktopName: nib-ui.desktop
+  main: apps/desktop/out/main/index.js
+
+# bun installs the workspace as symlinks into a shared cache; there are no
+# native modules to rebuild against Electron's ABI.
+npmRebuild: false
+
+# The main process import()s apps/web/build/entry.js, and Node's ESM loader is
+# not asar-aware.
+asar: false
+
+# adapter-electron bundles the SvelteKit server into apps/web/build/entry.js, and
+# task build:runtime-deps stages the two unbundled SDKs next to it, so no part of
+# the workspace's symlinked node_modules has to be packaged.
+files:
+  - package.json
+  - apps/desktop/package.json
+  - apps/desktop/out/**
+  - apps/web/build/**
+
+linux:
+  category: Development
+  syncDesktopName: true
+  synopsis: Agent harness GUI
+  maintainer: Moritz Utcke <moritz.utcke@ib-cornelsen.de>
+  # rpm is built by the separate build:linux:rpm task because fpm shells out to
+  # `rpmbuild`, which is not installed by default on non-RPM hosts.
+  target:
+    - AppImage
+    - deb
+    - pacman
+
+deb:
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
