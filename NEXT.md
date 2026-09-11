@@ -49,21 +49,21 @@ Paths relative to `~/Documents/neoworks/muse/src/lib/canvas`. Every file listed 
 muse's `state.svelte.ts` / `actions.svelte.ts` singletons; the port replaces those imports
 with injected board access and intent callbacks.
 
-| muse file | LOC | lands as | status |
-|---|---|---|---|
-| `core/CanvasRenderer.ts` | 401 | `plugins/canvas/src/engine/CanvasEngine.ts` | done — tick → `syncObjects`/`syncCamera`, pointer/pinch/middle-drag pan, wheel zoom, keyboard. `visibleObjects()` folder scoping, `ui.*` reads and direct `actions` calls all replaced by `EngineHost`. |
-| `core/BaseObjectRenderer.ts` | 121 | `engine/ObjectRenderer.ts` | done — spawn/exit animation, world-space hit test, bounds. |
-| `core/types.ts`, `core/pixi.ts` | 44 | contracts in `@nib-ui/ui-contracts` | done — `ToolId` is an open string; kinds are registered, not enumerated. The `pixi.ts` renderer singleton is gone: the engine hands its `Application` to `createRenderer`. |
-| `tools/Tool.ts` + `tools/MultiSelectTool.ts` | 294 | `engine/tools/SelectTool.ts` | done — click / drag / rubber-band / resize-handle state machine, emitting intents instead of calling muse actions. |
-| `tools/DrawTool.ts`, `tools/EraseTool.ts` | 81 | `plugins/canvas-draw` | open |
-| `utils/geometry.ts`, `easing.ts`, `ids.ts`, `view.ts` | 83 | `engine/utils/*` | done — `view.ts` became `utils/camera.ts`; `zoomAt` returns a new camera rather than mutating, so a reactive store can assign it. |
-| `objects/LinkRenderer.ts` | 226 | `plugins/canvas/src/objects/EdgeRenderer.ts` | done — arrow + label + direction, endpoints read from the live renderers each frame so a line follows a dragged card. |
-| `objects/StrokeRenderer.ts` | 86 | `plugins/canvas-draw` | open |
-| `objects/MediaRenderer.ts` | 457 | `plugins/canvas-media` | done as a rewrite. Animated GIFs use `pixi.js/gif`, which ships inside `pixi.js@8.14.2` — no new dependency. Video is a muted looping `HTMLVideoElement` textured into a sprite; a pdf is a labelled card that opens in a tab. |
-| `objects/BookmarkRenderer.ts` | 288 | `plugins/canvas-links` | done as a rewrite. Image and favicon are both asset ids, never urls. |
-| `objects/NoteRenderer.ts` | 201 | `plugins/canvas-notes` | open |
-| `utils/markdownRenderer.ts` | 364 | `engine/utils/textTexture.ts` | done as a rewrite, not a port: runs → wrap → bake to one texture, with an LRU cache and zoom-stepped bake resolution. Markdown block parsing was dropped; nothing on the board needs it yet. Bring the block parser across with `canvas-notes`. |
-| `objects/DocumentRenderer.ts`, `objects/FolderRenderer.ts`, `objects/rendererFactory.ts` | — | not ported | documents and folders are out of scope; the factory is replaced by the registry. |
+| muse file                                                                                | LOC | lands as                                     | status                                                                                                                                                                                                                                          |
+| ---------------------------------------------------------------------------------------- | --- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `core/CanvasRenderer.ts`                                                                 | 401 | `plugins/canvas/src/engine/CanvasEngine.ts`  | done — tick → `syncObjects`/`syncCamera`, pointer/pinch/middle-drag pan, wheel zoom, keyboard. `visibleObjects()` folder scoping, `ui.*` reads and direct `actions` calls all replaced by `EngineHost`.                                         |
+| `core/BaseObjectRenderer.ts`                                                             | 121 | `engine/ObjectRenderer.ts`                   | done — spawn/exit animation, world-space hit test, bounds.                                                                                                                                                                                      |
+| `core/types.ts`, `core/pixi.ts`                                                          | 44  | contracts in `@nib-ui/ui-contracts`          | done — `ToolId` is an open string; kinds are registered, not enumerated. The `pixi.ts` renderer singleton is gone: the engine hands its `Application` to `createRenderer`.                                                                      |
+| `tools/Tool.ts` + `tools/MultiSelectTool.ts`                                             | 294 | `engine/tools/SelectTool.ts`                 | done — click / drag / rubber-band / resize-handle state machine, emitting intents instead of calling muse actions.                                                                                                                              |
+| `tools/DrawTool.ts`, `tools/EraseTool.ts`                                                | 81  | `plugins/canvas-draw`                        | open                                                                                                                                                                                                                                            |
+| `utils/geometry.ts`, `easing.ts`, `ids.ts`, `view.ts`                                    | 83  | `engine/utils/*`                             | done — `view.ts` became `utils/camera.ts`; `zoomAt` returns a new camera rather than mutating, so a reactive store can assign it.                                                                                                               |
+| `objects/LinkRenderer.ts`                                                                | 226 | `plugins/canvas/src/objects/EdgeRenderer.ts` | done — arrow + label + direction, endpoints read from the live renderers each frame so a line follows a dragged card.                                                                                                                           |
+| `objects/StrokeRenderer.ts`                                                              | 86  | `plugins/canvas-draw`                        | open                                                                                                                                                                                                                                            |
+| `objects/MediaRenderer.ts`                                                               | 457 | `plugins/canvas-media`                       | done as a rewrite. Animated GIFs use `pixi.js/gif`, which ships inside `pixi.js@8.14.2` — no new dependency. Video is a muted looping `HTMLVideoElement` textured into a sprite; a pdf is a labelled card that opens in a tab.                  |
+| `objects/BookmarkRenderer.ts`                                                            | 288 | `plugins/canvas-links`                       | done as a rewrite. Image and favicon are both asset ids, never urls.                                                                                                                                                                            |
+| `objects/NoteRenderer.ts`                                                                | 201 | `plugins/canvas-notes`                       | open                                                                                                                                                                                                                                            |
+| `utils/markdownRenderer.ts`                                                              | 364 | `engine/utils/textTexture.ts`                | done as a rewrite, not a port: runs → wrap → bake to one texture, with an LRU cache and zoom-stepped bake resolution. Markdown block parsing was dropped; nothing on the board needs it yet. Bring the block parser across with `canvas-notes`. |
+| `objects/DocumentRenderer.ts`, `objects/FolderRenderer.ts`, `objects/rendererFactory.ts` | —   | not ported                                   | documents and folders are out of scope; the factory is replaced by the registry.                                                                                                                                                                |
 
 Muse's paste/drop pipeline (`src/routes/+page.svelte:463-640`) is the model for the paste
 handlers, but its network calls move to the server (§6). Ordered, first claim wins: media is
@@ -104,7 +104,7 @@ inside a card) in `engine/resize.ts`, and `ConnectableRenderer` (`portAt` / `hov
 `portAnchor`) in `engine/ports.ts`. The connect gesture ends at `CanvasEngineApi.connect(fromId,
 toId, at)` — an intent, so the tool never learns what the objects on either end are.
 
-Handles are the four corners only, drawn as circles *inside* the object and faded in by how close
+Handles are the four corners only, drawn as circles _inside_ the object and faded in by how close
 the pointer is (`handleOpacity`). Mid-edge handles are gone: they collided with the ports, and
 handles hung outside an object collide with whatever it sits next to. Selection is a ring drawn
 outside the card at a constant width on screen, not a thicker border — a border that grows with
@@ -114,8 +114,8 @@ the selection reads as the card changing size.
 
 ```ts
 interface BoardDoc {
-  version: 1;      // schema version, bumped on shape changes
-  rev: number;     // monotonic revision, incremented on every write; guards stale PUTs
+  version: 1; // schema version, bumped on shape changes
+  rev: number; // monotonic revision, incremented on every write; guards stale PUTs
   cwd: string;
   objects: CanvasObject[];
 }
@@ -146,14 +146,14 @@ $XDG_DATA_HOME/nib-ui/
   boards/<sha256(cwd)>.json
 ```
 
-| route | status |
-|---|---|
-| `GET  /api/boards?cwd=` | done |
-| `PUT  /api/boards?cwd=` | done — 409 unless `rev` is exactly current + 1 |
+| route                          | status                                                                                                        |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `GET  /api/boards?cwd=`        | done                                                                                                          |
+| `PUT  /api/boards?cwd=`        | done — 409 unless `rev` is exactly current + 1                                                                |
 | `GET  /api/boards/events?cwd=` | done — `Last-Event-ID` = `rev`, sends the current board on connect so a window that missed a write catches up |
-| `POST /api/assets` | done — 413 over the cap, 415 for a type the bytes are not |
-| `GET  /api/assets/[id]` | done — immutable cache, `nosniff`, `default-src 'none'; sandbox` |
-| `POST /api/link-preview` | done — 400 for a refused url, 502 for a scrape that failed |
+| `POST /api/assets`             | done — 413 over the cap, 415 for a type the bytes are not                                                     |
+| `GET  /api/assets/[id]`        | done — immutable cache, `nosniff`, `default-src 'none'; sandbox`                                              |
+| `POST /api/link-preview`       | done — 400 for a refused url, 502 for a scrape that failed                                                    |
 
 Notes on what landed: the migration leaves a name already present in the XDG directory alone
 (the new location is authoritative, so a re-run is a no-op) and removes the legacy directory
@@ -233,7 +233,7 @@ Written:
   store could have minted never reaching the filesystem.
 - link preview: a table-driven SSRF guard (loopback, `10/8`, `172.16/12`, `192.168/16`,
   link-local, CGNAT, benchmarking, multicast, broadcast, `::1`, `fd00::`, `fe80::`, v4-mapped
-  loopback, and a host that resolves to one public *and* one private record), the head scanner
+  loopback, and a host that resolves to one public _and_ one private record), the head scanner
   against fixture HTML (OG wins, twitter fallback, `<title>` fallback, none, relative favicon,
   entities, unquoted attributes, body tags ignored), relative-url resolution, and the redirect
   hops — followed, refused before a private hop is requested, and given up on in a loop.

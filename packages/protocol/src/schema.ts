@@ -47,11 +47,7 @@ export interface Asset extends Placed {
   annotations: AssetAnnotation[];
 }
 
-export type AssetPayload =
-  | BlobPayload
-  | NotePayload
-  | LinkPayload
-  | StrokePayload;
+export type AssetPayload = BlobPayload | NotePayload | LinkPayload | StrokePayload;
 
 /** Bytes live in the blob store, content-addressed; only the reference is stored. */
 export interface BlobPayload {

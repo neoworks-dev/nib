@@ -43,32 +43,32 @@ rules live in `~/.config/nib/desktop-agent.json` and are edited in Settings.
 
 ## Layout
 
-| Path                            | Purpose                                                        |
-| ------------------------------- | -------------------------------------------------------------- |
-| `packages/kernel`               | Plugin microkernel: scopes, services, events, effects, forks   |
-| `packages/protocol`             | Normalized event/command schemas (zod) + `reduceSession`       |
-| `packages/ui-contracts`         | Frontend service contracts shared by the app and every plugin  |
-| `packages/file-icons`           | Material icon subset + extension lookup, shared by app/plugins |
-| `apps/web`                      | SvelteKit app: server harness host + browser kernel instance   |
-| `plugins/*`                     | Sidebar, board, renderers, statusbar, trajectory, git, viewers  |
+| Path                    | Purpose                                                        |
+| ----------------------- | -------------------------------------------------------------- |
+| `packages/kernel`       | Plugin microkernel: scopes, services, events, effects, forks   |
+| `packages/protocol`     | Normalized event/command schemas (zod) + `reduceSession`       |
+| `packages/ui-contracts` | Frontend service contracts shared by the app and every plugin  |
+| `packages/file-icons`   | Material icon subset + extension lookup, shared by app/plugins |
+| `apps/web`              | SvelteKit app: server harness host + browser kernel instance   |
+| `plugins/*`             | Sidebar, board, renderers, statusbar, trajectory, git, viewers |
 
 `packages/ui-contracts` exists so plugin packages never import from `apps/web`: it holds the
 renderer/slot/command/session service interfaces plus the `@nib-ui/kernel` module augmentation.
 
 ## Extension points
 
-| Service     | Contributed by                            | Used for                                        |
-| ----------- | ----------------------------------------- | ----------------------------------------------- |
-| `harnesses` | server adapters (`claude-code`)           | `createSession`/`resumeSession` per harness      |
-| `workspace` | `workspace` (server)                      | cwd autocomplete + `@` file search over the cwd  |
-| `git`       | `git` (server)                            | status, diff, stage, commit for the session cwd  |
-| `renderers` | `core-renderers`, `renderer-diff`, `renderer-terminal`, `task-progress` | block rendering by `(kind, toolName)`, plus interactive permission cards by `toolName` |
-| `slots`     | `sidebar`, `cost-tracker`, `trajectory-inspector`, `git-panel`, `file-browser`, `file-viewer` | the left rail, statusbar, headers, composer and per-message footers |
-| `boards`    | `boards` (server)                         | one board per directory, plus the project index the rail reads |
-| `canvas`    | `canvas`                                  | board object kinds, tools, paste/drop handlers, `openBoard`     |
-| `panes`     | `git-panel`, `file-browser`, `file-viewer`, `task-progress`, `web-browser` | tiles in the main area, opened and moved by the user |
-| `commands`  | `trajectory-inspector`, `git-panel`, dev commands | command palette (⌘/Ctrl+K)              |
-| `fileViewer`| `file-viewer`                             | `open(sessionId, path)` for any other plugin     |
+| Service      | Contributed by                                                                                | Used for                                                                               |
+| ------------ | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `harnesses`  | server adapters (`claude-code`)                                                               | `createSession`/`resumeSession` per harness                                            |
+| `workspace`  | `workspace` (server)                                                                          | cwd autocomplete + `@` file search over the cwd                                        |
+| `git`        | `git` (server)                                                                                | status, diff, stage, commit for the session cwd                                        |
+| `renderers`  | `core-renderers`, `renderer-diff`, `renderer-terminal`, `task-progress`                       | block rendering by `(kind, toolName)`, plus interactive permission cards by `toolName` |
+| `slots`      | `sidebar`, `cost-tracker`, `trajectory-inspector`, `git-panel`, `file-browser`, `file-viewer` | the left rail, statusbar, headers, composer and per-message footers                    |
+| `boards`     | `boards` (server)                                                                             | one board per directory, plus the project index the rail reads                         |
+| `canvas`     | `canvas`                                                                                      | board object kinds, tools, paste/drop handlers, `openBoard`                            |
+| `panes`      | `git-panel`, `file-browser`, `file-viewer`, `task-progress`, `web-browser`                    | tiles in the main area, opened and moved by the user                                   |
+| `commands`   | `trajectory-inspector`, `git-panel`, dev commands                                             | command palette (⌘/Ctrl+K)                                                             |
+| `fileViewer` | `file-viewer`                                                                                 | `open(sessionId, path)` for any other plugin                                           |
 
 Every registration goes through `ctx.effect(() => disposer)`, so disposing a plugin removes its
 renderers, slot entries, listeners and commands. `Toggle plugin: <name>` in the palette exercises it.

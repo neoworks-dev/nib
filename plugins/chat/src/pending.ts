@@ -5,18 +5,18 @@
  * the first prompt starts the session, rather than sent as commands.
  */
 export interface PendingComposer {
-	/** Draft key while there is no session id to key by. */
-	id: string;
-	harnessId: string | null;
-	model: string | null;
-	permissionMode: string | null;
-	effort: string | null;
-	/** True while the session is being created, so the send button stops. */
-	busy?: boolean;
-	setHarness(harnessId: string): void;
-	setModel(model: string): void;
-	setPermissionMode(mode: string): void;
-	setEffort(effort: string): void;
-	/** Sends the first prompt, which is what creates the session. */
-	start(text: string): Promise<void>;
+  /** Draft key while there is no session id to key by. */
+  id: string;
+  harnessId: string | null;
+  model: string | null;
+  permissionMode: string | null;
+  effort: string | null;
+  /** True while the session is being created, so the send button stops. */
+  busy?: boolean;
+  setHarness(harnessId: string): void;
+  setModel(model: string): void;
+  setPermissionMode(mode: string): void;
+  setEffort(effort: string): void;
+  /** Sends the first prompt, which is what creates the session. */
+  start(text: string): Promise<void>;
 }

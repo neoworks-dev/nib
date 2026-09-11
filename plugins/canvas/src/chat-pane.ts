@@ -1,4 +1,4 @@
-export const chatPaneId = 'chat';
+export const chatPaneId = "chat";
 
 /**
  * Which conversation a chat pane is showing. The card is the identity: it keeps
@@ -13,17 +13,17 @@ export const chatPaneId = 'chat';
  * `Record<string, unknown>`, which only a type gets an index signature for.
  */
 export type ChatPaneParams = {
-	workstreamId?: string;
-	sessionId?: string;
+  workstreamId?: string;
+  sessionId?: string;
 };
 
 /** A workstream, as much of one as the params need. */
 export interface ChatPaneTarget {
-	id: string;
-	sessionId?: string;
+  id: string;
+  sessionId?: string;
 }
 
 export function paramsForWorkstream(workstream: ChatPaneTarget): ChatPaneParams {
-	if (!workstream.sessionId) return { workstreamId: workstream.id };
-	return { workstreamId: workstream.id, sessionId: workstream.sessionId };
+  if (!workstream.sessionId) return { workstreamId: workstream.id };
+  return { workstreamId: workstream.id, sessionId: workstream.sessionId };
 }

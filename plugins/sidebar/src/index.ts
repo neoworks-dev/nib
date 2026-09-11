@@ -1,6 +1,6 @@
-import type { Plugin } from '@nib-ui/kernel';
-import Sidebar from './Sidebar.svelte';
-import { sidebarState } from './state.svelte';
+import type { Plugin } from "@nib-ui/kernel";
+import Sidebar from "./Sidebar.svelte";
+import { sidebarState } from "./state.svelte";
 
 /**
  * The left rail: the projects on disk and, under each, the workstreams that
@@ -8,22 +8,22 @@ import { sidebarState } from './state.svelte';
  * into the shell, so the shell reserves the space and draws nothing in it.
  */
 export const sidebarPlugin: Plugin = {
-	name: 'sidebar',
-	inject: ['slots', 'sessions', 'transport', 'canvas'],
-	apply(ctx) {
-		sidebarState.attach({
-			transport: ctx.require('transport'),
-			sessions: ctx.require('sessions'),
-			canvas: ctx.require('canvas'),
-		});
+  name: "sidebar",
+  inject: ["slots", "sessions", "transport", "canvas"],
+  apply(ctx) {
+    sidebarState.attach({
+      transport: ctx.require("transport"),
+      sessions: ctx.require("sessions"),
+      canvas: ctx.require("canvas"),
+    });
 
-		ctx.effect(() => ctx.require('slots').register('app.sidebar', { component: Sidebar }));
-		ctx.effect(() => sidebarState.startPolling());
-		ctx.effect(() => () => sidebarState.detach());
+    ctx.effect(() => ctx.require("slots").register("app.sidebar", { component: Sidebar }));
+    ctx.effect(() => sidebarState.startPolling());
+    ctx.effect(() => () => sidebarState.detach());
 
-		void sidebarState.refresh().then(() => sidebarState.restoreLastProject());
-	},
+    void sidebarState.refresh().then(() => sidebarState.restoreLastProject());
+  },
 };
 
-export { projectRows, type ProjectRow, type WorkstreamRow } from './projects';
-export { workspaceIconUrl, workspaceInitials } from './workspace-badge';
+export { type ProjectRow, projectRows, type WorkstreamRow } from "./projects";
+export { workspaceIconUrl, workspaceInitials } from "./workspace-badge";

@@ -1,38 +1,47 @@
 {
-	"name": "nib-ui",
-	"devDependencies": {
-		"@biomejs/biome": "2.5.11",
-		"@esbuild/linux-x64": "^0.28.2",
-		"@rollup/rollup-linux-x64-gnu": "^4.62.5",
-		"@tailwindcss/oxide-linux-x64-gnu": "^4.3.3",
-		"@types/bun": "^1.4.0",
-		"electron": "^43.4.1",
-		"electron-builder": "^26.15.3",
-		"lightningcss-linux-x64-gnu": "^1.33.0",
-		"prettier": "^3.9.6",
-		"prettier-plugin-svelte": "^4.1.1",
-		"typescript": "^5.9.3"
-	},
-	"private": true,
-	"scripts": {
-		"install:lean": "bun install --omit optional",
-		"dev": "bun --filter @nib-ui/desktop dev",
-		"dev:web": "bun --filter @nib-ui/web dev",
-		"build": "bun --filter @nib-ui/web build",
-		"typecheck": "bun --filter '*' typecheck",
-		"lint": "biome check --reporter=concise",
-		"lint:fix": "biome check --write --reporter=concise",
-		"format:svelte": "prettier --check '**/*.svelte'",
-		"format:svelte:fix": "prettier --write '**/*.svelte'",
-		"check:svelte": "bun --filter @nib-ui/web typecheck",
-		"test": "bun test",
-		"smoke": "bun apps/web/scripts/smoke.ts"
-	},
-	"trustedDependencies": ["electron"],
-	"type": "module",
-	"workspaces": [
-		"packages/*",
-		"apps/*",
-		"plugins/*"
-	]
+  "name": "nib-ui",
+  "devDependencies": {
+    "@esbuild/linux-x64": "^0.28.2",
+    "@rollup/rollup-linux-x64-gnu": "^4.62.5",
+    "@tailwindcss/oxide-linux-x64-gnu": "^4.3.3",
+    "@types/bun": "^1.4.0",
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3",
+    "eslint": "^10.9.1",
+    "eslint-plugin-svelte": "^3.23.0",
+    "lightningcss-linux-x64-gnu": "^1.33.0",
+    "oxlint": "^1.80.0",
+    "oxlint-tsgolint": "^7.0.2001",
+    "prettier": "^3.9.6",
+    "prettier-plugin-svelte": "^4.1.1",
+    "svelte-eslint-parser": "^1.8.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.68.0"
+  },
+  "private": true,
+  "scripts": {
+    "install:lean": "bun install --omit optional",
+    "dev": "bun --filter @nib-ui/desktop dev",
+    "dev:web": "bun --filter @nib-ui/web dev",
+    "build": "bun --filter @nib-ui/web build",
+    "typecheck": "bun --filter '*' typecheck",
+    "lint": "oxlint --type-aware; a=$?; eslint .; b=$?; exit $((a | b))",
+    "lint:fix": "oxlint --type-aware --fix; eslint . --fix",
+    "lint:ts": "oxlint --type-aware",
+    "lint:svelte": "eslint .",
+    "format": "prettier --check .",
+    "format:fix": "prettier --write .",
+    "check:svelte": "bun --filter @nib-ui/web typecheck",
+    "test": "bun test",
+    "smoke": "bun apps/web/scripts/smoke.ts"
+  },
+  "trustedDependencies": [
+    "electron"
+  ],
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "plugins/*"
+  ]
 }

@@ -77,16 +77,16 @@ Additive. `platform`, `version` and `pickDirectory` are untouched;
 
 ```ts
 export interface DesktopBridge {
-	platform: string;
-	version: string;
-	pickDirectory(startIn?: string): Promise<string | null>;
-	/** Absent in a build without the desktop-agent main-process module. */
-	desktopAgent?: DesktopAgentBridge;
+  platform: string;
+  version: string;
+  pickDirectory(startIn?: string): Promise<string | null>;
+  /** Absent in a build without the desktop-agent main-process module. */
+  desktopAgent?: DesktopAgentBridge;
 }
 ```
 
 `desktopBridge()` already answers `null` in a browser, so `desktopBridge()?.desktopAgent` is
-`undefined` in a browser *and* in an Electron build whose main-process module failed to load: one
+`undefined` in a browser _and_ in an Electron build whose main-process module failed to load: one
 nullish check, one disabled state, not two.
 
 ### `desktop-agent.ts` — what the bridge carries
@@ -98,7 +98,7 @@ nullish check, one disabled state, not two.
   because no Wayland compositor is obliged to answer any of them.
 - `CaptureRequest` — a discriminated union over `screen` / `window` / `region`.
 - `CaptureResult` — `assetId`, intrinsic `width`/`height`, `takenAt`, and the `ApplicationIdentity`
-  captured *at capture time*, not re-queried later when focus has moved on. Plus two fields the
+  captured _at capture time_, not re-queried later when focus has moved on. Plus two fields the
   first draft did not have: `layout`, the desktop-layout box the image covers, which is what lets a
   region found in the picture be pointed at on the screen; and `redacted`, how many password fields
   were blacked out before the file reached the store.
@@ -120,7 +120,7 @@ nullish check, one disabled state, not two.
   than one that is not there. It arrives in step 4; the pane reads a module-local state object
   until then, the way `plugins/settings` does.
 - `describeCapabilities` and `disabledCapabilities` live here rather than in the plugin. The
-  Electron main process is the side that holds `sidecarResolved` *and* the sidecar's report, so it
+  Electron main process is the side that holds `sidecarResolved` _and_ the sidecar's report, so it
   is the side that folds them, and it must not import a Svelte plugin package to do it. This is the
   one place a strategy is chosen, and `ui-contracts` already carries pure modules of this shape
   (`fuzzy.ts`, `display.ts`, `tool-summary.ts`).
@@ -131,10 +131,10 @@ Screenshots are `media` objects. `canvas-media` already parses, renders, resizes
 context-provides them, and a board written here opens on a host without this plugin because
 `media` is claimed by a plugin that is always loaded. Two kinds are genuinely new:
 
-| kind | carries | drawn as |
-|---|---|---|
+| kind              | carries                                                                 | drawn as                                                                             |
+| ----------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | `desktop-regions` | `captureObjectId`, `imageWidth`, `imageHeight`, `regions`, `detectedAt` | nothing of its own; the plugin's registered layer draws it over the capture it names |
-| `desktop-view` | `outputName`, `x`, `y`, `w`, `h` | a live desktop view; a placeholder card until the ScreenCast path lands (§5) |
+| `desktop-view`    | `outputName`, `x`, `y`, `w`, `h`                                        | a live desktop view; a placeholder card until the ScreenCast path lands (§5)         |
 
 `desktop-regions` holds no bytes and no image — it points at the `media` object by id, so removing
 the capture leaves an orphan the layer skips rather than a dangling image reference. Both get a
@@ -164,31 +164,34 @@ Envelope, versioned per message so a newer host talking to an older sidecar says
 misparsing:
 
 ```ts
-interface Envelope { v: 1; id: number }
+interface Envelope {
+  v: 1;
+  id: number;
+}
 ```
 
 `id` correlates a reply to its request; unsolicited events carry `id: 0`. The set:
 
-| direction | type | payload | reply |
-|---|---|---|---|
-| → | `hello` | `{ protocol: 1 }` | `capabilities` |
-| ← | `capabilities` | the strategy fields the sidecar can determine | — |
-| → | `overlay.show` | `OverlaySpec` | `ok` \| `err` |
-| → | `overlay.update` | `OverlaySpec`, replacing the live spec without a surface round trip | `ok` \| `err` |
-| → | `overlay.hide` | `{}` | `ok` |
-| → | `pointer.subscribe` | `{ hz }`, capped at 30 | `ok` \| `err`, then `pointer` events |
-| → | `pointer.unsubscribe` | `{}` | `ok` |
-| ← | `pointer` | `{ x, y, output }` in layout coordinates | — |
-| → | `capture` | `CaptureRequest` | `ok` with `{ path, width, height, output, takenAt, application }` \| `err` |
-| → | `focus.query` | `{}` | `ok` with `ApplicationIdentity` \| `err` |
-| → | `focus.subscribe` | `{}` | `ok`, then `focus` events |
-| ← | `focus` | `ApplicationIdentity` | — |
-| → | `accessibility.tree` | `{ appId?, maxNodes }` | `ok` with `DetectedRegion[]` \| `err` |
-| → | `shortcuts.bind` | `{ shortcuts: { id, trigger, description }[] }` | `ok` \| `err`, then `shortcut` events |
-| ← | `shortcut` | `{ id }` | — |
-| → | `shutdown` | `{}` | the process exits |
-| ← | `ok` / `err` | `{ payload }` / `{ code, message, retryable }` | — |
-| ← | `log` | `{ level, message }` | — |
+| direction | type                  | payload                                                             | reply                                                                      |
+| --------- | --------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| →         | `hello`               | `{ protocol: 1 }`                                                   | `capabilities`                                                             |
+| ←         | `capabilities`        | the strategy fields the sidecar can determine                       | —                                                                          |
+| →         | `overlay.show`        | `OverlaySpec`                                                       | `ok` \| `err`                                                              |
+| →         | `overlay.update`      | `OverlaySpec`, replacing the live spec without a surface round trip | `ok` \| `err`                                                              |
+| →         | `overlay.hide`        | `{}`                                                                | `ok`                                                                       |
+| →         | `pointer.subscribe`   | `{ hz }`, capped at 30                                              | `ok` \| `err`, then `pointer` events                                       |
+| →         | `pointer.unsubscribe` | `{}`                                                                | `ok`                                                                       |
+| ←         | `pointer`             | `{ x, y, output }` in layout coordinates                            | —                                                                          |
+| →         | `capture`             | `CaptureRequest`                                                    | `ok` with `{ path, width, height, output, takenAt, application }` \| `err` |
+| →         | `focus.query`         | `{}`                                                                | `ok` with `ApplicationIdentity` \| `err`                                   |
+| →         | `focus.subscribe`     | `{}`                                                                | `ok`, then `focus` events                                                  |
+| ←         | `focus`               | `ApplicationIdentity`                                               | —                                                                          |
+| →         | `accessibility.tree`  | `{ appId?, maxNodes }`                                              | `ok` with `DetectedRegion[]` \| `err`                                      |
+| →         | `shortcuts.bind`      | `{ shortcuts: { id, trigger, description }[] }`                     | `ok` \| `err`, then `shortcut` events                                      |
+| ←         | `shortcut`            | `{ id }`                                                            | —                                                                          |
+| →         | `shutdown`            | `{}`                                                                | the process exits                                                          |
+| ←         | `ok` / `err`          | `{ payload }` / `{ code, message, retryable }`                      | —                                                                          |
+| ←         | `log`                 | `{ level, message }`                                                | —                                                                          |
 
 `err.code` is a closed set — `unsupported`, `denied`, `timeout`, `not-found`, `internal` — so the
 host branches on the code and shows the message. A portal `denied` is a first-class answer, not an
@@ -240,10 +243,10 @@ frame; a 200×60 highlight is 48 KB. An overlay of zero regions allocates nothin
 `bun run build`, `bun run dev` or `electron-builder`:
 
 ```yaml
-  build:overlay:
-    desc: Build the Wayland overlay sidecar (requires a Rust toolchain and wayland-client)
-    dir: plugins/desktop-agent/sidecar
-    cmd: cargo build --release
+build:overlay:
+  desc: Build the Wayland overlay sidecar (requires a Rust toolchain and wayland-client)
+  dir: plugins/desktop-agent/sidecar
+  cmd: cargo build --release
 ```
 
 The README gains a line telling the user to `cargo install --path plugins/desktop-agent/sidecar`
@@ -257,7 +260,7 @@ working. The cost is that the overlay is not turnkey for a non-developer.
 
 **Overlay strategies**, behind one interface:
 
-- `layer-shell` — the sidecar. Selected when the binary resolves *and* the compositor advertises
+- `layer-shell` — the sidecar. Selected when the binary resolves _and_ the compositor advertises
   `zwlr_layer_shell_v1`. A GNOME session has no layer-shell, so it falls through here rather than
   failing at surface creation.
 - `always-on-top-window` — an Electron `BrowserWindow` with `transparent: true`, `frame: false`,
@@ -283,17 +286,17 @@ against `NIB_APP_URL` in development. One code path, different base — no new r
 round trip, and no assumption about whether `net.fetch` reaches a custom protocol handler from the
 main process.
 
-| mode | path | degrades to |
-|---|---|---|
-| full screen, no output named | portal `Screenshot` | `err denied` when the user refuses |
-| full screen, one output named | `grim -o <name>` | `err not-found` without `grim` |
-| region | `grim -g "<geom>"` | `err not-found` without `grim` |
-| window | compositor IPC for geometry (`hyprctl activewindow`, sway's `GET_TREE`) then `grim -g` | `err unsupported` with no IPC |
+| mode                          | path                                                                                   | degrades to                        |
+| ----------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------- |
+| full screen, no output named  | portal `Screenshot`                                                                    | `err denied` when the user refuses |
+| full screen, one output named | `grim -o <name>`                                                                       | `err not-found` without `grim`     |
+| region                        | `grim -g "<geom>"`                                                                     | `err not-found` without `grim`     |
+| window                        | compositor IPC for geometry (`hyprctl activewindow`, sway's `GET_TREE`) then `grim -g` | `err unsupported` with no IPC      |
 
 `ashpd` is **not** used. The portal's request pattern is one method call and one signal, and
 writing it out over the `zbus` connection already open for the capability probe avoids pulling an
 async runtime into a process whose other needs are a blocking socket read and a Wayland queue. The
-`Request` signal is subscribed to *before* the call, on the object path the portal derives from our
+`Request` signal is subscribed to _before_ the call, on the object path the portal derives from our
 unique name and handle token — subscribing after would race a portal that answers immediately,
 which one with a stored permission does.
 
@@ -329,11 +332,11 @@ deferred to §12 step 5, and `desktop-view` ships as a placeholder card until th
 
 No global cursor API exists on Wayland. Three real sources:
 
-| source | latency | permission | availability |
-|---|---|---|---|
-| compositor IPC — Hyprland socket, sway IPC | socket round trip, ~0.2 ms | none | wlroots-adjacent compositors |
-| the overlay's own `wl_pointer` | frame-accurate | none | **only while the overlay holds pointer focus**, which a click-through surface never does |
-| `org.freedesktop.portal.RemoteDesktop` / libei | frame-accurate | a consent dialog for *input injection* | not implemented by this host's portal (§7) |
+| source                                         | latency                    | permission                             | availability                                                                             |
+| ---------------------------------------------- | -------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------- |
+| compositor IPC — Hyprland socket, sway IPC     | socket round trip, ~0.2 ms | none                                   | wlroots-adjacent compositors                                                             |
+| the overlay's own `wl_pointer`                 | frame-accurate             | none                                   | **only while the overlay holds pointer focus**, which a click-through surface never does |
+| `org.freedesktop.portal.RemoteDesktop` / libei | frame-accurate             | a consent dialog for _input injection_ | not implemented by this host's portal (§7)                                               |
 
 **Chosen: compositor IPC, polled by the sidecar, capped at 30 Hz**, over a socket the sidecar holds
 open rather than a `hyprctl` process per sample. `pointer.subscribe` answers
@@ -350,8 +353,8 @@ Two detectors behind one interface, composed rather than chosen:
 
 ```ts
 export interface RegionDetector {
-	readonly id: string;
-	detect(input: DetectorInput): Promise<DetectedRegion[]>;
+  readonly id: string;
+  detect(input: DetectorInput): Promise<DetectedRegion[]>;
 }
 ```
 
@@ -368,6 +371,7 @@ export interface RegionDetector {
   The walk is breadth-first from the window AT-SPI marks `ACTIVE`, two levels down from the
   registry root, with a node budget. Depth-first from the root would spend seconds in one
   application's tree before reaching the one in front.
+
 - **`PixelDetector`** — pure TypeScript in a `Worker`: greyscale → Sobel → adaptive threshold →
   morphological close → connected components → bounding boxes → merge → filter by area and aspect.
   Every stage a pure function over a `Uint8ClampedArray`, every stage testable against a synthetic
@@ -406,7 +410,7 @@ segmentation, and a VAD that clips the end of a sentence is worse than a button.
 process, which Electron currently does not install.
 
 One correction to the brief, since it matters if this is revived: **whisper.cpp reads GGML `.bin`
-models**. GGUF is llama.cpp's container, and a GGUF *audio* model means llama.cpp's multimodal path
+models**. GGUF is llama.cpp's container, and a GGUF _audio_ model means llama.cpp's multimodal path
 — heavier, less stable, and worse at transcription.
 
 ### D6. Actuation boundary — SECURITY GATE
@@ -437,7 +441,7 @@ If actuation is ever approved, it needs all of the following, none optional:
 2. **A visible armed indicator** on a surface the agent cannot draw over — the app's own chrome and
    a distinct overlay border, not a toast.
 3. **A kill switch** that is always live: a global shortcut through
-   `org.freedesktop.portal.GlobalShortcuts` *and* a click target in the pane, both of which drop
+   `org.freedesktop.portal.GlobalShortcuts` _and_ a click target in the pane, both of which drop
    the RemoteDesktop session rather than set a flag.
 4. **An audit log** of every injected event — timestamp, type, coordinates, target application, and
    the session and message that asked for it — appended to
@@ -469,7 +473,7 @@ A desktop screenshot is the user's whole screen leaving the machine.
    the user runs "Send to harness", which opens a sheet showing the exact image, the exact region
    list and the exact prompt text. That sheet is the last point of refusal and is not skippable.
 3. **Per-application allowlist.** A `deny` rule blocks capture while that application has focus,
-   evaluated *before* the capture request. An application with no rule is unknown, and unknown is
+   evaluated _before_ the capture request. An application with no rule is unknown, and unknown is
    `ask`.
 4. **Redaction.** Where AT-SPI gives a node the role `password text`, its extent is filled with a
    flat block in the sidecar, on the bytes, before the path is reported — so the redacted version
@@ -478,19 +482,20 @@ A desktop screenshot is the user's whole screen leaving the machine.
    protection.
 
    **A correction to the brief, and it matters here.** The brief asked for AT-SPI's `SENSITIVE`
-   state as a second signal. In AT-SPI `SENSITIVE` means the widget is *enabled* — it is the
+   state as a second signal. In AT-SPI `SENSITIVE` means the widget is _enabled_ — it is the
    opposite of greyed out, not a marker for secret content. Treating it as "holds a secret" would
    redact almost every control on the screen and teach the user that the black blocks mean nothing.
    The role is the whole test.
+
 5. **On disk versus in memory.**
 
-   | held | where | lifetime |
-   |---|---|---|
-   | capture PNG | `$XDG_DATA_HOME/nib-ui/assets/`, the existing store | until the board object is removed; assets are content-addressed and shared |
-   | portal temp PNG | `$XDG_RUNTIME_DIR` | deleted by the main process immediately after upload |
-   | screencast restore token | `$XDG_DATA_HOME/nib-ui/desktop/screencast-token`, `0600` | until the portal rejects it |
-   | accessibility tree | main-process memory | one request |
-   | armed state, pointer samples | renderer memory | never written |
+   | held                         | where                                                    | lifetime                                                                   |
+   | ---------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------- |
+   | capture PNG                  | `$XDG_DATA_HOME/nib-ui/assets/`, the existing store      | until the board object is removed; assets are content-addressed and shared |
+   | portal temp PNG              | `$XDG_RUNTIME_DIR`                                       | deleted by the main process immediately after upload                       |
+   | screencast restore token     | `$XDG_DATA_HOME/nib-ui/desktop/screencast-token`, `0600` | until the portal rejects it                                                |
+   | accessibility tree           | main-process memory                                      | one request                                                                |
+   | armed state, pointer samples | renderer memory                                          | never written                                                              |
 
    Nothing goes in `localStorage`. Nothing goes in `BoardDoc` but ids, geometry and text.
 
@@ -512,10 +517,10 @@ merge-and-keep-unknown-keys discipline so an older build never eats a newer buil
       "model": "claude-opus-5",
       "promptPrefix": "You are helping inside Blender. …",
       "options": { "mcpServers": { "blender": { "command": "blender-mcp" } } },
-      "skill": "blender-modelling"
+      "skill": "blender-modelling",
     },
-    { "match": { "appId": "org.keepassxc.KeePassXC" }, "policy": "deny" }
-  ]
+    { "match": { "appId": "org.keepassxc.KeePassXC" }, "policy": "deny" },
+  ],
 }
 ```
 
@@ -560,7 +565,7 @@ application shown live.
    link the capture to it with a `context` edge — which is what `canvasState.assetCard` does for a
    picture today.
 4. `sessions.create({ harnessId, cwd: <the open board's cwd>, options: { ...launchOptions,
-   ...rule.options } })`, then `sessions.sendTo(sessionId, prompt, attachments)`.
+...rule.options } })`, then `sessions.sendTo(sessionId, prompt, attachments)`.
 5. The prompt is `promptPrefix` + the user's text + a rendered region list (`label — x,y,w,h`), and
    the attachment is the capture's `MessageAttachment`, resolved to a `SessionAttachment` with a
    real `path` by the machinery that already exists, so a non-multimodal adapter gets a file.
@@ -620,7 +625,7 @@ path; it is the same "open a project first" state the rest of the app has.
 - **`desktopCapturer` on Wayland goes through the portal**, so live view inherits the portal's
   picker and permission lifetime, neither of which we control. That is why it is a separate, later
   step rather than part of the capture story.
-- **AT-SPI is opt-in for the *target* application.** GTK and Qt apps generally expose it; Electron
+- **AT-SPI is opt-in for the _target_ application.** GTK and Qt apps generally expose it; Electron
   apps need `--force-renderer-accessibility`; games and Blender expose nothing useful. The pixel
   detector is not a last resort, it is the common case for the applications this is most
   interesting for.
@@ -661,14 +666,14 @@ path; it is the same "open a project first" state the rest of the app has.
 
 **Rust crates, sidecar only, never installed by `bun install`:**
 
-| crate | why |
-|---|---|
-| `serde_json` | the wire protocol's other end; messages are built and read as `Value`, so no `serde` derive |
-| `wayland-client` | registry enumeration, and the protocol binding the overlay is built on |
-| `smithay-client-toolkit` | `wlr-layer-shell` surfaces, output geometry and shm pools; the reason the sidecar exists |
-| `tiny-skia` | software rasteriser for the highlight and pointer surfaces; no GPU context needed |
-| `png` | decode and re-encode a capture, to black out a password field before it reaches disk |
-| `zbus` | the desktop portal and the accessibility bus, both spoken directly |
+| crate                    | why                                                                                         |
+| ------------------------ | ------------------------------------------------------------------------------------------- |
+| `serde_json`             | the wire protocol's other end; messages are built and read as `Value`, so no `serde` derive |
+| `wayland-client`         | registry enumeration, and the protocol binding the overlay is built on                      |
+| `smithay-client-toolkit` | `wlr-layer-shell` surfaces, output geometry and shm pools; the reason the sidecar exists    |
+| `tiny-skia`              | software rasteriser for the highlight and pointer surfaces; no GPU context needed           |
+| `png`                    | decode and re-encode a capture, to black out a password field before it reaches disk        |
+| `zbus`                   | the desktop portal and the accessibility bus, both spoken directly                          |
 
 Two crates the first draft proposed are **not** used. `ashpd` would wrap a portal request pattern
 that is one call and one signal, at the cost of an async runtime. `atspi` would wrap four D-Bus

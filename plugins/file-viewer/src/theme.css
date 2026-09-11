@@ -2,27 +2,27 @@
 .hljs-surface .hljs-keyword,
 .hljs-surface .hljs-selector-tag,
 .hljs-surface .hljs-literal {
-	color: var(--ctx-violet);
+  color: var(--ctx-violet);
 }
 .hljs-surface .hljs-string,
 .hljs-surface .hljs-attr,
 .hljs-surface .hljs-regexp {
-	color: var(--ctx-green);
+  color: var(--ctx-green);
 }
 .hljs-surface .hljs-number,
 .hljs-surface .hljs-built_in {
-	color: var(--ctx-blue);
+  color: var(--ctx-blue);
 }
 .hljs-surface .hljs-title,
 .hljs-surface .hljs-section {
-	color: var(--ctx-amber);
+  color: var(--ctx-amber);
 }
 .hljs-surface .hljs-comment,
 .hljs-surface .hljs-quote {
-	color: var(--text-faint);
-	font-style: italic;
+  color: var(--text-faint);
+  font-style: italic;
 }
 .hljs-surface .hljs-type,
 .hljs-surface .hljs-meta {
-	color: var(--ctx-red);
+  color: var(--ctx-red);
 }

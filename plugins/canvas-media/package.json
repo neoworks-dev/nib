@@ -1,26 +1,26 @@
 {
-	"name": "@nib-ui/plugin-canvas-media",
-	"version": "0.0.0",
-	"private": true,
-	"type": "module",
-	"main": "./src/index.ts",
-	"types": "./src/index.ts",
-	"svelte": "./src/index.ts",
-	"exports": {
-		".": {
-			"svelte": "./src/index.ts",
-			"types": "./src/index.ts",
-			"default": "./src/index.ts"
-		},
-		"./media": {
-			"types": "./src/media.ts",
-			"default": "./src/media.ts"
-		}
-	},
-	"dependencies": {
-		"@nib-ui/kernel": "workspace:*",
-		"@nib-ui/plugin-canvas": "workspace:*",
-		"@nib-ui/ui-contracts": "workspace:*",
-		"pixi.js": "8.14.2"
-	}
+  "name": "@nib-ui/plugin-canvas-media",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "svelte": "./src/index.ts",
+  "exports": {
+    ".": {
+      "svelte": "./src/index.ts",
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./media": {
+      "types": "./src/media.ts",
+      "default": "./src/media.ts"
+    }
+  },
+  "dependencies": {
+    "@nib-ui/kernel": "workspace:*",
+    "@nib-ui/plugin-canvas": "workspace:*",
+    "@nib-ui/ui-contracts": "workspace:*",
+    "pixi.js": "8.14.2"
+  }
 }

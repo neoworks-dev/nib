@@ -1,12 +1,12 @@
 /** A passage the user highlighted in the transcript and staged for the next prompt. */
 export interface StagedAnnotation {
-	id: string;
-	sessionId: string;
-	/** The turn the selection anchor sat in — a selection spanning turns keeps the anchor's. */
-	messageId: string;
-	text: string;
-	/** What the user wrote about the passage; a bare quote carries none. */
-	note?: string;
+  id: string;
+  sessionId: string;
+  /** The turn the selection anchor sat in — a selection spanning turns keeps the anchor's. */
+  messageId: string;
+  text: string;
+  /** What the user wrote about the passage; a bare quote carries none. */
+  note?: string;
 }
 
 /**
@@ -15,15 +15,15 @@ export interface StagedAnnotation {
  * only whitespace is dropped instead, leaving the plain quote.
  */
 export function createAnnotation(
-	sessionId: string,
-	messageId: string,
-	selectedText: string,
-	comment = '',
+  sessionId: string,
+  messageId: string,
+  selectedText: string,
+  comment = "",
 ): StagedAnnotation | null {
-	const text = selectedText.trim();
-	if (text.length === 0) return null;
-	const note = comment.trim();
-	return { id: crypto.randomUUID(), sessionId, messageId, text, ...(note.length > 0 && { note }) };
+  const text = selectedText.trim();
+  if (text.length === 0) return null;
+  const note = comment.trim();
+  return { id: crypto.randomUUID(), sessionId, messageId, text, ...(note.length > 0 && { note }) };
 }
 
 /**
@@ -33,18 +33,18 @@ export function createAnnotation(
  * lazily continued into the blockquote.
  */
 export function composeAnnotatedMessage(annotations: StagedAnnotation[], draft: string): string {
-	const prompt = draft.trim();
-	if (annotations.length === 0) return prompt;
+  const prompt = draft.trim();
+  if (annotations.length === 0) return prompt;
 
-	const quotes = annotations.map((annotation) => {
-		const quote = annotation.text
-			.split('\n')
-			// A bare `>` keeps blank lines inside the quote without trailing whitespace.
-			.map((line) => (line.trim().length === 0 ? '>' : `> ${line}`))
-			.join('\n');
-		return annotation.note ? `${quote}\n\n${annotation.note}` : quote;
-	});
+  const quotes = annotations.map((annotation) => {
+    const quote = annotation.text
+      .split("\n")
+      // A bare `>` keeps blank lines inside the quote without trailing whitespace.
+      .map((line) => (line.trim().length === 0 ? ">" : `> ${line}`))
+      .join("\n");
+    return annotation.note ? `${quote}\n\n${annotation.note}` : quote;
+  });
 
-	const quoted = quotes.join('\n\n');
-	return prompt.length === 0 ? quoted : `${quoted}\n\n${prompt}`;
+  const quoted = quotes.join("\n\n");
+  return prompt.length === 0 ? quoted : `${quoted}\n\n${prompt}`;
 }

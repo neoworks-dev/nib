@@ -9,7 +9,7 @@ you will produce a design document first and stop for approval before implementa
 ## Goal
 
 A second top-level workspace surface, peer to the canvas board, that lets a harness
-session observe and assist with the *host desktop* rather than a repo:
+session observe and assist with the _host desktop_ rather than a repo:
 
 - Capture screenshots (full screen, single window, region) and land them on the canvas
   as first-class board objects.

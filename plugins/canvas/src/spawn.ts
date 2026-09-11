@@ -1,11 +1,11 @@
-import type { CanvasObject } from '@nib-ui/ui-contracts';
-import { isWorkstream } from './workstream';
+import type { CanvasObject } from "@nib-ui/ui-contracts";
+import { isWorkstream } from "./workstream";
 
 export type SpawnPlan =
-	| { kind: 'fork'; sourceId: string; nativeSessionId: string }
-	| { kind: 'branch'; sourceId: string }
-	| { kind: 'join'; sourceIds: string[] }
-	| { kind: 'assets'; sourceIds: string[] };
+  | { kind: "fork"; sourceId: string; nativeSessionId: string }
+  | { kind: "branch"; sourceId: string }
+  | { kind: "join"; sourceIds: string[] }
+  | { kind: "assets"; sourceIds: string[] };
 
 /**
  * What a task dragged out of `sources` should be. One workstream whose harness
@@ -18,19 +18,22 @@ export type SpawnPlan =
  * from what they hold.
  */
 export function planSpawn(
-	sources: CanvasObject[],
-	forkableNativeId: (sessionId: string) => string | null,
+  sources: CanvasObject[],
+  forkableNativeId: (sessionId: string) => string | null,
 ): SpawnPlan | null {
-	const workstreams = sources.filter(isWorkstream);
-	if (workstreams.length === 0) {
-		const carried = sources.filter((object) => object.kind !== 'edge');
-		return carried.length > 0 ? { kind: 'assets', sourceIds: carried.map((object) => object.id) } : null;
-	}
-	if (workstreams.length > 1) return { kind: 'join', sourceIds: workstreams.map((object) => object.id) };
+  const workstreams = sources.filter(isWorkstream);
+  if (workstreams.length === 0) {
+    const carried = sources.filter((object) => object.kind !== "edge");
+    return carried.length > 0
+      ? { kind: "assets", sourceIds: carried.map((object) => object.id) }
+      : null;
+  }
+  if (workstreams.length > 1)
+    return { kind: "join", sourceIds: workstreams.map((object) => object.id) };
 
-	const only = workstreams[0]!;
-	const nativeSessionId = only.sessionId ? forkableNativeId(only.sessionId) : null;
-	return nativeSessionId
-		? { kind: 'fork', sourceId: only.id, nativeSessionId }
-		: { kind: 'branch', sourceId: only.id };
+  const only = workstreams[0]!;
+  const nativeSessionId = only.sessionId ? forkableNativeId(only.sessionId) : null;
+  return nativeSessionId
+    ? { kind: "fork", sourceId: only.id, nativeSessionId }
+    : { kind: "branch", sourceId: only.id };
 }

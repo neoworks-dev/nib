@@ -4,24 +4,25 @@
  * on the canvas, the board — so this package contributes the surface, the
  * composer and the pure text they need.
  */
-export { default as ChatSurface } from './ChatSurface.svelte';
-export { default as Composer } from './Composer.svelte';
-export { composeAnnotatedMessage, createAnnotation, type StagedAnnotation } from './annotations';
-export type { PendingComposer } from './pending';
-export { composerDrafts, stageReference } from './drafts.svelte';
+
+export { composeAnnotatedMessage, createAnnotation, type StagedAnnotation } from "./annotations";
+export { default as ChatSurface } from "./ChatSurface.svelte";
+export { default as Composer } from "./Composer.svelte";
 export {
-	applyTrigger,
-	detectTrigger,
-	type Trigger,
-	type TriggerApplication,
-	type TriggerItem,
-	type TriggerKind,
-} from './composer-trigger';
+  applyTrigger,
+  detectTrigger,
+  type Trigger,
+  type TriggerApplication,
+  type TriggerItem,
+  type TriggerKind,
+} from "./composer-trigger";
+export { composerDrafts, stageReference } from "./drafts.svelte";
 export {
-	describeHarnessSwitch,
-	planHarnessSwitch,
-	type HarnessSwitchConfirmation,
-	type HarnessSwitchPlan,
-} from './harness-switch';
-export { groupCount, groupTurnBlocks, type ToolGroup, type TurnItem } from './tool-groups';
-export { handoverSeed, transcriptText, DROPPED_MARKER, HANDOVER_BUDGET } from './transcript';
+  describeHarnessSwitch,
+  type HarnessSwitchConfirmation,
+  type HarnessSwitchPlan,
+  planHarnessSwitch,
+} from "./harness-switch";
+export type { PendingComposer } from "./pending";
+export { groupCount, groupTurnBlocks, type ToolGroup, type TurnItem } from "./tool-groups";
+export { DROPPED_MARKER, HANDOVER_BUDGET, handoverSeed, transcriptText } from "./transcript";

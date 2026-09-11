@@ -1,6 +1,6 @@
 {
-	"extends": "../../tsconfig.base.json",
-	"include": ["src", "tests"],
-	// The `./svelte` entry imports `.svelte` modules, which only svelte-check resolves.
-	"exclude": ["src/svelte"]
+  "extends": "../../tsconfig.base.json",
+  "include": ["src", "tests"],
+  // The `./svelte` entry imports `.svelte` modules, which only svelte-check resolves.
+  "exclude": ["src/svelte"]
 }

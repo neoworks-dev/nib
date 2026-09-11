@@ -1,10 +1,6 @@
 import type { Plugin } from "@nib-ui/kernel";
+import type { AttachmentsService, FileViewerService, PaneRegistry } from "@nib-ui/ui-contracts";
 import FileCodeIcon from "phosphor-svelte/lib/FileCodeIcon";
-import type {
-  AttachmentsService,
-  FileViewerService,
-  PaneRegistry,
-} from "@nib-ui/ui-contracts";
 import { planExplorer } from "./explorer";
 import FileViewer from "./FileViewer.svelte";
 import { fileViewerState } from "./state.svelte";
@@ -33,9 +29,7 @@ function openExplorer(
   });
   if (plan !== "attach") return;
 
-  const explorer = panes
-    .list()
-    .find((definition) => definition.kind === "explorer");
+  const explorer = panes.list().find((definition) => definition.kind === "explorer");
   if (!explorer) return;
   paired.add(editorInstanceId);
   attachments.attach(panes.openInstance(explorer.id), editorInstanceId, "left");
@@ -43,10 +37,7 @@ function openExplorer(
   panes.open(paneId);
 }
 
-function service(
-  panes: PaneRegistry,
-  attachments: AttachmentsService,
-): FileViewerService {
+function service(panes: PaneRegistry, attachments: AttachmentsService): FileViewerService {
   return {
     // Opening a file shows the pane: the request is what makes it relevant. A
     // background open is the agent's doing rather than the user's, so it neither
@@ -83,28 +74,19 @@ export const fileViewerPlugin: Plugin = {
   },
 };
 
+export { describeRange, type Selection, selectionPrompt, sliceLines } from "./ask";
 export {
-  describeRange,
-  selectionPrompt,
-  sliceLines,
-  type Selection,
-} from "./ask";
-export {
+  type FileEdit,
+  type Hunk,
   hunkRange,
   latestEdits,
   placeHunks,
-  reviewLines,
-  reviewMessage,
-  type FileEdit,
-  type Hunk,
   type ReviewLine,
   type ReviewOutcome,
+  reviewLines,
+  reviewMessage,
   type Verdict,
 } from "./changes";
-export {
-  planExplorer,
-  type ExplorerPlan,
-  type ExplorerState,
-} from "./explorer";
+export { type ExplorerPlan, type ExplorerState, planExplorer } from "./explorer";
 export { highlightLines, languageFor } from "./highlight";
 export { fileViewerState, type OpenFile } from "./state.svelte";

@@ -1,8 +1,8 @@
-import { modelFormatForName } from '@nib-ui/plugin-canvas-3d/model';
-import { mediaTypeForName } from '@nib-ui/plugin-canvas-media/media';
+import { modelFormatForName } from "@nib-ui/plugin-canvas-3d/model";
+import { mediaTypeForName } from "@nib-ui/plugin-canvas-media/media";
 
 /** Board object a workspace file becomes; null when no renderer claims the type. */
-export type CanvasObjectKindName = 'model' | 'media';
+export type CanvasObjectKindName = "model" | "media";
 
 /**
  * Which object a file dropped on the board deserves. The two renderer packages
@@ -14,7 +14,7 @@ export type CanvasObjectKindName = 'model' | 'media';
  * belongs in the editor.
  */
 export function canvasObjectKindForPath(path: string): CanvasObjectKindName | null {
-	if (modelFormatForName(path)) return 'model';
-	if (mediaTypeForName(path)) return 'media';
-	return null;
+  if (modelFormatForName(path)) return "model";
+  if (mediaTypeForName(path)) return "media";
+  return null;
 }

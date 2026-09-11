@@ -1,4 +1,4 @@
-import type { ActivationGesture, CanvasObject, CanvasObjectKind } from '@nib-ui/ui-contracts';
+import type { ActivationGesture, CanvasObject, CanvasObjectKind } from "@nib-ui/ui-contracts";
 
 /**
  * Contribution ordering, shared by the paste and drop registries. Handlers run
@@ -6,23 +6,23 @@ import type { ActivationGesture, CanvasObject, CanvasObjectKind } from '@nib-ui/
  * can put itself in front of the generic handler without knowing about it.
  */
 export function byOrder<T extends { order?: number }>(entries: Iterable<T>): T[] {
-	return [...entries].sort((left, right) => (left.order ?? 0) - (right.order ?? 0));
+  return [...entries].sort((left, right) => (left.order ?? 0) - (right.order ?? 0));
 }
 
 export interface Claimable<TPayload, TAt> {
-	order?: number;
-	handle(payload: TPayload, at: TAt): boolean | Promise<boolean>;
+  order?: number;
+  handle(payload: TPayload, at: TAt): boolean | Promise<boolean>;
 }
 
 export async function dispatch<TPayload, TAt>(
-	handlers: Iterable<Claimable<TPayload, TAt>>,
-	payload: TPayload,
-	at: TAt,
+  handlers: Iterable<Claimable<TPayload, TAt>>,
+  payload: TPayload,
+  at: TAt,
 ): Promise<boolean> {
-	for (const handler of byOrder(handlers)) {
-		if (await handler.handle(payload, at)) return true;
-	}
-	return false;
+  for (const handler of byOrder(handlers)) {
+    if (await handler.handle(payload, at)) return true;
+  }
+  return false;
 }
 
 /**
@@ -33,15 +33,15 @@ export async function dispatch<TPayload, TAt>(
  * which has always answered a plain click.
  */
 export function activateObject(
-	kind: CanvasObjectKind | undefined,
-	object: CanvasObject,
-	fallback: ((object: CanvasObject) => void) | null,
-	gesture: ActivationGesture,
+  kind: CanvasObjectKind | undefined,
+  object: CanvasObject,
+  fallback: ((object: CanvasObject) => void) | null,
+  gesture: ActivationGesture,
 ): void {
-	const parsed = kind?.activate ? kind.parse(object) : null;
-	if (kind?.activate && parsed) {
-		if (gesture === 'doubleClick') kind.activate(parsed);
-		return;
-	}
-	fallback?.(object);
+  const parsed = kind?.activate ? kind.parse(object) : null;
+  if (kind?.activate && parsed) {
+    if (gesture === "doubleClick") kind.activate(parsed);
+    return;
+  }
+  fallback?.(object);
 }

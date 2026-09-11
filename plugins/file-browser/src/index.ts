@@ -25,10 +25,4 @@ export const fileBrowserPlugin: Plugin = {
   },
 };
 
-export {
-  fetchTree,
-  statusMark,
-  statusTone,
-  type TreeEntry,
-  type TreeListing,
-} from "./tree";
+export { fetchTree, statusMark, statusTone, type TreeEntry, type TreeListing } from "./tree";

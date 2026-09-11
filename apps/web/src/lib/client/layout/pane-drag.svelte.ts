@@ -1,5 +1,5 @@
-import type { PaneEdge } from '@nib-ui/ui-contracts';
-import type { SnapZone } from './windows';
+import type { PaneEdge } from "@nib-ui/ui-contracts";
+import type { SnapZone } from "./windows";
 
 /**
  * The title bar drag in progress, shared so the frame under the pointer can draw
@@ -11,13 +11,13 @@ import type { SnapZone } from './windows';
  * in the area rather than anything inside a frame.
  */
 export const paneDrag = $state<{
-	instanceId: string | null;
-	hint: { frameId: string; edge: PaneEdge } | null;
-	snap: SnapZone | null;
+  instanceId: string | null;
+  hint: { frameId: string; edge: PaneEdge } | null;
+  snap: SnapZone | null;
 }>({ instanceId: null, hint: null, snap: null });
 
 export function clearPaneDrag(): void {
-	paneDrag.instanceId = null;
-	paneDrag.hint = null;
-	paneDrag.snap = null;
+  paneDrag.instanceId = null;
+  paneDrag.hint = null;
+  paneDrag.snap = null;
 }
