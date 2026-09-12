@@ -1,5 +1,6 @@
 import type { Disposer } from "@nib-ui/kernel";
 import type { MessageAttachment } from "@nib-ui/protocol";
+import type { PlacementMap } from "@nib-ui/vault";
 import type { Application, Container } from "pixi.js";
 import type { PaneLayout } from "./panes";
 
@@ -59,13 +60,26 @@ export interface BoardDoc {
   rev: number;
   cwd: string;
   objects: CanvasObject[];
+  /**
+   * Where the vault's items sit, by board directory and then by vault-relative
+   * path. Item identity and content come from the vault on disk; this is the only
+   * part of a board that is the app's own.
+   */
+  placements: PlacementMap;
   /** Where the panes of this workspace were floating. Absent until one is opened. */
   layout?: PaneLayout;
 }
 
 export function emptyBoard(cwd: string): BoardDoc {
-  return { version: 1, rev: 0, cwd, objects: [] };
+  return { version: 1, rev: 0, cwd, objects: [], placements: {} };
 }
+
+/**
+ * What a window sends back. `placements` is optional here and only here: a build
+ * that predates the vault sends a document without it, and the stored map has to
+ * survive that rather than be deleted by an older window.
+ */
+export type BoardWrite = Omit<BoardDoc, "placements"> & { placements?: PlacementMap };
 
 export interface CanvasObjectRenderer<TData extends CanvasObject = CanvasObject> {
   readonly container: Container;
@@ -89,11 +103,11 @@ export interface CanvasObjectKind<TData extends CanvasObject = CanvasObject> {
   /** Extra world-space padding for hit tests, for thin objects like strokes. */
   hitPadding?: number;
   /**
-   * A double-click on the object. The kind that owns it decides what opening it
-   * means, and claims the gesture outright: a single click on such an object only
-   * selects it, where the board's own handler answers a plain click as well.
+   * A single click or a double click on the object. The kind that owns it decides
+   * what each gesture means, and claims both outright: the board's own handler is
+   * reached only for a kind with no hook.
    */
-  activate?(object: TData): void;
+  activate?(object: TData, gesture: ActivationGesture): void;
 }
 
 /** A click that was not a drag, and the double-click that may follow it. */
@@ -244,18 +258,6 @@ export interface CanvasEngineApi {
   setTool(toolId: string): void;
   /** Groups every mutation until the returned disposer runs into one undo step. */
   beginHistory(): Disposer;
-  /**
-   * A connector dragged out of `fromId` and released on `toId`, or on empty
-   * board space at `at`. What that means — a link, a new object — is the host's
-   * decision, so the tool stays ignorant of what the objects are.
-   */
-  connect(fromId: string, toId: string | null, at: Point): void;
-  /**
-   * A right-button drag out of `sourceIds`, released on `toId` or on empty board
-   * space at `at`. The tool only reports the gesture: whether that starts a task,
-   * links the sources or does nothing is the host's decision.
-   */
-  spawn(sourceIds: string[], toId: string | null, at: Point): void;
 }
 
 /**

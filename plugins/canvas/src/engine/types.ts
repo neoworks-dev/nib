@@ -36,9 +36,11 @@ export interface EngineHost {
 
   /** A click that was not a drag, or a double-click: open the object pressed. */
   activate(id: string, gesture: ActivationGesture): void;
-  /** A connector dragged out of a port and released; `toId` is null on empty space. */
-  connect(fromId: string, toId: string | null, at: Point): void;
-  /** A right-button drag out of a selection; `toId` is null on empty space. */
-  spawn(sourceIds: string[], toId: string | null, at: Point): void;
+  /**
+   * A left-button drag of `ids` released over `toId`, or over empty board space.
+   * The tool reports only the gesture: for a vault card it is a real `mv` into
+   * that topic's directory (PLAN §5), and for everything else it is nothing.
+   */
+  dropOnto(ids: string[], toId: string | null, at: Point): void;
   contextMenu(target: CanvasObject | null, at: Point, screen: Point): void;
 }

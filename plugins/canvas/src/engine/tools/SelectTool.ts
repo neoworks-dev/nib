@@ -1,10 +1,9 @@
 import type { Disposer } from "@nib-ui/kernel";
-import type { CanvasPointerEvent, CanvasTool, Point, Rect } from "@nib-ui/ui-contracts";
+import type { CanvasPointerEvent, CanvasTool, Point } from "@nib-ui/ui-contracts";
 import { Graphics } from "pixi.js";
 import type { CanvasEngine } from "../CanvasEngine";
-import { isConnectable } from "../ports";
 import { HANDLE_CURSORS, isPressable, isResizable, type ResizeHandle } from "../resize";
-import { edgePoint, rectFromCorners } from "../utils/geometry";
+import { rectFromCorners } from "../utils/geometry";
 
 const DRAG_THRESHOLD = 5;
 
@@ -16,18 +15,11 @@ type State =
       screen: Point;
       origins: { id: string; x: number; y: number }[];
       history: Disposer;
+      /** What the dragged cards are hovering over, for the host to interpret. */
+      overId: string | null;
     }
   | { kind: "rubber"; anchor: Point; corner: Point }
-  | { kind: "resizing"; targetId: string; handle: ResizeHandle; world: Point; history: Disposer }
-  | { kind: "connecting"; fromId: string; anchor: Point; pointer: Point; overId: string | null }
-  | {
-      kind: "spawning";
-      sourceIds: string[];
-      screen: Point;
-      pointer: Point;
-      overId: string | null;
-      moved: boolean;
-    };
+  | { kind: "resizing"; targetId: string; handle: ResizeHandle; world: Point; history: Disposer };
 
 /**
  * Click, drag, rubber-band and resize. It never mutates the board itself beyond
@@ -59,44 +51,11 @@ export class SelectTool implements CanvasTool {
 
     const hitId = engine.hitTest(event.screen.x, event.screen.y);
 
-    // The right button drags a new task out of what is selected. On empty space it
-    // is left alone: an unmoved right button is the context menu, which the engine
-    // opens for both cases when the gesture turns out not to be a drag.
-    if (event.button === 2) {
-      if (!hitId) return false;
-      const selected = engine.selection.includes(hitId);
-      if (!selected) engine.select([hitId]);
-      this.state = {
-        kind: "spawning",
-        sourceIds: selected ? [...engine.selection] : [hitId],
-        screen: event.screen,
-        pointer: event.world,
-        overId: null,
-        moved: false,
-      };
-      return true;
-    }
+    // The right button is the context menu and nothing else. The engine opens it
+    // on release, so the gesture is refused here rather than claimed.
     if (event.button !== 0) return false;
 
     const additive = event.shiftKey || event.metaKey;
-
-    // A port answers before anything else, selected or not: it is the only
-    // affordance that hangs outside the object it belongs to.
-    if (hitId && !additive) {
-      const renderer = engine.rendererFor(hitId);
-      const port = isConnectable(renderer) ? renderer.portAt(event.world.x, event.world.y) : null;
-      if (port && isConnectable(renderer)) {
-        this.state = {
-          kind: "connecting",
-          fromId: hitId,
-          anchor: renderer.portAnchor(port),
-          pointer: event.world,
-          overId: null,
-        };
-        this.setCursor("crosshair");
-        return true;
-      }
-    }
 
     if (hitId && engine.selection.includes(hitId)) {
       const renderer = engine.rendererFor(hitId);
@@ -127,40 +86,6 @@ export class SelectTool implements CanvasTool {
   onPointerMove(event: CanvasPointerEvent): void {
     const engine = this.engine;
     if (!engine) return;
-
-    if (this.state.kind === "connecting") {
-      const overId = engine.hitTest(event.screen.x, event.screen.y);
-      this.state = {
-        ...this.state,
-        pointer: event.world,
-        overId: overId && overId !== this.state.fromId ? overId : null,
-      };
-      this.drawLinks([this.state.anchor], this.state.pointer, this.state.overId);
-      return;
-    }
-
-    if (this.state.kind === "spawning") {
-      const overId = engine.hitTest(event.screen.x, event.screen.y);
-      const travelled = Math.hypot(
-        event.screen.x - this.state.screen.x,
-        event.screen.y - this.state.screen.y,
-      );
-      this.state = {
-        ...this.state,
-        pointer: event.world,
-        overId: overId && !this.state.sourceIds.includes(overId) ? overId : null,
-        moved: this.state.moved || travelled > DRAG_THRESHOLD,
-      };
-      if (this.state.moved) {
-        this.setCursor("crosshair");
-        this.drawLinks(
-          this.spawnAnchors(this.state.sourceIds, event.world),
-          event.world,
-          this.state.overId,
-        );
-      }
-      return;
-    }
 
     if (this.state.kind === "resizing") {
       const renderer = engine.rendererFor(this.state.targetId);
@@ -194,6 +119,7 @@ export class SelectTool implements CanvasTool {
         screen: this.state.screen,
         origins,
         history: engine.beginHistory(),
+        overId: null,
       };
     }
 
@@ -203,6 +129,14 @@ export class SelectTool implements CanvasTool {
       for (const origin of this.state.origins) {
         engine.updateObject(origin.id, { x: origin.x + deltaX, y: origin.y + deltaY });
       }
+      // The cards being dragged are under the pointer themselves, so the target is
+      // the topmost one that is not part of the drag.
+      const dragged = new Set(this.state.origins.map((origin) => origin.id));
+      this.state = {
+        ...this.state,
+        overId: engine.hitTestExcluding(event.screen.x, event.screen.y, dragged),
+      };
+      this.drawDropTarget(this.state.overId);
       return;
     }
 
@@ -224,24 +158,6 @@ export class SelectTool implements CanvasTool {
     this.state = { kind: "idle" };
 
     switch (state.kind) {
-      case "spawning": {
-        this.band?.clear();
-        this.setCursor("");
-        // An unmoved right button is the context menu, which the engine opens.
-        if (state.moved) engine?.spawn(state.sourceIds, state.overId, event.world);
-        return;
-      }
-      case "connecting": {
-        this.band?.clear();
-        this.setCursor("");
-        const targetId = engine?.hitTest(event.screen.x, event.screen.y) ?? null;
-        engine?.connect(
-          state.fromId,
-          targetId && targetId !== state.fromId ? targetId : null,
-          event.world,
-        );
-        return;
-      }
       case "resizing": {
         const renderer = engine?.rendererFor(state.targetId);
         if (isResizable(renderer)) renderer.endResize();
@@ -249,9 +165,18 @@ export class SelectTool implements CanvasTool {
         this.setCursor("");
         return;
       }
-      case "dragging":
+      case "dragging": {
+        this.band?.clear();
+        // The drop is reported before the history entry closes, so the `mv` it may
+        // start and the positions it left behind are one step (PLAN §13).
+        engine?.dropOnto(
+          state.origins.map((origin) => origin.id),
+          state.overId,
+          event.world,
+        );
         state.history();
         return;
+      }
       case "rubber":
         this.band?.clear();
         return;
@@ -282,10 +207,7 @@ export class SelectTool implements CanvasTool {
     }
   }
 
-  /**
-   * Resize handles belong to the selection; a port belongs to whatever the
-   * pointer is over, so the two are tracked against different sets.
-   */
+  /** Resize handles belong to the selection, so only it is asked. */
   private trackHoverTargets(world: Point): void {
     const engine = this.engine;
     if (!engine) return;
@@ -299,53 +221,21 @@ export class SelectTool implements CanvasTool {
       if (handle) cursor = HANDLE_CURSORS[handle];
     }
 
-    for (const object of engine.objects) {
-      const renderer = engine.rendererFor(object.id);
-      if (!isConnectable(renderer)) continue;
-      const port = renderer.portAt(world.x, world.y);
-      renderer.hoverPort(port);
-      if (port) cursor = "crosshair";
-    }
-
     this.setCursor(cursor);
   }
 
-  /** Where each source's connector leaves it: the edge facing the pointer. */
-  private spawnAnchors(sourceIds: string[], toward: Point): Point[] {
-    const engine = this.engine;
-    if (!engine) return [];
-    return sourceIds
-      .map((id) => engine.objectBounds(id))
-      .filter((bounds): bounds is Rect => bounds !== null)
-      .map((bounds) => edgePoint(bounds, toward));
-  }
-
-  /**
-   * The dragged connectors, drawn in the same world-space overlay as the rubber
-   * band. A filled endpoint means it will land on the card under the pointer;
-   * a hollow one means it will open a new workstream there.
-   */
-  private drawLinks(anchors: Point[], pointer: Point, overId: string | null): void {
+  /** Outlines the topic a drop would land in, and nothing when there is none. */
+  private drawDropTarget(overId: string | null): void {
     const engine = this.engine;
     const band = this.band;
     if (!engine || !band) return;
 
-    const zoom = engine.camera.zoom;
     band.clear();
-
-    for (const anchor of anchors) {
-      band.moveTo(anchor.x, anchor.y);
-      band.lineTo(pointer.x, pointer.y);
-    }
-    band.stroke({ width: 1.75 / zoom, color: 0x7c9cff, alpha: 0.85, cap: "round" });
-
-    band.circle(pointer.x, pointer.y, 4.5 / zoom);
-    if (overId) band.fill({ color: 0x7c9cff, alpha: 0.9 });
-    else band.stroke({ width: 1.75 / zoom, color: 0x7c9cff, alpha: 0.85 });
-
     const bounds = overId ? engine.objectBounds(overId) : null;
     if (!bounds) return;
-    const inset = 3 / zoom;
+
+    const zoom = engine.camera.zoom;
+    const inset = 4 / zoom;
     band.roundRect(
       bounds.x - inset,
       bounds.y - inset,
@@ -353,7 +243,7 @@ export class SelectTool implements CanvasTool {
       bounds.height + inset * 2,
       12 + inset,
     );
-    band.stroke({ width: 1.75 / zoom, color: 0x7c9cff, alpha: 0.85 });
+    band.stroke({ width: 2 / zoom, color: 0x7c9cff, alpha: 0.9 });
   }
 
   private setCursor(cursor: string): void {

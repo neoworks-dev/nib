@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import type { Disposer } from "@nib-ui/kernel";
 import type {
   BoardDoc,
+  BoardWrite,
   CanvasObject,
   CreateSessionInput,
   PaneRegistry,
@@ -64,11 +65,11 @@ class FakePanes {
 
 class FakeTransport {
   async loadBoard(cwd: string): Promise<BoardDoc> {
-    return { version: 1, rev: 0, cwd, objects: [] };
+    return { version: 1, rev: 0, cwd, objects: [], placements: {} };
   }
 
-  async saveBoard(board: BoardDoc): Promise<BoardDoc> {
-    return board;
+  async saveBoard(board: BoardWrite): Promise<BoardDoc> {
+    return { ...board, placements: board.placements ?? {} };
   }
 
   subscribeBoard(): Disposer {
@@ -246,9 +247,10 @@ describe("the files a workstream carries", () => {
     expect(sessions.sent[0]!.text).toBe("what is in this picture?");
   });
 
-  test("another workstream travels as text, not as a file", async () => {
+  test("another workstream travels as text, not as a file", () => {
     const source = canvasState.createWorkstream("port the engine", { x: 0, y: 0 });
-    const id = canvasState.branchCard(source)!;
+    const id = canvasState.createWorkstream("", { x: 340, y: 60 });
+    canvasState.connect(source, id, "branch");
 
     expect(canvasState.carriedAttachments(id).attachments).toEqual([]);
     expect(canvasState.sourcesOf(id).map((entry) => entry.id)).toEqual([source]);

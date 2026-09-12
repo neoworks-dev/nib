@@ -10,48 +10,28 @@ import type {
   Point,
   Rect,
 } from "@nib-ui/ui-contracts";
-import { Application, Container, Texture, TilingSprite } from "pixi.js";
+import { Application, Container } from "pixi.js";
 import type { EngineHost } from "./types";
 import { clampZoom, screenToWorld, worldToScreen, zoomAt } from "./utils/camera";
 import { pointInRect, rectsIntersect } from "./utils/geometry";
 import { TextTextureCache } from "./utils/textTexture";
 
-export const GRID = 16;
-
 /** Screen pixels a right button travels before the press counts as a drag. */
 const RIGHT_DRAG_THRESHOLD = 5;
+/** Shared so the plain hit test does not allocate a set per pointer move. */
+const EMPTY_SET: ReadonlySet<string> = new Set();
+/** Screen pixels of board kept live outside the camera, so nothing pops in. */
+const CULL_MARGIN = 256;
+/** Assumed extent of a placed object that does not say how big it is. */
+const DEFAULT_CULL_SIZE = 320;
 /** Chrome fires the middle-button paste after the button is released. */
 const MIDDLE_PASTE_GRACE_MS = 300;
 
 export interface EngineTheme {
   background: number;
-  grid: number;
-  gridAlpha: number;
 }
 
-const defaultTheme: EngineTheme = { background: 0x141416, grid: 0x52525b, gridAlpha: 0.5 };
-
-/** One grid cell with a white dot at its centre, tinted at draw time. */
-function dotTexture(cell: number): Texture {
-  const resolution = globalThis.devicePixelRatio || 1;
-  const radius = Math.min(1.2, 0.6 + (cell / GRID) * 0.3);
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(cell * resolution));
-  canvas.height = canvas.width;
-
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("canvas 2d context is unavailable");
-  ctx.scale(resolution, resolution);
-  ctx.fillStyle = "#ffffff";
-  ctx.beginPath();
-  ctx.arc(cell / 2, cell / 2, radius, 0, Math.PI * 2);
-  ctx.fill();
-
-  const texture = Texture.from(canvas);
-  texture.source.resolution = resolution;
-  texture.source.addressMode = "repeat";
-  return texture;
-}
+const defaultTheme: EngineTheme = { background: 0xe9eaee };
 
 interface RendererEntry {
   kind: string;
@@ -72,8 +52,6 @@ export class CanvasEngine implements CanvasEngineApi {
   overlay!: Container;
   readonly textures = new TextTextureCache();
 
-  private grid!: TilingSprite;
-  private readonly gridTextures = new Map<number, Texture>();
   private readonly renderers = new Map<string, RendererEntry>();
   private attachedTool: CanvasTool | null = null;
   private readonly pointers = new Map<number, Point>();
@@ -83,19 +61,16 @@ export class CanvasEngine implements CanvasEngineApi {
   private rightPress: { pointerId: number; screen: Point; moved: boolean } | null = null;
   private middlePanEndedAt = -Infinity;
   private disposers: Disposer[] = [];
-  private lastCamera: CanvasCamera = { x: 0, y: 0, zoom: 1 };
-  private lastScreen = { width: 0, height: 0 };
 
   constructor(
     private readonly host: EngineHost,
     private readonly theme: () => EngineTheme = () => defaultTheme,
   ) {}
 
-  /** Re-read after a light/dark switch: the canvas cannot inherit CSS variables. */
+  /** Re-read after a theme change: the canvas cannot inherit CSS variables. */
   applyTheme(): void {
     if (!this.app) return;
     this.app.renderer.background.color = this.theme().background;
-    this.drawGrid();
   }
 
   async init(element: HTMLElement): Promise<void> {
@@ -113,7 +88,6 @@ export class CanvasEngine implements CanvasEngineApi {
     canvas.style.display = "block";
     element.appendChild(canvas);
 
-    this.grid = new TilingSprite({ texture: Texture.EMPTY, eventMode: "none" });
     this.world = new Container();
     this.world.sortableChildren = true;
     this.objectLayer = new Container();
@@ -122,7 +96,7 @@ export class CanvasEngine implements CanvasEngineApi {
     this.overlay.zIndex = 10_000;
     this.overlay.eventMode = "none";
     this.world.addChild(this.objectLayer, this.overlay);
-    this.app.stage.addChild(this.grid, this.world);
+    this.app.stage.addChild(this.world);
 
     this.app.ticker.add(this.tick);
     this.bindInput(canvas);
@@ -136,8 +110,6 @@ export class CanvasEngine implements CanvasEngineApi {
     for (const entry of this.renderers.values()) entry.renderer.destroy?.();
     this.renderers.clear();
     this.textures.clear();
-    for (const texture of this.gridTextures.values()) texture.destroy(true);
-    this.gridTextures.clear();
     this.app?.ticker.remove(this.tick);
     this.app?.destroy(true, { children: true });
   }
@@ -187,12 +159,8 @@ export class CanvasEngine implements CanvasEngineApi {
     this.host.activate(id, gesture);
   }
 
-  connect(fromId: string, toId: string | null, at: Point): void {
-    this.host.connect(fromId, toId, at);
-  }
-
-  spawn(sourceIds: string[], toId: string | null, at: Point): void {
-    this.host.spawn(sourceIds, toId, at);
+  dropOnto(ids: string[], toId: string | null, at: Point): void {
+    this.host.dropOnto(ids, toId, at);
   }
 
   setTool(toolId: string): void {
@@ -223,11 +191,21 @@ export class CanvasEngine implements CanvasEngineApi {
 
   /** Topmost object under a point in canvas-element coordinates. */
   hitTest(screenX: number, screenY: number): string | null {
+    return this.hitTestExcluding(screenX, screenY, EMPTY_SET);
+  }
+
+  /**
+   * The same walk with some objects taken out of it. A drag needs this: the cards
+   * being dragged sit under the pointer themselves, and what matters is what they
+   * are being dropped on.
+   */
+  hitTestExcluding(screenX: number, screenY: number, skip: ReadonlySet<string>): string | null {
     const world = this.screenToWorld(screenX, screenY);
     const objects = this.objects;
 
     for (let index = objects.length - 1; index >= 0; index -= 1) {
       const object = objects[index]!;
+      if (skip.has(object.id)) continue;
       const entry = this.renderers.get(object.id);
       if (!entry) continue;
       if (entry.renderer.hitTest) {
@@ -286,6 +264,7 @@ export class CanvasEngine implements CanvasEngineApi {
     }
 
     const selection = this.selection;
+    const view = this.visibleWorldRect();
     objects.forEach((object, index) => {
       const kind = this.host.kindFor(object.kind);
       if (!kind) return;
@@ -301,65 +280,40 @@ export class CanvasEngine implements CanvasEngineApi {
       }
       // Board order is z-order, so a dragged card can be brought to the front.
       entry.renderer.container.zIndex = index;
+
+      // `sync` runs per object per frame, so a board with a hundred cards pays for
+      // all of them whether or not any are on screen. An object that declares its
+      // own rectangle and sits outside the camera is hidden and skipped; anything
+      // without one — an edge, which is wherever its endpoints are — is not, and
+      // neither is anything selected, whose chrome has to keep following the zoom.
+      const box = worldBox(object);
+      const offscreen =
+        box !== null && !rectsIntersect(box, view) && !selection.includes(object.id);
+      entry.renderer.container.visible = !offscreen;
+      if (offscreen) return;
       entry.renderer.sync(parsed, selection);
     });
+  }
+
+  /**
+   * The camera's rectangle in world space, grown by a margin so a card entering
+   * from the edge is already drawn by the time any of it shows.
+   */
+  private visibleWorldRect(): Rect {
+    const { zoom } = this.camera;
+    const topLeft = this.screenToWorld(-CULL_MARGIN, -CULL_MARGIN);
+    return {
+      x: topLeft.x,
+      y: topLeft.y,
+      width: (this.screenWidth + CULL_MARGIN * 2) / zoom,
+      height: (this.screenHeight + CULL_MARGIN * 2) / zoom,
+    };
   }
 
   private syncCamera(): void {
     const { x, y, zoom } = this.camera;
     this.world.position.set(x, y);
     this.world.scale.set(zoom);
-
-    const width = this.screenWidth;
-    const height = this.screenHeight;
-    const unchanged =
-      x === this.lastCamera.x &&
-      y === this.lastCamera.y &&
-      zoom === this.lastCamera.zoom &&
-      width === this.lastScreen.width &&
-      height === this.lastScreen.height;
-    if (unchanged) return;
-
-    this.lastCamera = { x, y, zoom };
-    this.lastScreen = { width, height };
-    this.drawGrid();
-  }
-
-  /**
-   * Drawn in screen space against the camera rather than as world geometry, so
-   * the dot size stays constant and the grid never needs to cover the whole board.
-   * One tiled quad rather than a `Graphics` circle per dot: zoomed out the screen
-   * holds tens of thousands of cells, and rebuilding that geometry on every pan
-   * frame is what makes the board crawl.
-   */
-  private drawGrid(): void {
-    const { x, y, zoom } = this.camera;
-    const step = GRID * zoom;
-    this.grid.visible = step >= 6;
-    if (!this.grid.visible) return;
-
-    // The texture repeats on whole texels, so it is baked at the rounded step and
-    // `tileScale` carries the fraction — otherwise the grid drifts as it wraps.
-    const cell = Math.round(step);
-    let texture = this.gridTextures.get(cell);
-    if (!texture) {
-      texture = dotTexture(cell);
-      this.gridTextures.set(cell, texture);
-    }
-
-    const theme = this.theme();
-    this.grid.texture = texture;
-    this.grid.tint = theme.grid;
-    this.grid.alpha = theme.gridAlpha;
-    this.grid.width = this.screenWidth;
-    this.grid.height = this.screenHeight;
-    this.grid.tileScale.set(step / cell);
-    // The baked dot sits at the tile centre, so the origin shifts back half a cell
-    // to keep the dots on the same world coordinates the camera implies.
-    this.grid.tilePosition.set(
-      (((x - step / 2) % step) + step) % step,
-      (((y - step / 2) % step) + step) % step,
-    );
   }
 
   private toCanvasPoint(event: PointerEvent | WheelEvent | MouseEvent): Point {
@@ -611,4 +565,21 @@ export class CanvasEngine implements CanvasEngineApi {
       y: middle.y - this.pinch.world.y * zoom,
     });
   }
+}
+
+/**
+ * An object's own rectangle, read off the fields every placed kind writes, or
+ * null for a kind that has none. Taken from the object rather than from its
+ * renderer so that culling never has to sync the thing it is deciding to skip —
+ * an unsynced renderer has no bounds yet, which would make every card visible on
+ * its first frame and defeat the whole exercise.
+ */
+function worldBox(object: CanvasObject): Rect | null {
+  const { x, y, w, h } = object;
+  if (typeof x !== "number" || typeof y !== "number") return null;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+  const width = typeof w === "number" && Number.isFinite(w) ? w : DEFAULT_CULL_SIZE;
+  const height = typeof h === "number" && Number.isFinite(h) ? h : DEFAULT_CULL_SIZE;
+  return { x, y, width, height };
 }

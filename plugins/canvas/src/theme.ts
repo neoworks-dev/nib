@@ -2,8 +2,6 @@ import type { WorkstreamStatus } from "./workstream";
 
 export interface BoardTheme {
   background: number;
-  grid: number;
-  gridAlpha: number;
   card: number;
   cardRaised: number;
   border: number;
@@ -36,8 +34,6 @@ export function readBoardTheme(root: HTMLElement = document.documentElement): Bo
 
   return {
     background: readColor("--bg", "#141416"),
-    grid: readColor("--text-faint", "#52525b"),
-    gridAlpha: 0.5,
     card: readColor("--bg-elevated", "#1c1c1e"),
     cardRaised: readColor("--surface-raised", "#262628"),
     border: readColor("--border", "#29292b"),

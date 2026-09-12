@@ -12,7 +12,6 @@
   import { CanvasEngine } from "./engine/CanvasEngine";
   import { cameraFitting, clampZoom, zoomAt } from "./engine/utils/camera";
   import { unionRects } from "./engine/utils/geometry";
-  import PromptSheet from "./PromptSheet.svelte";
   import { canvasState } from "./state.svelte";
   import { boardTheme, refreshBoardTheme } from "./theme";
   import { CARD_MIN_HEIGHT, CARD_WIDTH } from "./workstream";
@@ -34,6 +33,36 @@
   const empty = $derived(canvasState.objects.length === 0);
   /** No project entered yet: the board is not empty, there is no board. */
   const opened = $derived(canvasState.board.cwd.length > 0);
+
+  /**
+   * Something the user has to be told about: a board error, or a vault that would
+   * not read. A board that draws nothing because its transport was never wired is
+   * indistinguishable from an empty project, and that is worth saying out loud.
+   */
+  const status = $derived.by((): string | null => {
+    if (canvasState.error) return canvasState.error;
+    const vault = canvasState.vault;
+    if (vault.error) return `Vault: ${vault.error}`;
+    if (vault.doc && !vault.doc.writable)
+      return `Vault: ${vault.doc.reason ?? "cannot be created here"}`;
+    return null;
+  });
+
+  /** The trail from the project to here, root first. Empty until a project is open. */
+  const crumbs = $derived(canvasState.vault.breadcrumb);
+
+  /** The last segment of a directory path, and the project's own name for the root. */
+  function crumbLabel(dir: string): string {
+    if (dir.length === 0) return projectName();
+    const slash = dir.lastIndexOf("/");
+    return slash === -1 ? dir : dir.slice(slash + 1);
+  }
+
+  function projectName(): string {
+    const cwd = canvasState.board.cwd.replace(/\/+$/, "");
+    const slash = cwd.lastIndexOf("/");
+    return slash === -1 ? cwd : cwd.slice(slash + 1);
+  }
 
   /**
    * The board's own composer. It is the one a session gets, driven by a target
@@ -222,12 +251,42 @@
     >
       Pick a project to open its board.
     </p>
+  {:else if empty && canvasState.vault.loading}
+    <p
+      class="pointer-events-none absolute inset-0 z-raised flex items-center justify-center text-sm text-dim"
+    >
+      Reading the vault…
+    </p>
   {:else if empty}
     <p
       class="pointer-events-none absolute inset-0 z-raised flex items-center justify-center text-sm text-dim"
     >
       Nothing on this board yet — say what to do below and it starts here.
     </p>
+  {/if}
+
+  {#if opened && crumbs.length > 1}
+    <nav
+      class="absolute top-2 left-1/2 z-raised flex -translate-x-1/2 items-center gap-1 rounded-lg border border-line bg-elevated px-2 py-1 text-2xs"
+      aria-label="Where this board is in the project"
+    >
+      {#each crumbs as dir, index (dir)}
+        {#if index > 0}
+          <span class="text-faint">/</span>
+        {/if}
+        {#if index === crumbs.length - 1}
+          <span class="text-muted">{crumbLabel(dir)}</span>
+        {:else}
+          <button
+            type="button"
+            class="text-faint hover:text-default"
+            onclick={() => canvasState.vault.goTo(dir)}
+          >
+            {crumbLabel(dir)}
+          </button>
+        {/if}
+      {/each}
+    </nav>
   {/if}
 
   <div class="pointer-events-none absolute top-2 left-2 z-raised flex items-center gap-1.5">
@@ -253,11 +312,11 @@
     {/if}
   </div>
 
-  {#if canvasState.error}
+  {#if status}
     <p
-      class="absolute top-2 left-1/2 z-raised -translate-x-1/2 rounded-lg border border-red/40 bg-red-soft px-2 py-1 text-2xs text-red"
+      class="absolute bottom-16 left-1/2 z-raised max-w-[32rem] -translate-x-1/2 rounded-lg border border-red/40 bg-red-soft px-2 py-1 text-2xs text-red"
     >
-      {canvasState.error}
+      {status}
     </p>
   {/if}
 
@@ -328,6 +387,4 @@
       <Composer pending={boardComposer} />
     </div>
   </div>
-
-  <PromptSheet />
 </div>

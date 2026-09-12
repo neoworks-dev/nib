@@ -44,10 +44,8 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
 
   /** Set by the plugin: what opening an object means is not the engine's business. */
   onActivate: ((object: CanvasObject) => void) | null = null;
-  /** Same for a connector dragged out of a port: the plugin decides what a link is. */
-  onConnect: ((fromId: string, toId: string | null, at: Point) => void) | null = null;
-  /** A right-button drag out of a selection: what it starts is the plugin's call. */
-  onSpawn: ((sourceIds: string[], toId: string | null, at: Point) => void) | null = null;
+  /** Cards released over a card, or over empty board space: a `mv`, or nothing. */
+  onDropOnto: ((ids: string[], toId: string | null, at: Point) => void) | null = null;
   /** Set by the plugin: entering a project is a board load plus everything that hangs off it. */
   onOpenBoard: ((cwd: string) => Promise<void>) | null = null;
   /** Set by the plugin: opening a workstream is a pane operation the registry knows nothing about. */
@@ -218,12 +216,8 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
     if (object) activateObject(this.kindFor(object.kind), object, this.onActivate, gesture);
   }
 
-  connect(fromId: string, toId: string | null, at: Point): void {
-    this.onConnect?.(fromId, toId, at);
-  }
-
-  spawn(sourceIds: string[], toId: string | null, at: Point): void {
-    if (sourceIds.length > 0) this.onSpawn?.(sourceIds, toId, at);
+  dropOnto(ids: string[], toId: string | null, at: Point): void {
+    if (ids.length > 0) this.onDropOnto?.(ids, toId, at);
   }
 
   contextMenu(target: CanvasObject | null, at: Point, screen: Point): void {
@@ -258,8 +252,7 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
     this.activeTool = "select";
     this.engine = null;
     this.onActivate = null;
-    this.onConnect = null;
-    this.onSpawn = null;
+    this.onDropOnto = null;
   }
 }
 

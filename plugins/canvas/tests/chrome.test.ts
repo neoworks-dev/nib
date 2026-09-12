@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { portAnchor, portAtPoint, portCenter, portOpacity, portReach } from "../src/engine/ports";
 import {
   cornerHandlePoints,
   handleOpacity,
@@ -50,7 +49,7 @@ describe("resizeHandleAt", () => {
     expect(resizeHandleAt(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 1)).toBeNull();
   });
 
-  test("mid-edge points are not handles — those belong to the connector ports", () => {
+  test("mid-edge points are not corner handles", () => {
     expect(resizeHandleAt(WIDTH, HEIGHT / 2, WIDTH, HEIGHT, 1)).toBeNull();
     expect(resizeHandleAt(WIDTH / 2, HEIGHT, WIDTH, HEIGHT, 1)).toBeNull();
   });
@@ -73,48 +72,6 @@ describe("handleOpacity", () => {
     expect(near).toBeGreaterThan(far);
     expect(far).toBeGreaterThan(0);
     expect(handleOpacity(1000, 1)).toBe(0);
-  });
-});
-
-describe("ports", () => {
-  test("a connector still leaves from the middle of the edge it belongs to", () => {
-    expect(portAnchor("top", WIDTH, HEIGHT)).toEqual({ x: WIDTH / 2, y: 0 });
-    expect(portAnchor("right", WIDTH, HEIGHT)).toEqual({ x: WIDTH, y: HEIGHT / 2 });
-    expect(portAnchor("bottom", WIDTH, HEIGHT)).toEqual({ x: WIDTH / 2, y: HEIGHT });
-    expect(portAnchor("left", WIDTH, HEIGHT)).toEqual({ x: 0, y: HEIGHT / 2 });
-  });
-
-  test("the buttons sit wholly outside the object, one per side", () => {
-    expect(portCenter("top", WIDTH, HEIGHT, 1).y).toBeLessThan(0);
-    expect(portCenter("right", WIDTH, HEIGHT, 1).x).toBeGreaterThan(WIDTH);
-    expect(portCenter("bottom", WIDTH, HEIGHT, 1).y).toBeGreaterThan(HEIGHT);
-    expect(portCenter("left", WIDTH, HEIGHT, 1).x).toBeLessThan(0);
-  });
-
-  test("the offset shrinks with the zoom so the gap stays constant on screen", () => {
-    expect(portCenter("right", WIDTH, HEIGHT, 2).x).toBeLessThan(
-      portCenter("right", WIDTH, HEIGHT, 0.5).x,
-    );
-  });
-
-  test("are grabbable where they are drawn, and nowhere on the object itself", () => {
-    for (const port of ["top", "right", "bottom", "left"] as const) {
-      const center = portCenter(port, WIDTH, HEIGHT, 1);
-      expect(portAtPoint(center.x, center.y, WIDTH, HEIGHT, 1)).toBe(port);
-    }
-    expect(portAtPoint(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 1)).toBeNull();
-  });
-
-  test("a corner is not a port, so resizing and linking never fight", () => {
-    expect(portAtPoint(WIDTH, HEIGHT, WIDTH, HEIGHT, 1)).toBeNull();
-    expect(portAtPoint(0, 0, WIDTH, HEIGHT, 1)).toBeNull();
-  });
-
-  test("fade in as the pointer approaches, like the resize handles", () => {
-    expect(portOpacity(0, 1)).toBe(1);
-    expect(portOpacity(portReach(1), 1)).toBe(1);
-    expect(portOpacity(portReach(1) + 20, 1)).toBeGreaterThan(portOpacity(portReach(1) + 60, 1));
-    expect(portOpacity(1000, 1)).toBe(0);
   });
 });
 

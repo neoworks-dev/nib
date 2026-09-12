@@ -70,7 +70,7 @@ class FakeTransport {
   readonly saved: BoardDoc[] = [];
 
   async loadBoard(cwd: string): Promise<BoardDoc> {
-    return { version: 1, rev: 0, cwd, objects: [] };
+    return { version: 1, rev: 0, cwd, objects: [], placements: {} };
   }
 
   async saveBoard(board: BoardDoc): Promise<BoardDoc> {
@@ -209,36 +209,14 @@ describe("the board composer", () => {
     expect(cards()[0]).toMatchObject({ sessionId: "s9", goal: "" });
   });
 
-  test("a side question is a card on the board, not a prompt to fill in first", async () => {
-    const source = await canvasState.startWorkstream("port the engine", { x: 40, y: 60 });
-    const branch = canvasState.branchCard(source!);
-
-    expect(canvasState.sheet).toBeNull();
-    expect(cards()).toHaveLength(2);
-    expect(cards()[1]).toMatchObject({ id: branch!, goal: "" });
-    expect(cards()[1]!.sessionId).toBeUndefined();
-    expect(canvasState.objects.filter((object) => object.kind === "edge")).toMatchObject([
-      { fromId: source!, toId: branch!, label: "branch" },
-    ]);
-    // The composer it opens is what the question is written into.
-    expect(panes.opened.at(-1)).toEqual({ paneId: chatPaneId, params: { workstreamId: branch! } });
-  });
-
   test("a join is a card with its sources named on it, not a prompt to fill in first", async () => {
     const first = await canvasState.startWorkstream("port the engine", { x: 0, y: 0 });
     const second = await canvasState.startWorkstream("port the renderer", { x: 600, y: 0 });
 
-    // A right-button drag off both cards onto empty board space.
-    canvasState.spawnFrom([first!, second!], null, { x: 300, y: 400 });
+    const joined = canvasState.join([first!, second!], { x: 300, y: 400 });
 
-    const joined = cards().find((card) => card.id !== first && card.id !== second);
-    expect(canvasState.sheet).toBeNull();
-    expect(joined).toBeDefined();
-    expect(panes.opened.at(-1)).toEqual({
-      paneId: chatPaneId,
-      params: { workstreamId: joined!.id },
-    });
-    expect(canvasState.sourcesOf(joined!.id).map((source) => source.id)).toEqual([first!, second!]);
+    expect(joined).not.toBeNull();
+    expect(canvasState.sourcesOf(joined!).map((source) => source.id)).toEqual([first!, second!]);
   });
 
   test("an empty prompt is not a workstream", async () => {
