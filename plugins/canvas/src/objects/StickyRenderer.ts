@@ -26,15 +26,28 @@ import { parseBlocks } from "../markdown";
 import { type BoardTheme, CARD_TYPE, themeRevision } from "../theme";
 import { CardRenderer } from "./CardRenderer";
 
-/** World units: the box, and the gap between it and the words beside it. */
+/** World units: the box, the gap to the words beside it, and the grab margin. */
 const CHECKBOX_SIZE = 12;
 const CHECKBOX_GAP = 9;
+const CHECKBOX_REACH = 5;
 
 export interface StickyDeps {
   theme(): BoardTheme;
   textures: TextTextureCache;
   /** A double click edits the sticky in place. */
   edit(sticky: StickyObject): void;
+  /**
+   * A checkbox was pressed, by the line it is on in the file. Ticking a box is a
+   * write to the markdown, so the card reports the press and the vault does it.
+   */
+  toggleTask(sticky: StickyObject, line: number): void;
+}
+
+/** Where a task's box was drawn, so a press can be resolved back to its line. */
+interface TaskHit {
+  line: number;
+  x: number;
+  y: number;
 }
 
 class StickyCardRenderer extends CardRenderer<StickyObject> {
@@ -42,6 +55,7 @@ class StickyCardRenderer extends CardRenderer<StickyObject> {
   private readonly boxes = new Graphics();
   /** One per body line: a task is indented past its box, so they cannot share one. */
   private readonly lines: Sprite[] = [];
+  private taskHits: TaskHit[] = [];
 
   constructor(
     engine: CanvasEngineApi,
@@ -62,6 +76,30 @@ class StickyCardRenderer extends CardRenderer<StickyObject> {
 
   protected contentSignature(data: StickyObject): string {
     return [data.id, data.title ?? "", data.name, data.preview].join(" ");
+  }
+
+  /**
+   * A press on a checkbox ticks the task rather than opening the card. Read on
+   * the way up by the select tool, so dragging the sticky never ticks a box.
+   */
+  pressAt(worldX: number, worldY: number): boolean {
+    const data = this.data;
+    if (!data) return false;
+
+    const bounds = this.bounds();
+    const localX = worldX - bounds.x;
+    const localY = worldY - bounds.y;
+
+    for (const hit of this.taskHits) {
+      const withinX =
+        localX >= hit.x - CHECKBOX_REACH && localX <= hit.x + CHECKBOX_SIZE + CHECKBOX_REACH;
+      const withinY =
+        localY >= hit.y - CHECKBOX_REACH && localY <= hit.y + CHECKBOX_SIZE + CHECKBOX_REACH;
+      if (!withinX || !withinY) continue;
+      this.deps.toggleTask(data, hit.line);
+      return true;
+    }
+    return false;
   }
 
   protected drawContent(): void {
@@ -111,6 +149,7 @@ class StickyCardRenderer extends CardRenderer<StickyObject> {
       .slice(0, Math.max(0, Math.floor(room / lineHeight)));
 
     this.boxes.clear();
+    this.taskHits = [];
 
     let y = top;
     for (const [index, { block, line }] of blocks.entries()) {
@@ -120,6 +159,7 @@ class StickyCardRenderer extends CardRenderer<StickyObject> {
       if (block.style === "task") {
         const boxY = y + (CARD_TYPE.bodySize - CHECKBOX_SIZE) / 2 + 2;
         this.drawCheckbox(pad, boxY, block.done, theme);
+        this.taskHits.push({ line, x: pad, y: boxY });
       }
 
       const run: TextRun = {

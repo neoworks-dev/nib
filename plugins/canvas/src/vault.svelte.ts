@@ -13,6 +13,7 @@ import type { CanvasObject, Point, TransportService, VaultMoveResult } from "@ni
 import type { Placement, Size, VaultDoc, VaultSnapshotItem } from "@nib-ui/vault";
 import type { BoardStore } from "./board.svelte";
 import { cardKindFor, extensionOf, isImagePath, isMarkdownPath, isVideoPath } from "./card-kind";
+import { documentToMarkdown, parseDocument, toggleTask } from "./markdown";
 import { collapse, createStackId, dissolve, membersOf, spread, type StackMember } from "./stacks";
 import {
   type BoardObject,
@@ -337,6 +338,30 @@ export class VaultStore {
       return;
     }
     await this.refresh();
+  }
+
+  /**
+   * Ticks a task on a card that is not open for editing. The file is read back
+   * rather than patched from the card's own body, because that body is clipped
+   * and a write built from it would truncate the note.
+   */
+  async toggleTask(path: string, line: number): Promise<void> {
+    const url = this.fileUrl(path);
+    if (url === null) return;
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) return;
+
+      const document = parseDocument(await response.text());
+      const block = document.blocks[line];
+      if (!block || block.style !== "task") return;
+
+      document.blocks[line] = toggleTask(block);
+      await this.writeText(path, documentToMarkdown(document));
+    } catch (cause) {
+      this.error = describe(cause);
+    }
   }
 
   /** The pile a card is in, or null for one that is loose. */

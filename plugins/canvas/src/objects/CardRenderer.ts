@@ -31,6 +31,14 @@ import {
   themeRevision,
 } from "../theme";
 
+/**
+ * World units a placement has to jump before the card eases across rather than
+ * snapping. Comfortably above what a drag or a resize moves in one frame, and
+ * comfortably below what folding a pile moves.
+ */
+const TRAVEL_THRESHOLD = 32;
+const TRAVEL_MS = 240;
+
 export abstract class CardRenderer<TData extends CanvasObject = CanvasObject>
   extends ObjectRenderer<TData>
   implements ResizableRenderer
@@ -117,7 +125,26 @@ export abstract class CardRenderer<TData extends CanvasObject = CanvasObject>
     if (Math.abs(this.engine.camera.zoom - this.chromeZoom) > this.chromeZoom * 0.02)
       this.drawChrome();
 
-    this.container.position.set(readNumber(data, "x", 0), readNumber(data, "y", 0));
+    this.moveTo(readNumber(data, "x", 0), readNumber(data, "y", 0));
+  }
+
+  /**
+   * A card follows its placement, and eases when the placement jumps: folding a
+   * selection into a pile, spreading one back out and laying a folder's contents
+   * beside it all move cards a long way at once, and they should travel rather
+   * than teleport.
+   *
+   * A card being dragged is pinned to the pointer instead — a tween there would
+   * lag the cursor — and a resize moves the edge a few units a frame, which is
+   * under the threshold and snaps.
+   */
+  private moveTo(x: number, y: number): void {
+    const jumped = Math.hypot(x - this.container.x, y - this.container.y) > TRAVEL_THRESHOLD;
+    if (this.raised || !jumped) {
+      this.container.position.set(x, y);
+      return;
+    }
+    this.tweenTo(x, y, TRAVEL_MS);
   }
 
   /**

@@ -183,6 +183,7 @@ export const canvasPlugin: Plugin = {
           theme: boardTheme,
           textures,
           edit: (sticky) => canvasState.openEditor(sticky.path, false),
+          toggleTask: (sticky, line) => void canvasState.vault.toggleTask(sticky.path, line),
         }),
       ),
     );
