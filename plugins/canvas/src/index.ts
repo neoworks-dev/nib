@@ -10,8 +10,11 @@ import { SelectTool } from "./engine/tools/SelectTool";
 import { TextTextureCache } from "./engine/utils/textTexture";
 import LinksPane from "./LinksPane.svelte";
 import SearchPane from "./SearchPane.svelte";
+import { folderKind } from "./objects/FolderRenderer";
 import { sheetKind } from "./objects/SheetRenderer";
-import { type VaultDeps, vaultCardKind } from "./objects/VaultRenderer";
+import { stickyKind } from "./objects/StickyRenderer";
+import { visualKind } from "./objects/VisualRenderer";
+import { webclipKind } from "./objects/WebclipRenderer";
 import { canvasState } from "./state.svelte";
 import { boardTheme } from "./theme";
 import { isWorkstream } from "./workstream";
@@ -19,6 +22,13 @@ import { isWorkstream } from "./workstream";
 const paneId = "canvas";
 const linksPaneId = "canvas.links";
 const searchPaneId = "canvas.search";
+
+/** The five kinds the vault contributes. Everything else was put there by a plugin. */
+const VAULT_CARD_KINDS = new Set(["folder", "sticky", "sheet", "visual", "webclip"]);
+
+function isVaultCard(kind: string): boolean {
+  return VAULT_CARD_KINDS.has(kind);
+}
 
 /**
  * Deleting reaches the filesystem and is the one board action with no undo, so it
@@ -101,16 +111,6 @@ export const canvasPlugin: Plugin = {
     );
 
     const textures = new TextTextureCache();
-    // Topics and files are not authored anywhere: the board derives them from the
-    // vault, so these two kinds are the whole of what the vault contributes.
-    const vaultDeps: VaultDeps = {
-      theme: boardTheme,
-      textures,
-      preview: (topic) => canvasState.vault.togglePreview(topic),
-      enter: (topic) => canvasState.vault.enter(topic),
-      openFile: (file) => canvasState.vault.openFile(file),
-      fileUrl: (path) => canvasState.vault.fileUrl(path),
-    };
     // The editor is optional — its plugin may not be loaded — so the vault asks
     // rather than assumes, and falls back to handing the file to the browser.
     canvasState.vault.openNote = (cwd, path) => {
@@ -119,14 +119,53 @@ export const canvasPlugin: Plugin = {
       void viewer.openVaultFile(cwd, path);
       return true;
     };
-    ctx.effect(() => registry.registerKind(vaultCardKind("topic", vaultDeps)));
-    ctx.effect(() => registry.registerKind(vaultCardKind("file", vaultDeps)));
+
+    // Nothing on the board is authored. Every kind is a vault entry plus its
+    // placement, and which kind an entry gets is read off its own content.
+    ctx.effect(() =>
+      registry.registerKind(
+        folderKind({
+          theme: boardTheme,
+          textures,
+          preview: (folder) => canvasState.vault.togglePreview(folder),
+          enter: (folder) => canvasState.vault.enter(folder),
+        }),
+      ),
+    );
+    ctx.effect(() =>
+      registry.registerKind(
+        stickyKind({
+          theme: boardTheme,
+          textures,
+          edit: (sticky) => canvasState.vault.openFile(sticky),
+        }),
+      ),
+    );
     ctx.effect(() =>
       registry.registerKind(
         sheetKind({
           theme: boardTheme,
           textures,
           open: (sheet) => canvasState.vault.openFile(sheet),
+        }),
+      ),
+    );
+    ctx.effect(() =>
+      registry.registerKind(
+        visualKind({
+          theme: boardTheme,
+          fileUrl: (path) => canvasState.vault.fileUrl(path),
+          open: (visual) => canvasState.vault.openFile(visual),
+        }),
+      ),
+    );
+    ctx.effect(() =>
+      registry.registerKind(
+        webclipKind({
+          theme: boardTheme,
+          captureUrl: (url) => canvasState.vault.captureUrl(url),
+          cancel: (clip) => void canvasState.vault.deleteEntry(clip.path),
+          open: (clip) => void globalThis.open(clip.url, "_blank", "noopener,noreferrer"),
         }),
       ),
     );
@@ -154,11 +193,12 @@ export const canvasPlugin: Plugin = {
             }
             return items;
           }
-          // A card the vault put there: it stands for a file, so the menu is about
-          // the file, not about a task carrying it.
-          if (target.kind === "topic" || target.kind === "file") {
+          // A card the vault put there: it stands for a file or a directory, so
+          // the menu is about that, not about a task carrying it.
+          if (isVaultCard(target.kind)) {
+            const folder = target.kind === "folder";
             const items: CanvasMenuItem[] = [];
-            if (target.kind === "topic") {
+            if (folder) {
               items.push({
                 kind: "action",
                 id: "canvas.vault.preview",
@@ -187,8 +227,8 @@ export const canvasPlugin: Plugin = {
             items.push({
               kind: "action",
               id: "canvas.vault.delete",
-              label: target.kind === "topic" ? "Delete this topic" : "Delete this file",
-              run: () => deleteFromVault(target.id, target.kind === "topic"),
+              label: folder ? "Delete this topic" : "Delete this file",
+              run: () => deleteFromVault(target.id, folder),
             });
             return items;
           }
@@ -338,18 +378,24 @@ export {
   type BoardView,
   type BoardViewInput,
   boardView,
-  FILE_SIZE,
-  type FileObject,
+  FOLDER_SIZE,
+  type FolderObject,
   MIN_CARD_SIZE,
-  PREVIEW_WIDTH,
-  parseFile,
+  parseFolder,
   parseSheet,
-  parseTopic,
+  parseSticky,
+  parseVisual,
+  parseWebclip,
+  PREVIEW_WIDTH,
   previewObjects,
   SHEET_SIZE,
   type SheetObject,
-  type TopicObject,
-  TOPIC_SIZE,
+  STICKY_SIZE,
+  type StickyObject,
+  VISUAL_SIZE,
+  type VisualObject,
+  WEBCLIP_SIZE,
+  type WebclipObject,
 } from "./board-view";
 export {
   bodyLineCount,
@@ -363,7 +409,6 @@ export {
   urlBody,
 } from "./card-kind";
 export { BoardStore } from "./board.svelte";
-export { type VaultDeps, vaultCardKind } from "./objects/VaultRenderer";
 export { VaultStore } from "./vault.svelte";
 export { addObject, rebaseObjects, removeObjects, updateObject, withCascade } from "./board-ops";
 export {

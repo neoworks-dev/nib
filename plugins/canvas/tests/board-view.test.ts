@@ -3,12 +3,12 @@ import { overlaps, toSnapshot, buildVaultIndex, type VaultSource } from "@nib-ui
 import {
   type BoardView,
   boardView,
-  FILE_SIZE,
-  type FileObject,
+  type FolderObject,
   MIN_CARD_SIZE,
   linkSummary,
   previewObjects,
-  type TopicObject,
+  STICKY_SIZE,
+  type StickyObject,
 } from "../src/board-view";
 
 /** A vault listing: directories and files, in the shape the scan produces. */
@@ -32,15 +32,16 @@ function snapshot(files: Record<string, string>): ReturnType<typeof toSnapshot> 
 
 const noSlot = (): { x: number; y: number } => ({ x: 0, y: 0 });
 
-function topicAt(view: BoardView, path: string): TopicObject {
+/** A directory is drawn as a folder; the test vault's short bodies are stickies. */
+function topicAt(view: BoardView, path: string): FolderObject {
   const object = view.objects.find((entry) => entry.path === path);
-  if (object?.kind !== "topic") throw new Error(`no topic card at ${path}`);
+  if (object?.kind !== "folder") throw new Error(`no folder card at ${path}`);
   return object;
 }
 
-function fileAt(view: BoardView, path: string): FileObject {
+function fileAt(view: BoardView, path: string): StickyObject {
   const object = view.objects.find((entry) => entry.path === path);
-  if (object?.kind !== "file") throw new Error(`no file card at ${path}`);
+  if (object?.kind !== "sticky") throw new Error(`no sticky card at ${path}`);
   return object;
 }
 
@@ -63,7 +64,7 @@ describe("boardView", () => {
     });
 
     expect(view.objects.map((object) => object.path)).toEqual(["topic-x/c.md", "topic-x/sub"]);
-    expect(view.objects.find((object) => object.path === "topic-x/sub")?.kind).toBe("topic");
+    expect(view.objects.find((object) => object.path === "topic-x/sub")?.kind).toBe("folder");
   });
 
   it("counts a topic's direct children", () => {
@@ -76,7 +77,7 @@ describe("boardView", () => {
     expect(topicAt(view, "topic-x").count).toBe(3);
   });
 
-  it("carries a file's preview, extension and truncation", () => {
+  it("carries a note's preview and truncation, and draws a picture as a visual", () => {
     const view = boardView({
       vault: snapshot({ "note.md": "hello", "shot.png": "" }),
       placements: {},
@@ -86,11 +87,12 @@ describe("boardView", () => {
     const note = fileAt(view, "note.md");
     expect(note.preview).toBe("hello");
     expect(note.truncated).toBe(false);
-    expect(note.extension).toBe("md");
 
-    const shot = fileAt(view, "shot.png");
-    expect(shot.extension).toBe("png");
-    expect(shot.preview).toBe("");
+    // A picture is the card, so it carries no body at all.
+    expect(view.objects.find((entry) => entry.path === "shot.png")).toMatchObject({
+      kind: "visual",
+      video: false,
+    });
   });
 
   it("keeps a stored position", () => {
@@ -113,7 +115,7 @@ describe("boardView", () => {
     });
 
     expect(view.added).toEqual(["a.md"]);
-    expect(view.objects[0]).toMatchObject({ x: 0, y: 0, ...FILE_SIZE });
+    expect(view.objects[0]).toMatchObject({ x: 0, y: 0, ...STICKY_SIZE });
     expect(view.placements["a.md"]).toMatchObject({ x: 0, y: 0 });
   });
 

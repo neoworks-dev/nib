@@ -10,27 +10,27 @@
 
 import type { Disposer } from "@nib-ui/kernel";
 import type { CanvasObject, Point, TransportService, VaultMoveResult } from "@nib-ui/ui-contracts";
-import type { Placement, VaultDoc, VaultSnapshotItem } from "@nib-ui/vault";
+import type { Placement, Size, VaultDoc, VaultSnapshotItem } from "@nib-ui/vault";
 import type { BoardStore } from "./board.svelte";
-import { cardKindFor, extensionOf } from "./card-kind";
+import { cardKindFor, extensionOf, isImagePath, isMarkdownPath, isVideoPath } from "./card-kind";
 import {
   type BoardObject,
-  SHEET_SIZE,
-  TOPIC_SIZE,
   boardView,
+  FOLDER_SIZE,
+  type FolderObject,
   type LinkSummary,
   linkSummary,
   previewObjects,
-  type TopicObject,
+  SHEET_SIZE,
+  STICKY_SIZE,
+  VISUAL_SIZE,
+  WEBCLIP_SIZE,
 } from "./board-view";
 
 /** World units between a topic card and the block of its contents. */
 const PREVIEW_GAP = 24;
 /** How wide a previewed block of contents is allowed to get. */
 const PREVIEW_WIDTH = 720;
-
-const CARD_SIZE: { w: number; h: number } = { w: 288, h: 132 };
-const MEDIA_SIZE: { w: number; h: number } = { w: 340, h: 230 };
 
 /** What the editor can usefully show. Everything else the browser is better at. */
 const TEXT_EXTENSIONS = new Set([
@@ -59,18 +59,6 @@ const TEXT_EXTENSIONS = new Set([
   "log",
 ]);
 
-const MEDIA_EXTENSIONS = new Set([
-  "png",
-  "jpg",
-  "jpeg",
-  "gif",
-  "webp",
-  "avif",
-  "pdf",
-  "mp4",
-  "webm",
-]);
-
 export class VaultStore {
   transport = $state<TransportService | null>(null);
   /** The vault as the server last reported it. Null until the first load resolves. */
@@ -85,6 +73,9 @@ export class VaultStore {
 
   loading = $state(false);
   error = $state<string | null>(null);
+
+  /** Page captures this window has, by the url they were taken of. */
+  private captures = $state<Record<string, string>>({});
 
   /**
    * Set by the app: reading a note is the editor's business. It answers false when
@@ -199,7 +190,7 @@ export class VaultStore {
   }
 
   /** Enters a topic: its board replaces the canvas. */
-  enter(topic: TopicObject | string): void {
+  enter(topic: FolderObject | string): void {
     const path = typeof topic === "string" ? topic : topic.path;
     if (path.length === 0 || path === this.view) return;
     this.trail = [...this.trail, this.view];
@@ -244,7 +235,7 @@ export class VaultStore {
   }
 
   /** A single click on a topic: its contents appear beside it, and the board stays. */
-  togglePreview(topic: TopicObject | string): void {
+  togglePreview(topic: FolderObject | string): void {
     const path = typeof topic === "string" ? topic : topic.path;
     this.preview = this.preview === path ? null : path;
     this.derive();
@@ -272,6 +263,16 @@ export class VaultStore {
     const cwd = this.board.cwd;
     if (cwd.length === 0) return null;
     return `/api/vault/file?${new URLSearchParams({ cwd, path }).toString()}`;
+  }
+
+  /**
+   * The capture taken of a page, or null while there is none — which is what puts
+   * a webclip in its loading state. Held per window rather than on the board: a
+   * capture belongs to a url, not to a placement, and the cache behind it is the
+   * server's `link-previews/` directory.
+   */
+  captureUrl(url: string): string | null {
+    return this.captures[url] ?? null;
   }
 
   /** Whether taking this object off the board would mean anything. */
@@ -368,7 +369,7 @@ export class VaultStore {
       try {
         const bytes = new Uint8Array(await file.arrayBuffer());
         const { path } = await transport.writeVaultFile(cwd, this.view, file.name, bytes);
-        const size = sizeForExtension(path);
+        const size = sizeForPath(path);
         slice[path] = { x: at.x + index * 24, y: at.y + index * 24, ...size, z: 1 };
         written.push(path);
       } catch (cause) {
@@ -443,7 +444,7 @@ export class VaultStore {
   private destinationFor(toId: string | null): string | null {
     if (toId === null) return this.view;
     const target = this.objectFor(toId);
-    if (!target || target.kind !== "topic") return null;
+    if (!target || target.kind !== "folder") return null;
     return target.path;
   }
 
@@ -545,8 +546,8 @@ export class VaultStore {
     this.contents = [];
 
     if (doc && path !== null) {
-      const card = this.cards.find((object) => object.kind === "topic" && object.path === path);
-      if (card && card.kind === "topic") {
+      const card = this.cards.find((object) => object.kind === "folder" && object.path === path);
+      if (card && card.kind === "folder") {
         this.contents = previewObjects(doc, path, {
           origin: { x: card.x + card.w + PREVIEW_GAP, y: card.y },
           maxWidth: PREVIEW_WIDTH,
@@ -586,24 +587,31 @@ export class VaultStore {
  * what decides: a sheet is a page and wants a page's proportions, a picture wants
  * room to be looked at, and a sticky is the small one beside them.
  */
-function sizeForItem(item: VaultSnapshotItem): { w: number; h: number } {
+/**
+ * The size a file just written to disk is placed at. It has not been scanned yet,
+ * so there is no item to classify and only the name can be gone on — which is
+ * enough for the two that matter, since a picture and a note want very different
+ * room. The next scan cannot change it: by then the placement is stored.
+ */
+function sizeForPath(path: string): Size {
+  if (isImagePath(path) || isVideoPath(path)) return VISUAL_SIZE;
+  if (isMarkdownPath(path)) return STICKY_SIZE;
+  return SHEET_SIZE;
+}
+
+function sizeForItem(item: VaultSnapshotItem): Size {
   switch (cardKindFor(item)) {
     case "folder":
-      return TOPIC_SIZE;
+      return FOLDER_SIZE;
     case "sheet":
       return SHEET_SIZE;
     case "visual":
-      return MEDIA_SIZE;
-    default:
-      return CARD_SIZE;
+      return VISUAL_SIZE;
+    case "webclip":
+      return WEBCLIP_SIZE;
+    case "sticky":
+      return STICKY_SIZE;
   }
-}
-
-/** Media gets a bigger card than a note, which is the whole point of the size hook. */
-function sizeForExtension(path: string): { w: number; h: number } {
-  const dot = path.lastIndexOf(".");
-  if (dot === -1) return CARD_SIZE;
-  return MEDIA_EXTENSIONS.has(path.slice(dot + 1).toLowerCase()) ? MEDIA_SIZE : CARD_SIZE;
 }
 
 function directoryOf(path: string): string {

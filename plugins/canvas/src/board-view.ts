@@ -12,7 +12,7 @@
  */
 
 import type { CanvasObject } from "@nib-ui/ui-contracts";
-import { cardKindFor } from "./card-kind";
+import { cardKindFor, isVideoPath, urlBody } from "./card-kind";
 import {
   type Placement,
   type ReconcileOptions,
@@ -24,23 +24,30 @@ import {
   reconcileBoard,
 } from "@nib-ui/vault";
 
-export const TOPIC_SIZE: Size = { w: 288, h: 168 };
-export const FILE_SIZE: Size = { w: 288, h: 132 };
+/** A folder is the widest card and the shortest, because it holds nothing itself. */
+export const FOLDER_SIZE: Size = { w: 288, h: 168 };
+/** The small one: a sticky is about 85% the width of the sheet beside it. */
+export const STICKY_SIZE: Size = { w: 256, h: 300 };
 /** A page, so it is taller than it is wide and taller than everything beside it. */
 export const SHEET_SIZE: Size = { w: 300, h: 400 };
-/** How wide the auto-arranged block beside a topic card is allowed to get. */
+export const VISUAL_SIZE: Size = { w: 340, h: 230 };
+/** Portrait 2:3, which is the shape a fixed-viewport page capture comes back as. */
+export const WEBCLIP_SIZE: Size = { w: 260, h: 390 };
+/** How wide the auto-arranged block beside a folder card is allowed to get. */
 export const PREVIEW_WIDTH = 640;
 /** A card has to be big enough to hold a title before its own content is fetched. */
 export const MIN_CARD_SIZE: Size = { w: 120, h: 64 };
 
-export interface TopicObject extends CanvasObject {
-  kind: "topic";
-  /** The vault-relative directory path, and the object's id. */
+/**
+ * What every card carries. Identity and content come from the vault; `x`, `y`,
+ * `w`, `h` and `z` come from the placement, and are the only part of a card that
+ * is the app's own (PLAN decision 4).
+ */
+interface PlacedObject extends CanvasObject {
+  /** The vault-relative path, which is also the object's id. */
   path: string;
   name: string;
   title: string | null;
-  /** How many things are directly inside, for the card's own summary. */
-  count: number;
   x: number;
   y: number;
   w: number;
@@ -48,43 +55,46 @@ export interface TopicObject extends CanvasObject {
   z: number;
 }
 
-export interface FileObject extends CanvasObject {
-  kind: "file";
-  path: string;
-  name: string;
-  /** Lowercase, without the dot. Empty for a file with no extension. */
-  extension: string;
-  title: string | null;
-  /** The body, already clipped by the server, for a note card to draw. */
-  preview: string;
-  truncated: boolean;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  z: number;
+/** A directory: a topic (PLAN §5). The one kind that can be entered. */
+export interface FolderObject extends PlacedObject {
+  kind: "folder";
+  /** How many things are directly inside, for the card's own summary. */
+  count: number;
 }
 
 /**
- * A long note, drawn as a page. Nothing here says it is a sheet: `cardKindFor`
- * decided that from the body alone, and the card only carries what it draws.
+ * A short note. Nothing here says it is a sticky rather than a sheet:
+ * `cardKindFor` decided that from the body alone (PLAN decision 2), and a card
+ * only carries what it draws.
  */
-export interface SheetObject extends CanvasObject {
-  kind: "sheet";
-  path: string;
-  name: string;
-  title: string | null;
-  /** The body, already clipped by the server, for the page to draw. */
+export interface StickyObject extends PlacedObject {
+  kind: "sticky";
+  /** The body, already clipped by the server. */
   preview: string;
   truncated: boolean;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  z: number;
 }
 
-export type BoardObject = TopicObject | FileObject | SheetObject;
+/** A long note, drawn as a page. */
+export interface SheetObject extends PlacedObject {
+  kind: "sheet";
+  preview: string;
+  truncated: boolean;
+}
+
+/** A picture or a clip, drawn as itself. */
+export interface VisualObject extends PlacedObject {
+  kind: "visual";
+  /** Plays itself, muted and looping, rather than showing one frame. */
+  video: boolean;
+}
+
+/** A markdown file whose whole body is one url, drawn as a capture of that page. */
+export interface WebclipObject extends PlacedObject {
+  kind: "webclip";
+  url: string;
+}
+
+export type BoardObject = FolderObject | StickyObject | SheetObject | VisualObject | WebclipObject;
 
 /** What one item points at, what points at it, and what nearly does. */
 export interface LinkSummary {
@@ -148,7 +158,7 @@ export function boardView(input: BoardViewInput): BoardView {
     };
   });
 
-  const options: ReconcileOptions = { size: FILE_SIZE };
+  const options: ReconcileOptions = { size: STICKY_SIZE };
   if (input.slot !== undefined) options.slot = input.slot;
   const reconciled = reconcileBoard(entries, input.placements, options);
 
@@ -186,7 +196,7 @@ export function previewObjects(
   const byPath = new Map(vault.items.map((item) => [item.path, item]));
   const contents = [...byPath.values()].filter((item) => item.dir === topicPath);
   const slot = flowSlot({ maxWidth: options.maxWidth ?? PREVIEW_WIDTH });
-  const size = options.size ?? FILE_SIZE;
+  const size = options.size ?? STICKY_SIZE;
 
   const occupied: { x: number; y: number; w: number; h: number }[] = [];
   const objects: BoardObject[] = [];
@@ -246,27 +256,25 @@ function objectFor(
     z: placement.z,
   };
 
-  if (item.kind === "topic") {
-    let count = 0;
-    for (const other of byPath.values()) {
-      if (other.dir === item.path) count += 1;
-    }
-    return { kind: "topic", ...shared, count };
-  }
-
-  // What a note is drawn as comes from its own content (PLAN decision 2), so the
+  // What an item is drawn as comes from its own content (PLAN decision 2), so the
   // card kind is derived here and never read off the board document.
-  if (cardKindFor(item) === "sheet") {
-    return { kind: "sheet", ...shared, preview: item.preview, truncated: item.truncated };
+  switch (cardKindFor(item)) {
+    case "folder": {
+      let count = 0;
+      for (const other of byPath.values()) {
+        if (other.dir === item.path) count += 1;
+      }
+      return { kind: "folder", ...shared, count };
+    }
+    case "visual":
+      return { kind: "visual", ...shared, video: isVideoPath(item.path) };
+    case "webclip":
+      return { kind: "webclip", ...shared, url: urlBody(item.preview) ?? item.preview.trim() };
+    case "sticky":
+      return { kind: "sticky", ...shared, preview: item.preview, truncated: item.truncated };
+    case "sheet":
+      return { kind: "sheet", ...shared, preview: item.preview, truncated: item.truncated };
   }
-
-  return {
-    kind: "file",
-    ...shared,
-    extension: extensionOf(item.path),
-    preview: item.preview,
-    truncated: item.truncated,
-  };
 }
 
 function sizeFor(
@@ -281,33 +289,25 @@ function sizeFor(
   };
 }
 
-function extensionOf(path: string): string {
-  const base = path.slice(path.lastIndexOf("/") + 1);
-  const dot = base.lastIndexOf(".");
-  if (dot <= 0) return "";
-  return base.slice(dot + 1).toLowerCase();
-}
-
 /**
  * The board document is hand-editable and outlives the build that wrote it, so a
  * card that will not parse is dropped rather than drawn wrong. A card with no
  * usable size gets the default instead of disappearing: the item is real even when
  * its placement is not.
  */
-export function parseTopic(raw: unknown): TopicObject | null {
-  const placed = parsePlaced(raw, "topic");
+export function parseFolder(raw: unknown): FolderObject | null {
+  const placed = parsePlaced(raw, "folder");
   if (!placed) return null;
-  return { kind: "topic", ...placed, count: readNumber(raw, "count", 0) };
+  return { kind: "folder", ...placed, count: readNumber(raw, "count", 0) };
 }
 
-export function parseFile(raw: unknown): FileObject | null {
-  const placed = parsePlaced(raw, "file");
+export function parseSticky(raw: unknown): StickyObject | null {
+  const placed = parsePlaced(raw, "sticky");
   if (!placed) return null;
 
   return {
-    kind: "file",
+    kind: "sticky",
     ...placed,
-    extension: readString(raw, "extension"),
     preview: readString(raw, "preview"),
     truncated: readBoolean(raw, "truncated"),
   };
@@ -323,6 +323,21 @@ export function parseSheet(raw: unknown): SheetObject | null {
     preview: readString(raw, "preview"),
     truncated: readBoolean(raw, "truncated"),
   };
+}
+
+export function parseVisual(raw: unknown): VisualObject | null {
+  const placed = parsePlaced(raw, "visual");
+  if (!placed) return null;
+  return { kind: "visual", ...placed, video: readBoolean(raw, "video") };
+}
+
+export function parseWebclip(raw: unknown): WebclipObject | null {
+  const placed = parsePlaced(raw, "webclip");
+  if (!placed) return null;
+
+  const url = readString(raw, "url");
+  if (url.length === 0) return null;
+  return { kind: "webclip", ...placed, url };
 }
 
 interface PlacedFields {
@@ -356,8 +371,8 @@ function parsePlaced(raw: unknown, kind: string): PlacedFields | null {
     title: title.length > 0 ? title : null,
     x,
     y,
-    w: Math.max(MIN_CARD_SIZE.w, readNumber(raw, "w", FILE_SIZE.w)),
-    h: Math.max(MIN_CARD_SIZE.h, readNumber(raw, "h", FILE_SIZE.h)),
+    w: Math.max(MIN_CARD_SIZE.w, readNumber(raw, "w", STICKY_SIZE.w)),
+    h: Math.max(MIN_CARD_SIZE.h, readNumber(raw, "h", STICKY_SIZE.h)),
     z: readNumber(raw, "z", 0),
   };
 }
