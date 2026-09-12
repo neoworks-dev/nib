@@ -44,6 +44,16 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
 
   /** Set by the plugin: what opening an object means is not the engine's business. */
   onActivate: ((object: CanvasObject) => void) | null = null;
+  /** A double click on empty board space: what it creates is the plugin's call. */
+  onCreateAt: ((at: Point) => void) | null = null;
+  /** A click away from everything: whatever had the focus gives it up. */
+  onClearFocus: (() => void) | null = null;
+  /**
+   * Where the focus set comes from. Set by the plugin, because what counts as
+   * focused — a previewed folder and its contents, a spread stack and its
+   * members — is not a fact the board itself knows.
+   */
+  focusSource: (() => ReadonlySet<string> | null) | null = null;
   /** Cards released over a card, or over empty board space: a `mv`, or nothing. */
   onDropOnto: ((ids: string[], toId: string | null, at: Point) => void) | null = null;
   /** Set by the plugin: entering a project is a board load plus everything that hangs off it. */
@@ -216,6 +226,18 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
     if (object) activateObject(this.kindFor(object.kind), object, this.onActivate, gesture);
   }
 
+  get focus(): ReadonlySet<string> | null {
+    return this.focusSource?.() ?? null;
+  }
+
+  createAt(at: Point): void {
+    this.onCreateAt?.(at);
+  }
+
+  clearFocus(): void {
+    this.onClearFocus?.();
+  }
+
   dropOnto(ids: string[], toId: string | null, at: Point): void {
     if (ids.length > 0) this.onDropOnto?.(ids, toId, at);
   }
@@ -251,7 +273,10 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
     this.camera = { x: 0, y: 0, zoom: 1 };
     this.activeTool = "select";
     this.engine = null;
+    this.focusSource = null;
     this.onActivate = null;
+    this.onCreateAt = null;
+    this.onClearFocus = null;
     this.onDropOnto = null;
   }
 }

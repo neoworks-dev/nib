@@ -241,6 +241,55 @@ export class VaultStore {
     this.derive();
   }
 
+  /** Clicking away from everything puts a previewed folder back. */
+  closePreview(): void {
+    if (this.preview === null) return;
+    this.preview = null;
+    this.derive();
+  }
+
+  /**
+   * What stays lit while a folder is previewed: the folder itself and the block
+   * of its contents. Null when nothing is previewed, which is what leaves the
+   * board undimmed.
+   *
+   * Held rather than derived on demand, because the engine reads it once per
+   * frame and building the set each time would be an allocation per frame.
+   */
+  focus: ReadonlySet<string> | null = null;
+
+  /**
+   * A double click on empty board space. It writes a real, empty markdown file
+   * into this board's directory — the vault is the truth, so a sticky exists on
+   * disk before it exists on the board — places it where the cursor was, and
+   * answers with the path so the caller can open its editor.
+   */
+  async createSticky(at: Point): Promise<string | null> {
+    const transport = this.transport;
+    const cwd = this.board.cwd;
+    if (!transport || cwd.length === 0) return null;
+
+    try {
+      const { path } = await transport.writeVaultFile(
+        cwd,
+        this.view,
+        `${untitledName()}.md`,
+        new Uint8Array(0),
+      );
+      // Placed at the cursor rather than flowed in with the rest: the point of a
+      // double click is that it says where.
+      this.writeSlice({
+        ...this.slice(),
+        [path]: { x: Math.round(at.x), y: Math.round(at.y), ...STICKY_SIZE, z: 1 },
+      });
+      await this.refresh();
+      return path;
+    } catch (cause) {
+      this.error = describe(cause);
+      return null;
+    }
+  }
+
   /**
    * A file card was opened. A note goes to the editor, which is what reading one
    * means; anything the card already draws, or that nothing here can draw, is
@@ -551,9 +600,14 @@ export class VaultStore {
         this.contents = previewObjects(doc, path, {
           origin: { x: card.x + card.w + PREVIEW_GAP, y: card.y },
           maxWidth: PREVIEW_WIDTH,
+          size: sizeForItem,
         });
       }
     }
+    // The folder and what it is showing stay lit; everything else on the board
+    // drops to the dim. Nothing moves, which is what makes it read as a preview.
+    this.focus =
+      path === null ? null : new Set([path, ...this.contents.map((object) => object.id)]);
     this.publish();
   }
 
@@ -612,6 +666,16 @@ function sizeForItem(item: VaultSnapshotItem): Size {
     case "sticky":
       return STICKY_SIZE;
   }
+}
+
+/**
+ * The name a new sticky gets. It is a real filename the moment it is created, so
+ * it has to be one nothing else is likely to hold; the user renames it by giving
+ * the note a title, which is what the vault reads a name from.
+ */
+function untitledName(): string {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  return `untitled-${stamp}`;
 }
 
 function directoryOf(path: string): string {

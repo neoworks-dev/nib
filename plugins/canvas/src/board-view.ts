@@ -191,18 +191,22 @@ export function boardView(input: BoardViewInput): BoardView {
 export function previewObjects(
   vault: VaultSnapshot,
   topicPath: string,
-  options: { origin: { x: number; y: number }; maxWidth?: number; size?: Size },
+  options: {
+    origin: { x: number; y: number };
+    maxWidth?: number;
+    /** How big each card is, so a previewed sheet is a page and not a note stub. */
+    size?: (item: VaultSnapshotItem) => Size;
+  },
 ): BoardObject[] {
   const byPath = new Map(vault.items.map((item) => [item.path, item]));
   const contents = [...byPath.values()].filter((item) => item.dir === topicPath);
   const slot = flowSlot({ maxWidth: options.maxWidth ?? PREVIEW_WIDTH });
-  const size = options.size ?? STICKY_SIZE;
 
   const occupied: { x: number; y: number; w: number; h: number }[] = [];
   const objects: BoardObject[] = [];
 
   for (const item of contents) {
-    const card = sizeFor(item, undefined) ?? size;
+    const card = sizeFor(item, options.size) ?? STICKY_SIZE;
     const spot = slot(occupied, card);
     const placement: Placement = {
       x: spot.x + options.origin.x,

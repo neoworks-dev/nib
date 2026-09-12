@@ -71,7 +71,12 @@ export class SelectTool implements CanvasTool {
     }
 
     if (!hitId) {
-      if (!additive) engine.select([]);
+      if (!additive) {
+        engine.select([]);
+        // Clicking away is how a preview or a spread stack is put back, and it
+        // happens on the press so the board is restored before the drag begins.
+        engine.clearFocus();
+      }
       this.state = { kind: "rubber", anchor: event.world, corner: event.world };
       return true;
     }

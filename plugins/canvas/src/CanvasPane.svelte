@@ -12,6 +12,7 @@
   import { CanvasEngine } from "./engine/CanvasEngine";
   import { cameraFitting, clampZoom, zoomAt } from "./engine/utils/camera";
   import { unionRects } from "./engine/utils/geometry";
+  import SheetOverlay from "./SheetOverlay.svelte";
   import { canvasState } from "./state.svelte";
   import { boardTheme, refreshBoardTheme } from "./theme";
   import { CARD_MIN_HEIGHT, CARD_WIDTH } from "./workstream";
@@ -394,4 +395,6 @@
       <Composer pending={boardComposer} />
     </div>
   </div>
+
+  <SheetOverlay />
 </div>

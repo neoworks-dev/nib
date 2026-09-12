@@ -74,6 +74,15 @@ export const canvasPlugin: Plugin = {
       if (isWorkstream(object)) canvasState.open(object.id);
     };
 
+    // A double click on empty board space writes a blank note into this board's
+    // directory and opens it: the vault is the truth, so a sticky is a file on
+    // disk before it is a card.
+    registry.onCreateAt = (at) => void canvasState.createSticky(at);
+    // Clicking away puts a previewed folder back and closes an open sheet.
+    registry.onClearFocus = () => canvasState.vault.closePreview();
+    // What the board draws at full strength; everything else falls to the dim.
+    registry.focusSource = () => canvasState.vault.focus;
+
     // A card released on a topic is a real `mv` into that directory; on empty
     // board space it is a `mv` into the board's own (PLAN §5). Anything that is
     // not a vault card is left where the drag put it.
@@ -111,6 +120,8 @@ export const canvasPlugin: Plugin = {
     );
 
     const textures = new TextTextureCache();
+    // The overlay reads the whole file rather than the clipped body a card draws.
+    canvasState.editor.fileUrl = (path) => canvasState.vault.fileUrl(path);
     // The editor is optional — its plugin may not be loaded — so the vault asks
     // rather than assumes, and falls back to handing the file to the browser.
     canvasState.vault.openNote = (cwd, path) => {
@@ -146,7 +157,9 @@ export const canvasPlugin: Plugin = {
         sheetKind({
           theme: boardTheme,
           textures,
-          open: (sheet) => canvasState.vault.openFile(sheet),
+          // A sheet opens on the board rather than in the file viewer: it is a
+          // page, and reading one is what the full-screen editor is for.
+          open: (sheet) => canvasState.openEditor(sheet.path),
         }),
       ),
     );

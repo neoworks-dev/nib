@@ -241,21 +241,25 @@ describe("previewObjects", () => {
     }
   });
 
-  it("takes the size it is given for the whole block", () => {
+  it("sizes each card for what it is, and never overlaps two", () => {
     const objects = previewObjects(
-      snapshot({ "topic-x/a.md": "", "topic-x/b.md": "" }),
+      snapshot({ "topic-x/a.md": "", "topic-x/b.png": "" }),
       "topic-x",
       {
         origin: { x: 0, y: 0 },
         maxWidth: 400,
-        size: { w: 180, h: 90 },
+        // A picture and a note want different room, so the block asks per item.
+        size: (item) => (item.path.endsWith(".png") ? { w: 240, h: 160 } : { w: 180, h: 90 }),
       },
     );
 
-    const [first, second] = objects;
-    if (!first || !second) throw new Error("expected two cards");
-    expect(first).toMatchObject({ w: 180, h: 90 });
-    expect(overlaps(first, second)).toBe(false);
+    const note = objects.find((object) => object.path === "topic-x/a.md");
+    const picture = objects.find((object) => object.path === "topic-x/b.png");
+    if (!note || !picture) throw new Error("expected two cards");
+
+    expect(note).toMatchObject({ w: 180, h: 90 });
+    expect(picture).toMatchObject({ w: 240, h: 160 });
+    expect(overlaps(note, picture)).toBe(false);
   });
 
   it("is empty for a topic with nothing in it", () => {

@@ -15,6 +15,7 @@ import type { EngineHost } from "./types";
 import { clampZoom, screenToWorld, worldToScreen, zoomAt } from "./utils/camera";
 import { pointInRect, rectsIntersect } from "./utils/geometry";
 import { TextTextureCache } from "./utils/textTexture";
+import { DIMMED_ALPHA } from "../theme";
 
 /** Screen pixels a right button travels before the press counts as a drag. */
 const RIGHT_DRAG_THRESHOLD = 5;
@@ -26,6 +27,8 @@ const CULL_MARGIN = 256;
 const DEFAULT_CULL_SIZE = 320;
 /** Chrome fires the middle-button paste after the button is released. */
 const MIDDLE_PASTE_GRACE_MS = 300;
+/** Per-frame approach to the focus alpha: about 150ms to settle at 60fps. */
+const DIM_EASE = 0.18;
 
 export interface EngineTheme {
   background: number;
@@ -159,6 +162,10 @@ export class CanvasEngine implements CanvasEngineApi {
     this.host.activate(id, gesture);
   }
 
+  clearFocus(): void {
+    this.host.clearFocus();
+  }
+
   dropOnto(ids: string[], toId: string | null, at: Point): void {
     this.host.dropOnto(ids, toId, at);
   }
@@ -264,6 +271,7 @@ export class CanvasEngine implements CanvasEngineApi {
     }
 
     const selection = this.selection;
+    const focus = this.host.focus;
     const view = this.visibleWorldRect();
     objects.forEach((object, index) => {
       const kind = this.host.kindFor(object.kind);
@@ -292,7 +300,23 @@ export class CanvasEngine implements CanvasEngineApi {
       entry.renderer.container.visible = !offscreen;
       if (offscreen) return;
       entry.renderer.sync(parsed, selection);
+      this.applyFocus(entry.renderer.container, object.id, focus);
     });
+  }
+
+  /**
+   * Eases a card towards full strength or towards the dim. Focus is an alpha
+   * change and nothing else: every card stays exactly where it was, which is why
+   * clicking a folder reads as looking closer rather than as navigating.
+   */
+  private applyFocus(container: Container, id: string, focus: ReadonlySet<string> | null): void {
+    const target = focus === null || focus.has(id) ? 1 : DIMMED_ALPHA;
+    const current = container.alpha;
+    if (Math.abs(target - current) < 0.005) {
+      container.alpha = target;
+      return;
+    }
+    container.alpha = current + (target - current) * DIM_EASE;
   }
 
   /**
@@ -482,7 +506,11 @@ export class CanvasEngine implements CanvasEngineApi {
     listen("dblclick", (event) => {
       const screen = this.toCanvasPoint(event);
       const hitId = this.hitTest(screen.x, screen.y);
-      if (hitId) this.host.activate(hitId, "doubleClick");
+      if (hitId) {
+        this.host.activate(hitId, "doubleClick");
+        return;
+      }
+      this.host.createAt(this.screenToWorld(screen.x, screen.y));
     });
 
     // X11 pastes the primary selection on the middle button, and Chrome dispatches

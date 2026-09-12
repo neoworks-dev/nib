@@ -34,8 +34,19 @@ export interface EngineHost {
   redo(): void;
   setTool(toolId: string): void;
 
+  /**
+   * What is drawn at full strength while something has the focus, or null while
+   * nothing does. Focus dims the rest of the board instead of navigating away
+   * from it: everything stays exactly where it was, which is the whole point.
+   */
+  readonly focus: ReadonlySet<string> | null;
+
   /** A click that was not a drag, or a double-click: open the object pressed. */
   activate(id: string, gesture: ActivationGesture): void;
+  /** A double click on empty board space, which is how a sticky is made. */
+  createAt(at: Point): void;
+  /** A click on empty board space that was not a drag: whatever had focus loses it. */
+  clearFocus(): void;
   /**
    * A left-button drag of `ids` released over `toId`, or over empty board space.
    * The tool reports only the gesture: for a vault card it is a real `mv` into
