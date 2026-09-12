@@ -320,6 +320,25 @@ export class VaultStore {
     this.derive();
   }
 
+  /**
+   * Writes a note's body back. The path never changes, so every `[[link]]` to the
+   * note survives the save; the scan that follows is what brings the card's own
+   * body back in line with what is on disk.
+   */
+  async writeText(path: string, text: string): Promise<void> {
+    const transport = this.transport;
+    const cwd = this.board.cwd;
+    if (!transport || cwd.length === 0) return;
+
+    try {
+      await transport.writeVaultText(cwd, path, text);
+    } catch (cause) {
+      this.error = describe(cause);
+      return;
+    }
+    await this.refresh();
+  }
+
   /** The pile a card is in, or null for one that is loose. */
   stackOf(path: string): string | null {
     return this.slice()[path]?.stack ?? null;
@@ -352,11 +371,13 @@ export class VaultStore {
     if (!transport || cwd.length === 0) return null;
 
     try {
+      // One empty line rather than no bytes at all: the bytes route refuses an
+      // empty body, and a blank note is one blank line.
       const { path } = await transport.writeVaultFile(
         cwd,
         this.view,
         `${untitledName()}.md`,
-        new Uint8Array(0),
+        new TextEncoder().encode("\n"),
       );
       // Placed at the cursor rather than flowed in with the rest: the point of a
       // double click is that it says where.

@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   type Block,
   blockAfter,
+  blockStyleRows,
   documentToMarkdown,
   parseBlock,
   parseBlocks,
@@ -120,5 +121,38 @@ describe("blockAfter", () => {
   it("drops back to body after a heading", () => {
     expect(blockAfter({ style: "display", text: "Today", done: false }).style).toBe("body");
     expect(blockAfter({ style: "subheader", text: "Today", done: false }).style).toBe("body");
+  });
+});
+
+describe("blockStyleRows", () => {
+  it("lists exactly the six rows, in Spatial's order", () => {
+    expect(blockStyleRows("body").map((row) => row.label)).toEqual([
+      "01 Display",
+      "02 Headline",
+      "03 Subheader",
+      "04 Body",
+      "List",
+      "Task",
+    ]);
+  });
+
+  it("greys exactly one row: the style the block already has", () => {
+    for (const current of ["display", "headline", "subheader", "body", "list", "task"] as const) {
+      const rows = blockStyleRows(current);
+      const disabled = rows.filter((row) => row.disabled);
+
+      expect(disabled).toHaveLength(1);
+      expect(disabled[0]?.style).toBe(current);
+    }
+  });
+
+  it("still offers every style, so none becomes one you cannot get back to", () => {
+    expect(blockStyleRows("task")).toHaveLength(6);
+  });
+
+  it("draws its one divider above List, splitting the styles from the lists", () => {
+    const rows = blockStyleRows("body");
+
+    expect(rows.filter((row) => row.dividerBefore).map((row) => row.style)).toEqual(["list"]);
   });
 });

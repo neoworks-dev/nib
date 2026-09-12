@@ -12,7 +12,8 @@ import type {
   SessionView,
 } from "@nib-ui/protocol";
 import type { Component } from "svelte";
-import type { BoardDoc, BoardSummary, CanvasRegistry } from "./canvas";
+import type { VaultDoc } from "@nib-ui/vault";
+import type { BoardDoc, BoardSummary, BoardWrite, CanvasRegistry } from "./canvas";
 import type { DesktopAgentService } from "./desktop-agent";
 import type { AttachmentsService, PaneRegistry } from "./panes";
 
@@ -86,9 +87,60 @@ export interface TransportService {
   /** The board for a directory, or an empty one at `rev` 0. */
   loadBoard(cwd: string): Promise<BoardDoc>;
   /** Rejects when `rev` is not exactly the stored revision plus one. */
-  saveBoard(board: BoardDoc): Promise<BoardDoc>;
+  saveBoard(board: BoardWrite): Promise<BoardDoc>;
   /** Board writes from every window on the same directory, newest `rev` first. */
   subscribeBoard(cwd: string, fromRev: number, onBoard: (board: BoardDoc) => void): Disposer;
+  /**
+   * The `.nib` vault for a directory: what is in it, and what points at what. Read
+   * fresh every time, because the vault on disk is the source of truth and the app
+   * keeps no copy of it.
+   */
+  loadVault(cwd: string, options?: VaultLoadOptions): Promise<VaultDoc>;
+  /**
+   * Moves an item into a topic directory and rewrites the path-qualified links to
+   * it, in one server operation. Dragging a card between topics is a real `mv`
+   * (PLAN decision 5), which is why this is a transport call and not a board write.
+   */
+  moveVaultEntry(
+    cwd: string,
+    from: string,
+    toDirectory: string,
+    options?: VaultMoveOptions,
+  ): Promise<VaultMoveResult>;
+  /** Writes bytes into a topic directory, answering with where they landed. */
+  writeVaultFile(
+    cwd: string,
+    directory: string,
+    name: string,
+    bytes: Uint8Array,
+  ): Promise<{ path: string }>;
+  /**
+   * A note's body back, in place. Never renames the file: a save is not a move,
+   * and every `[[link]]` to the note resolves by the name it already has.
+   */
+  writeVaultText(cwd: string, path: string, text: string): Promise<void>;
+  /** Deletes an item from the vault. Unlinking a card from a board is not this. */
+  deleteVaultEntry(cwd: string, path: string): Promise<void>;
+  /** The vault changed on disk. A file the model wrote arrives through here. */
+  subscribeVault(cwd: string, onChange: () => void): Disposer;
+}
+
+export interface VaultLoadOptions {
+  /** Quadratic over the vault's items, so it is off unless a caller asks for it. */
+  mentions?: boolean;
+  /** Characters of each item's body to carry, for the cards that draw one. */
+  previewChars?: number;
+}
+
+export interface VaultMoveOptions {
+  /** Files the forward move rewrote, so undoing it touches exactly those. */
+  rewrite?: readonly string[];
+}
+
+export interface VaultMoveResult {
+  from: string;
+  to: string;
+  rewritten: string[];
 }
 
 export interface SessionsService {
@@ -242,6 +294,12 @@ export interface FileViewerOpenOptions {
  */
 export interface FileViewerService {
   open(sessionId: string, path: string, options?: FileViewerOpenOptions): void | Promise<void>;
+  /**
+   * A note out of a project's `.nib`, which belongs to the project rather than to
+   * any session — the vault outlives every conversation about it, so it cannot be
+   * addressed through one.
+   */
+  openVaultFile(cwd: string, path: string, options?: FileViewerOpenOptions): void | Promise<void>;
   close(path: string): void;
 }
 

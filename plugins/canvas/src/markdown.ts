@@ -21,8 +21,22 @@ export interface Block {
   done: boolean;
 }
 
-/** Label and shortcut for each row of the block popover. */
-export const BLOCK_STYLES: { style: BlockStyle; label: string; hint: string }[] = [
+export interface BlockStyleRow {
+  style: BlockStyle;
+  label: string;
+  hint: string;
+  /**
+   * The block already has this style, so picking it would do nothing. Exactly one
+   * row of an open popover is disabled, and it is the one naming what the caret
+   * is sitting in.
+   */
+  disabled: boolean;
+  /** A rule is drawn above this row, splitting the four styles from the two lists. */
+  dividerBefore: boolean;
+}
+
+/** Label and shortcut for each row, in the order Spatial lists them. */
+const ROWS: { style: BlockStyle; label: string; hint: string }[] = [
   { style: "display", label: "01 Display", hint: "#" },
   { style: "headline", label: "02 Headline", hint: "##" },
   { style: "subheader", label: "03 Subheader", hint: "###" },
@@ -31,8 +45,21 @@ export const BLOCK_STYLES: { style: BlockStyle; label: string; hint: string }[] 
   { style: "task", label: "Task", hint: "⌘T" },
 ];
 
-/** The popover draws a divider above `List`; the heading block is what precedes it. */
-export const BLOCK_DIVIDER_BEFORE: BlockStyle = "list";
+/** The popover draws its divider above `List`, splitting the styles from the lists. */
+const DIVIDER_BEFORE: BlockStyle = "list";
+
+/**
+ * The rows of the block popover for a block in `current`. The whole menu is
+ * always shown: a style missing from the list would be a style the user cannot
+ * get back to, so the one already in use is greyed rather than dropped.
+ */
+export function blockStyleRows(current: BlockStyle): BlockStyleRow[] {
+  return ROWS.map((row) => ({
+    ...row,
+    disabled: row.style === current,
+    dividerBefore: row.style === DIVIDER_BEFORE,
+  }));
+}
 
 const PREFIXES: { pattern: RegExp; style: BlockStyle }[] = [
   { pattern: /^-\s+\[( |x|X)\]\s?/, style: "task" },

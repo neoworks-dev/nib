@@ -127,8 +127,10 @@ export const canvasPlugin: Plugin = {
     );
 
     const textures = new TextTextureCache();
-    // The overlay reads the whole file rather than the clipped body a card draws.
+    // The overlay reads the whole file rather than the clipped body a card draws,
+    // and every edit goes back through the vault: the file is the note (PLAN §2).
     canvasState.editor.fileUrl = (path) => canvasState.vault.fileUrl(path);
+    canvasState.editor.save = (path, text) => canvasState.vault.writeText(path, text);
     // The editor is optional — its plugin may not be loaded — so the vault asks
     // rather than assumes, and falls back to handing the file to the browser.
     canvasState.vault.openNote = (cwd, path) => {
@@ -155,7 +157,7 @@ export const canvasPlugin: Plugin = {
         stickyKind({
           theme: boardTheme,
           textures,
-          edit: (sticky) => canvasState.vault.openFile(sticky),
+          edit: (sticky) => canvasState.openEditor(sticky.path, false),
         }),
       ),
     );
@@ -166,7 +168,7 @@ export const canvasPlugin: Plugin = {
           textures,
           // A sheet opens on the board rather than in the file viewer: it is a
           // page, and reading one is what the full-screen editor is for.
-          open: (sheet) => canvasState.openEditor(sheet.path),
+          open: (sheet) => canvasState.openEditor(sheet.path, true),
         }),
       ),
     );

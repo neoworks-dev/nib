@@ -5,14 +5,19 @@ import {
   type SessionCommand,
   safeParseAgentEvent,
 } from "@nib-ui/protocol";
+import type { VaultDoc } from "@nib-ui/vault";
 import type {
   BoardDoc,
   BoardSummary,
+  BoardWrite,
   CreateSessionInput,
   DirectoryEntry,
   SessionSummary,
   TransportService,
   UserPreferences,
+  VaultLoadOptions,
+  VaultMoveOptions,
+  VaultMoveResult,
 } from "@nib-ui/ui-contracts";
 
 async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
@@ -119,12 +124,67 @@ class SseTransport implements TransportService {
     return requestJson(`/api/boards?cwd=${encodeURIComponent(cwd)}`);
   }
 
-  saveBoard(board: BoardDoc): Promise<BoardDoc> {
+  saveBoard(board: BoardWrite): Promise<BoardDoc> {
     return requestJson(`/api/boards?cwd=${encodeURIComponent(board.cwd)}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(board),
     });
+  }
+
+  loadVault(cwd: string, options: VaultLoadOptions = {}): Promise<VaultDoc> {
+    const params = new URLSearchParams({ cwd });
+    if (options.mentions) params.set("mentions", "1");
+    if (options.previewChars !== undefined)
+      params.set("previewChars", String(options.previewChars));
+    return requestJson(`/api/vault?${params.toString()}`);
+  }
+
+  moveVaultEntry(
+    cwd: string,
+    from: string,
+    toDirectory: string,
+    options: VaultMoveOptions = {},
+  ): Promise<VaultMoveResult> {
+    return requestJson("/api/vault/move", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ cwd, from, toDirectory, rewrite: options.rewrite }),
+    });
+  }
+
+  writeVaultFile(
+    cwd: string,
+    directory: string,
+    name: string,
+    bytes: Uint8Array,
+  ): Promise<{ path: string }> {
+    const params = new URLSearchParams({ cwd, dir: directory, name });
+    return requestJson(`/api/vault/file?${params.toString()}`, {
+      method: "PUT",
+      headers: { "content-type": "application/octet-stream" },
+      body: new Uint8Array(bytes),
+    });
+  }
+
+  async writeVaultText(cwd: string, path: string, text: string): Promise<void> {
+    const params = new URLSearchParams({ cwd, path });
+    await requestJson(`/api/vault/text?${params.toString()}`, {
+      method: "PUT",
+      headers: { "content-type": "text/markdown; charset=utf-8" },
+      body: text,
+    });
+  }
+
+  async deleteVaultEntry(cwd: string, path: string): Promise<void> {
+    const params = new URLSearchParams({ cwd, path });
+    await requestJson(`/api/vault/file?${params.toString()}`, { method: "DELETE" });
+  }
+
+  subscribeVault(cwd: string, onChange: () => void) {
+    const source = new EventSource(`/api/vault/events?cwd=${encodeURIComponent(cwd)}`);
+    source.addEventListener("vault", () => onChange());
+    return () => source.close();
   }
 
   subscribeBoard(cwd: string, fromRev: number, onBoard: (board: BoardDoc) => void) {
