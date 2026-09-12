@@ -115,3 +115,24 @@ describe("extensionOf", () => {
     expect(isMarkdownPath("a.mdx")).toBe(false);
   });
 });
+
+/**
+ * What a paste has to look like before the board turns it into a webclip. The
+ * same test `urlBody` already answers for a file body, asked the other way round:
+ * this is the gate the paste handler uses, so a pasted paragraph that happens to
+ * mention a link stays a paste and never becomes a card.
+ */
+describe("what a paste has to be to become a webclip", () => {
+  it("claims a bare url, with whitespace around it", () => {
+    expect(urlBody("  https://example.com/a/b  ")).toBe("https://example.com/a/b");
+  });
+
+  it("leaves prose alone even when it holds a link", () => {
+    expect(urlBody("look at https://example.com")).toBeNull();
+    expect(urlBody("https://example.com is worth reading")).toBeNull();
+  });
+
+  it("leaves a list of urls alone: a webclip is one page", () => {
+    expect(urlBody("https://a.example\nhttps://b.example")).toBeNull();
+  });
+});

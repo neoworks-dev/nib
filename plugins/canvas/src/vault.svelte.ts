@@ -427,6 +427,75 @@ export class VaultStore {
     return this.captures[url] ?? null;
   }
 
+  /**
+   * A url pasted or dropped on empty board space. The note is written first and
+   * the capture asked for after: the vault is the truth, so a webclip is a file
+   * holding a url before it is a picture of a page, and a site that never answers
+   * leaves a real note rather than nothing at all.
+   */
+  async createWebclip(url: string, at: Point): Promise<string | null> {
+    const transport = this.transport;
+    const cwd = this.board.cwd;
+    if (!transport || cwd.length === 0) return null;
+
+    try {
+      const { path } = await transport.writeVaultFile(
+        cwd,
+        this.view,
+        `${clipName(url)}.md`,
+        new TextEncoder().encode(`${url}\n`),
+      );
+      this.writeSlice({
+        ...this.slice(),
+        [path]: { x: Math.round(at.x), y: Math.round(at.y), ...WEBCLIP_SIZE, z: 1 },
+      });
+      await this.refresh();
+      void this.requestCapture(url);
+      return path;
+    } catch (cause) {
+      this.error = describe(cause);
+      return null;
+    }
+  }
+
+  /**
+   * Asks the server for a capture of a page. It is the same cache the bookmark
+   * cards use — `link-previews/` in XDG — so a url already seen answers without
+   * a second fetch, and the picture arrives as an asset id rather than as a url
+   * the board would hotlink.
+   */
+  async requestCapture(url: string): Promise<void> {
+    if (this.captures[url] !== undefined) return;
+
+    try {
+      const response = await fetch("/api/link-preview", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      if (!response.ok) return;
+
+      const preview = (await response.json()) as { imageAssetId?: string };
+      // No picture on the page: the card keeps waiting rather than claiming a
+      // capture that does not exist.
+      if (!preview.imageAssetId) return;
+      this.captures = {
+        ...this.captures,
+        [url]: `/api/assets/${encodeURIComponent(preview.imageAssetId)}`,
+      };
+    } catch {
+      // A site that would not answer leaves the card in its loading state, which
+      // is what the close button under it is for.
+    }
+  }
+
+  /** Every webclip on this board asks for its capture once the vault is read. */
+  private requestCaptures(): void {
+    for (const card of this.cards) {
+      if (card.kind === "webclip") void this.requestCapture(card.url);
+    }
+  }
+
   /** Whether taking this object off the board would mean anything. */
   canUnlink(id: string): boolean {
     return this.slice()[id] !== undefined;
@@ -688,6 +757,7 @@ export class VaultStore {
     // A pile whose every member is gone goes with them, and a card left pointing
     // at one that is not there has already been taken out of it by `reconcile`.
     this.board.setStacks(viewed.stacks);
+    this.requestCaptures();
     if (this.opened !== null && viewed.stacks[this.opened] === undefined) this.opened = null;
     this.repositionPreview();
     this.publish();
@@ -795,6 +865,24 @@ function sizeForItem(item: VaultSnapshotItem): Size {
  * it has to be one nothing else is likely to hold; the user renames it by giving
  * the note a title, which is what the vault reads a name from.
  */
+/**
+ * The filename a webclip gets: the site and its path, which is what a person
+ * would call it. The url itself is the body, so this only has to be readable.
+ */
+function clipName(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const tail =
+      parsed.pathname
+        .split("/")
+        .filter((part) => part.length > 0)
+        .at(-1) ?? "";
+    return tail.length > 0 ? `${parsed.hostname} ${tail}` : parsed.hostname;
+  } catch {
+    return "clip";
+  }
+}
+
 function untitledName(): string {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   return `untitled-${stamp}`;

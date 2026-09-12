@@ -1,5 +1,5 @@
 import type { Plugin } from "@nib-ui/kernel";
-import type { CanvasMenuItem } from "@nib-ui/ui-contracts";
+import type { CanvasMenuItem, Point } from "@nib-ui/ui-contracts";
 import ChatCenteredDotsIcon from "phosphor-svelte/lib/ChatCenteredDotsIcon";
 import GraphIcon from "phosphor-svelte/lib/GraphIcon";
 import MagnifyingGlassIcon from "phosphor-svelte/lib/MagnifyingGlassIcon";
@@ -16,6 +16,7 @@ import { stickyKind } from "./objects/StickyRenderer";
 import { visualKind } from "./objects/VisualRenderer";
 import { webclipKind } from "./objects/WebclipRenderer";
 import { canvasState } from "./state.svelte";
+import { urlBody } from "./card-kind";
 import { boardTheme } from "./theme";
 import { isWorkstream } from "./workstream";
 
@@ -123,6 +124,30 @@ export const canvasPlugin: Plugin = {
       registry.registerDropHandler({
         order: -10,
         handle: (payload, at) => writeFiles(payload.files, at),
+      }),
+    );
+
+    /**
+     * A url on its own becomes a webclip: a markdown file holding that url,
+     * placed where it landed, with a capture asked for behind it. Ahead of the
+     * links plugin's bookmark card, which is the other thing a pasted url could
+     * be — on this board a page is a card of the page, not a card about it.
+     */
+    const writeClip = async (text: string | undefined, at: Point): Promise<boolean> => {
+      const url = text === undefined ? null : urlBody(text);
+      if (url === null) return false;
+      return (await canvasState.vault.createWebclip(url, at)) !== null;
+    };
+    ctx.effect(() =>
+      registry.registerPasteHandler({
+        order: -5,
+        handle: (payload, at) => writeClip(payload.text, at),
+      }),
+    );
+    ctx.effect(() =>
+      registry.registerDropHandler({
+        order: -5,
+        handle: (payload, at) => writeClip(payload.uri ?? payload.text, at),
       }),
     );
 
