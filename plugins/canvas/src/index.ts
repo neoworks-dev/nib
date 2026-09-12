@@ -10,6 +10,7 @@ import { SelectTool } from "./engine/tools/SelectTool";
 import { TextTextureCache } from "./engine/utils/textTexture";
 import LinksPane from "./LinksPane.svelte";
 import SearchPane from "./SearchPane.svelte";
+import { sheetKind } from "./objects/SheetRenderer";
 import { type VaultDeps, vaultCardKind } from "./objects/VaultRenderer";
 import { canvasState } from "./state.svelte";
 import { boardTheme } from "./theme";
@@ -120,6 +121,15 @@ export const canvasPlugin: Plugin = {
     };
     ctx.effect(() => registry.registerKind(vaultCardKind("topic", vaultDeps)));
     ctx.effect(() => registry.registerKind(vaultCardKind("file", vaultDeps)));
+    ctx.effect(() =>
+      registry.registerKind(
+        sheetKind({
+          theme: boardTheme,
+          textures,
+          open: (sheet) => canvasState.vault.openFile(sheet),
+        }),
+      ),
+    );
     ctx.effect(() => registry.registerTool(new SelectTool()));
 
     ctx.effect(() =>
@@ -333,11 +343,25 @@ export {
   MIN_CARD_SIZE,
   PREVIEW_WIDTH,
   parseFile,
+  parseSheet,
   parseTopic,
   previewObjects,
+  SHEET_SIZE,
+  type SheetObject,
   type TopicObject,
   TOPIC_SIZE,
 } from "./board-view";
+export {
+  bodyLineCount,
+  type CardKind,
+  cardKindFor,
+  extensionOf,
+  isImagePath,
+  isMarkdownPath,
+  isVideoPath,
+  STICKY_MAX_LINES,
+  urlBody,
+} from "./card-kind";
 export { BoardStore } from "./board.svelte";
 export { type VaultDeps, vaultCardKind } from "./objects/VaultRenderer";
 export { VaultStore } from "./vault.svelte";
@@ -359,9 +383,13 @@ export {
 // The renderer toolkit satellite plugins build on. They compose against the
 // package, never `plugins/canvas/src/engine/*`, so the engine stays private.
 export { ObjectRenderer } from "./engine/ObjectRenderer";
+export { CardRenderer } from "./objects/CardRenderer";
 export {
   cornerHandlePoints,
   drawCornerHandles,
+  drawEdgeHandles,
+  edgeHandleAt,
+  edgeHandlePoints,
   HANDLE_CURSORS,
   isPressable,
   isResizable,
@@ -372,6 +400,7 @@ export {
   resizedRect,
   resizeHandleAt,
 } from "./engine/resize";
+export { applyShadow, createShadowSprite, type ShadowSpec } from "./engine/utils/shadow";
 export { pointInRect, rectFromCorners, rectsIntersect, unionRects } from "./engine/utils/geometry";
 export {
   bakeRuns,
@@ -391,7 +420,22 @@ export {
 export type { Exchange, TracedStep } from "./model";
 export { canvasState } from "./state.svelte";
 export { stepLines, summariseSteps } from "./steps";
-export { type BoardTheme, boardTheme, statusColor, statusWord, themeRevision } from "./theme";
+export {
+  type BoardTheme,
+  boardTheme,
+  CARD_RADIUS,
+  CARD_SHADOW,
+  CARD_SHADOW_RAISED,
+  CARD_TYPE,
+  DIMMED_ALPHA,
+  MARQUEE,
+  refreshBoardTheme,
+  SELECTION,
+  SHARP_RADIUS,
+  statusColor,
+  statusWord,
+  themeRevision,
+} from "./theme";
 export {
   type AnnotationObject,
   CARD_MIN_HEIGHT,

@@ -1,11 +1,26 @@
 import type { WorkstreamStatus } from "./workstream";
 
+/**
+ * Every value the board is drawn from. The canvas cannot inherit the design
+ * system's CSS variables the way every other surface does, so the surface
+ * palette is stated here rather than read: the board is a light grey table
+ * whatever the app's theme is, which is what makes a card on it read as paper.
+ * Dark mode is a separate question and not answered here.
+ *
+ * Only the status accents still come from CSS, because they are semantic and
+ * the badges elsewhere in the app have to agree with the ones drawn here.
+ */
 export interface BoardTheme {
+  /** The table itself: flat light grey, no grid and no dots. */
   background: number;
+  /** A sheet, a webclip, a folder: plain white paper. */
   card: number;
+  /** A sticky, which is a shade warmer than the sheet beside it. */
   cardRaised: number;
+  /** Hairline around a card, barely there — the shadow does the separating. */
   border: number;
   borderStrong: number;
+  /** The selection ring, which is white rather than an accent colour. */
   action: number;
   text: string;
   muted: string;
@@ -19,30 +34,93 @@ export interface BoardTheme {
 }
 
 /**
- * The board is a canvas, so it cannot inherit the design system's CSS variables
- * the way every other surface does. They are read once per theme change and
- * converted to the numbers Pixi wants.
+ * One radius for every card on the board, fixed rather than proportional to the
+ * card. A 250px image and a 600px sheet share a corner, which is what stops a
+ * board of mixed sizes from reading as a collage.
  */
+export const CARD_RADIUS = 12;
+
+/** A webclip is a fixed-viewport capture, so its corners stay square. */
+export const SHARP_RADIUS = 0;
+
+/**
+ * The drop shadow, in screen pixels. It is what lifts a card off the table, and
+ * the raised variant is what a card being dragged, or sitting on top of a pile,
+ * is drawn with.
+ */
+export const CARD_SHADOW = {
+  offsetY: 2,
+  blur: 12,
+  alpha: 0.1,
+  color: "#000000",
+} as const;
+
+export const CARD_SHADOW_RAISED = {
+  offsetY: 8,
+  blur: 24,
+  alpha: 0.18,
+  color: "#000000",
+} as const;
+
+/**
+ * The selection chrome, in screen pixels: a crisp white ring sitting outside
+ * the card's own edge, and thin grey bars at the four edge midpoints which are
+ * the resize handles. Corners are not handles — Spatial only grew those in
+ * v1.0.22, and the edge bars are what the frames show.
+ */
+export const SELECTION = {
+  ringWidth: 3,
+  ringOffset: 3,
+  handleLength: 22,
+  handleThickness: 3,
+  handleColor: 0x9aa0a8,
+  /** How far from a handle the pointer still counts as grabbing it. */
+  handleReach: 9,
+} as const;
+
+/** A thin grey stroke over a faint white wash, with square corners. */
+export const MARQUEE = {
+  stroke: 0x9aa0a8,
+  strokeWidth: 1,
+  fill: 0xffffff,
+  fillAlpha: 0.2,
+} as const;
+
+/** What the rest of the board fades to while one thing has the focus. */
+export const DIMMED_ALPHA = 0.15;
+
+/** Card padding and type sizes, in world units, shared by every text card. */
+export const CARD_TYPE = {
+  padding: 22,
+  titleSize: 20,
+  bodySize: 14,
+  metaSize: 11,
+  /** A sheet is a page, so its headline is the loudest thing on the board. */
+  headlineSize: 26,
+} as const;
+
+const SURFACE = {
+  background: 0xe9eaee,
+  card: 0xffffff,
+  cardRaised: 0xf4f5f7,
+  border: 0xe2e4e8,
+  borderStrong: 0xc9cdd4,
+  action: 0xffffff,
+  text: "#16171a",
+  muted: "#5f6570",
+  dim: "#8a8f98",
+  faint: "#b4b8bf",
+} as const;
+
 export function readBoardTheme(root: HTMLElement = document.documentElement): BoardTheme {
   const styles = getComputedStyle(root);
-  const read = (name: string, fallback: string) => {
+  const readColor = (name: string, fallback: string) => {
     const value = styles.getPropertyValue(name).trim();
-    return value.length > 0 ? value : fallback;
+    return cssColorToNumber(value.length > 0 ? value : fallback, fallback);
   };
-  const readColor = (name: string, fallback: string) =>
-    cssColorToNumber(read(name, fallback), fallback);
 
   return {
-    background: readColor("--bg", "#141416"),
-    card: readColor("--bg-elevated", "#1c1c1e"),
-    cardRaised: readColor("--surface-raised", "#262628"),
-    border: readColor("--border", "#29292b"),
-    borderStrong: readColor("--border-strong", "#3f3f46"),
-    action: readColor("--primary", "#fafafa"),
-    text: read("--text", "#fafafa"),
-    muted: read("--text-muted", "#a1a1aa"),
-    dim: read("--text-dim", "#71717a"),
-    faint: read("--text-faint", "#52525b"),
+    ...SURFACE,
     green: readColor("--ctx-green", "#4ade80"),
     red: readColor("--ctx-red", "#f87171"),
     amber: readColor("--ctx-amber", "#fbbf24"),

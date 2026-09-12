@@ -4,6 +4,7 @@ import { Graphics } from "pixi.js";
 import type { CanvasEngine } from "../CanvasEngine";
 import { HANDLE_CURSORS, isPressable, isResizable, type ResizeHandle } from "../resize";
 import { rectFromCorners } from "../utils/geometry";
+import { CARD_RADIUS, MARQUEE, SELECTION } from "../../theme";
 
 const DRAG_THRESHOLD = 5;
 
@@ -121,6 +122,10 @@ export class SelectTool implements CanvasTool {
         history: engine.beginHistory(),
         overId: null,
       };
+      this.setRaised(
+        this.state.origins.map((origin) => origin.id),
+        true,
+      );
     }
 
     if (this.state.kind === "dragging") {
@@ -167,13 +172,11 @@ export class SelectTool implements CanvasTool {
       }
       case "dragging": {
         this.band?.clear();
+        const ids = state.origins.map((origin) => origin.id);
+        this.setRaised(ids, false);
         // The drop is reported before the history entry closes, so the `mv` it may
         // start and the positions it left behind are one step (PLAN §13).
-        engine?.dropOnto(
-          state.origins.map((origin) => origin.id),
-          state.overId,
-          event.world,
-        );
+        engine?.dropOnto(ids, state.overId, event.world);
         state.history();
         return;
       }
@@ -235,15 +238,15 @@ export class SelectTool implements CanvasTool {
     if (!bounds) return;
 
     const zoom = engine.camera.zoom;
-    const inset = 4 / zoom;
+    const inset = SELECTION.ringOffset / zoom;
     band.roundRect(
       bounds.x - inset,
       bounds.y - inset,
       bounds.width + inset * 2,
       bounds.height + inset * 2,
-      12 + inset,
+      CARD_RADIUS + inset,
     );
-    band.stroke({ width: 2 / zoom, color: 0x7c9cff, alpha: 0.9 });
+    band.stroke({ width: SELECTION.ringWidth / zoom, color: SELECTION.handleColor });
   }
 
   private setCursor(cursor: string): void {
@@ -252,8 +255,9 @@ export class SelectTool implements CanvasTool {
   }
 
   /**
-   * The band lives in the camera-transformed overlay, so its stroke width and
-   * corner radius are divided by the zoom to stay constant on screen.
+   * A one-pixel grey stroke over a faint white wash, with square corners. The
+   * band lives in the camera-transformed overlay, so its stroke width is divided
+   * by the zoom to stay one pixel on screen however far out the board is.
    */
   private drawBand(): void {
     const engine = this.engine;
@@ -262,13 +266,34 @@ export class SelectTool implements CanvasTool {
 
     const rect = rectFromCorners(this.state.anchor, this.state.corner);
     const zoom = engine.camera.zoom;
-    const shortest = Math.min(rect.width, rect.height) * zoom;
-    const radius = (shortest < 20 ? 0 : Math.min(12, (shortest - 20) / 5)) / zoom;
 
     band.clear();
-    band.roundRect(rect.x, rect.y, rect.width, rect.height, radius);
-    band.fill({ color: 0x7c9cff, alpha: 0.1 });
-    band.roundRect(rect.x, rect.y, rect.width, rect.height, radius);
-    band.stroke({ width: 1.5 / zoom, color: 0x7c9cff, alpha: 0.7 });
+    band.rect(rect.x, rect.y, rect.width, rect.height);
+    band.fill({ color: MARQUEE.fill, alpha: MARQUEE.fillAlpha });
+    band.rect(rect.x, rect.y, rect.width, rect.height);
+    band.stroke({ width: MARQUEE.strokeWidth / zoom, color: MARQUEE.stroke });
   }
+
+  /**
+   * Cards being dragged are lifted off the table, which is the only cue that the
+   * gesture is a move rather than a press. Reported to the renderers rather than
+   * inferred by them: only the tool knows a drag is running.
+   */
+  private setRaised(ids: readonly string[], raised: boolean): void {
+    const engine = this.engine;
+    if (!engine) return;
+    for (const id of ids) {
+      const renderer = engine.rendererFor(id);
+      if (isRaisable(renderer)) renderer.setRaised(raised);
+    }
+  }
+}
+
+/** Opted into by a card that draws a stronger shadow while it is off the table. */
+interface RaisableRenderer {
+  setRaised(raised: boolean): void;
+}
+
+function isRaisable(renderer: unknown): renderer is RaisableRenderer {
+  return typeof (renderer as Partial<RaisableRenderer> | undefined)?.setRaised === "function";
 }

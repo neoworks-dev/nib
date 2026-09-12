@@ -12,9 +12,10 @@ import type { Disposer } from "@nib-ui/kernel";
 import type { CanvasObject, Point, TransportService, VaultMoveResult } from "@nib-ui/ui-contracts";
 import type { Placement, VaultDoc, VaultSnapshotItem } from "@nib-ui/vault";
 import type { BoardStore } from "./board.svelte";
+import { cardKindFor, extensionOf } from "./card-kind";
 import {
   type BoardObject,
-  type FileObject,
+  SHEET_SIZE,
   TOPIC_SIZE,
   boardView,
   type LinkSummary,
@@ -253,11 +254,14 @@ export class VaultStore {
    * A file card was opened. A note goes to the editor, which is what reading one
    * means; anything the card already draws, or that nothing here can draw, is
    * handed to the browser under the same confinement as everything else.
+   *
+   * Takes the path rather than a card, because every kind that stands for a file
+   * can be opened and only one of them carries an extension field.
    */
-  openFile(file: FileObject): void {
+  openFile(file: { path: string }): void {
     const cwd = this.board.cwd;
     if (cwd.length === 0) return;
-    if (TEXT_EXTENSIONS.has(file.extension) && this.openNote?.(cwd, file.path)) return;
+    if (TEXT_EXTENSIONS.has(extensionOf(file.path)) && this.openNote?.(cwd, file.path)) return;
 
     const params = new URLSearchParams({ cwd, path: file.path });
     window.open(`/api/vault/file?${params.toString()}`, "_blank", "noopener");
@@ -523,7 +527,7 @@ export class VaultStore {
       vault: doc,
       placements: this.slice(),
       board: this.view,
-      size: (item) => (item.kind === "topic" ? TOPIC_SIZE : sizeForExtension(item.path)),
+      size: sizeForItem,
     });
     this.cards = viewed.objects;
     this.writeSlice(viewed.placements);
@@ -574,6 +578,24 @@ export class VaultStore {
     if (Object.keys(slice).length === 0) delete placements[this.view];
     else placements[this.view] = slice;
     this.board.setPlacements(placements);
+  }
+}
+
+/**
+ * How big a card starts, before anyone resizes it. What the item is drawn as is
+ * what decides: a sheet is a page and wants a page's proportions, a picture wants
+ * room to be looked at, and a sticky is the small one beside them.
+ */
+function sizeForItem(item: VaultSnapshotItem): { w: number; h: number } {
+  switch (cardKindFor(item)) {
+    case "folder":
+      return TOPIC_SIZE;
+    case "sheet":
+      return SHEET_SIZE;
+    case "visual":
+      return MEDIA_SIZE;
+    default:
+      return CARD_SIZE;
   }
 }
 

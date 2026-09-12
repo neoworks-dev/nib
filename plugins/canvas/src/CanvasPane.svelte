@@ -29,6 +29,7 @@
 
   const selection = $derived(registry.selection);
   const menu = $derived(registry.menu);
+  const boardBackground = `#${boardTheme().background.toString(16).padStart(6, "0")}`;
   /** Anything a plugin placed counts: a board of images is not an empty board. */
   const empty = $derived(canvasState.objects.length === 0);
   /** No project entered yet: the board is not empty, there is no board. */
@@ -232,10 +233,16 @@
 
 <svelte:window onpaste={onPaste} />
 
+<!--
+  The board paints its own background in Pixi, and the pane matches it so there
+  is no dark flash in the frames before the renderer has initialised. The table
+  is light grey whatever the app's theme is; dark mode is a separate question.
+-->
 <div
   bind:clientWidth={boardWidth}
   bind:clientHeight={boardHeight}
-  class="relative h-full w-full overflow-hidden bg-canvas"
+  class="relative h-full w-full overflow-hidden"
+  style:background-color={boardBackground}
 >
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div

@@ -12,6 +12,7 @@
  */
 
 import type { CanvasObject } from "@nib-ui/ui-contracts";
+import { cardKindFor } from "./card-kind";
 import {
   type Placement,
   type ReconcileOptions,
@@ -25,6 +26,8 @@ import {
 
 export const TOPIC_SIZE: Size = { w: 288, h: 168 };
 export const FILE_SIZE: Size = { w: 288, h: 132 };
+/** A page, so it is taller than it is wide and taller than everything beside it. */
+export const SHEET_SIZE: Size = { w: 300, h: 400 };
 /** How wide the auto-arranged block beside a topic card is allowed to get. */
 export const PREVIEW_WIDTH = 640;
 /** A card has to be big enough to hold a title before its own content is fetched. */
@@ -62,7 +65,26 @@ export interface FileObject extends CanvasObject {
   z: number;
 }
 
-export type BoardObject = TopicObject | FileObject;
+/**
+ * A long note, drawn as a page. Nothing here says it is a sheet: `cardKindFor`
+ * decided that from the body alone, and the card only carries what it draws.
+ */
+export interface SheetObject extends CanvasObject {
+  kind: "sheet";
+  path: string;
+  name: string;
+  title: string | null;
+  /** The body, already clipped by the server, for the page to draw. */
+  preview: string;
+  truncated: boolean;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  z: number;
+}
+
+export type BoardObject = TopicObject | FileObject | SheetObject;
 
 /** What one item points at, what points at it, and what nearly does. */
 export interface LinkSummary {
@@ -232,6 +254,12 @@ function objectFor(
     return { kind: "topic", ...shared, count };
   }
 
+  // What a note is drawn as comes from its own content (PLAN decision 2), so the
+  // card kind is derived here and never read off the board document.
+  if (cardKindFor(item) === "sheet") {
+    return { kind: "sheet", ...shared, preview: item.preview, truncated: item.truncated };
+  }
+
   return {
     kind: "file",
     ...shared,
@@ -280,6 +308,18 @@ export function parseFile(raw: unknown): FileObject | null {
     kind: "file",
     ...placed,
     extension: readString(raw, "extension"),
+    preview: readString(raw, "preview"),
+    truncated: readBoolean(raw, "truncated"),
+  };
+}
+
+export function parseSheet(raw: unknown): SheetObject | null {
+  const placed = parsePlaced(raw, "sheet");
+  if (!placed) return null;
+
+  return {
+    kind: "sheet",
+    ...placed,
     preview: readString(raw, "preview"),
     truncated: readBoolean(raw, "truncated"),
   };

@@ -99,6 +99,98 @@ export function resizedRect(
   };
 }
 
+/**
+ * The four edge midpoints, which is where a card on this board is resized from.
+ * Spatial puts thin bars there and nothing on the corners — it only grew corner
+ * handles in v1.0.22 — and the bars never collide with a neighbouring card the
+ * way a handle hung off a corner does.
+ */
+export function edgeHandlePoints(
+  width: number,
+  height: number,
+): { handle: ResizeHandle; x: number; y: number }[] {
+  return [
+    { handle: "n", x: width / 2, y: 0 },
+    { handle: "e", x: width, y: height / 2 },
+    { handle: "s", x: width / 2, y: height },
+    { handle: "w", x: 0, y: height / 2 },
+  ];
+}
+
+/**
+ * The edge handle under a world-local point. The grab box is the bar itself
+ * grown by `reach`, so a thin bar is still easy to hit, and it is measured per
+ * axis rather than as a radius: a 22px bar wants a long thin target, not a
+ * circle that also covers the corner next to it.
+ */
+export function edgeHandleAt(
+  localX: number,
+  localY: number,
+  width: number,
+  height: number,
+  zoom: number,
+  length: number,
+  reach: number,
+): ResizeHandle | null {
+  const scale = Math.max(0.2, zoom);
+  const half = length / scale / 2;
+  const grab = reach / scale;
+
+  for (const point of edgeHandlePoints(width, height)) {
+    const horizontal = point.handle === "n" || point.handle === "s";
+    const withinBar = horizontal
+      ? Math.abs(localX - point.x) <= half
+      : Math.abs(localY - point.y) <= half;
+    const withinEdge = horizontal
+      ? Math.abs(localY - point.y) <= grab
+      : Math.abs(localX - point.x) <= grab;
+    if (withinBar && withinEdge) return point.handle;
+  }
+  return null;
+}
+
+export interface EdgeHandlePaint {
+  color: number;
+  length: number;
+  thickness: number;
+}
+
+/**
+ * The bars themselves. Sizes are screen pixels divided by the zoom, so a handle
+ * is the same thing to aim at however far out the board is, and `hot` is the one
+ * under the pointer.
+ */
+export function drawEdgeHandles(
+  graphics: Graphics,
+  width: number,
+  height: number,
+  zoom: number,
+  visible: boolean,
+  hotHandle: ResizeHandle | null,
+  paint: EdgeHandlePaint,
+): void {
+  graphics.clear();
+  if (!visible) return;
+
+  const scale = Math.max(0.2, zoom);
+  const length = paint.length / scale;
+  const thickness = paint.thickness / scale;
+
+  for (const point of edgeHandlePoints(width, height)) {
+    const horizontal = point.handle === "n" || point.handle === "s";
+    const barWidth = horizontal ? length : thickness;
+    const barHeight = horizontal ? thickness : length;
+    graphics.roundRect(
+      point.x - barWidth / 2,
+      point.y - barHeight / 2,
+      barWidth,
+      barHeight,
+      thickness / 2,
+    );
+    graphics.fill({ color: paint.color, alpha: point.handle === hotHandle ? 1 : 0.75 });
+  }
+}
+
 /** Grab radius in world units, so a handle stays the same size to aim at. */
 export function handleReach(zoom: number): number {
   return REACH / Math.max(0.2, zoom);
