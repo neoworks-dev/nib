@@ -64,6 +64,8 @@ export class CanvasEngine implements CanvasEngineApi {
   private rightPress: { pointerId: number; screen: Point; moved: boolean } | null = null;
   private middlePanEndedAt = -Infinity;
   private disposers: Disposer[] = [];
+  /** Where the pointer last was, in world units, for gestures with no event of their own. */
+  private lastPointer: Point = { x: 0, y: 0 };
 
   constructor(
     private readonly host: EngineHost,
@@ -178,6 +180,14 @@ export class CanvasEngine implements CanvasEngineApi {
     this.attachedTool?.onAttach?.(this);
     const canvas = this.app?.canvas as HTMLCanvasElement | undefined;
     if (canvas) canvas.style.cursor = next?.cursor ?? "";
+  }
+
+  /**
+   * The pointer's last world position. A keyboard shortcut has no event to read
+   * one from, and "the card nearest the cursor ends up on top" needs one.
+   */
+  get pointerWorld(): Point {
+    return this.lastPointer;
   }
 
   screenToWorld(x: number, y: number): Point {
@@ -420,6 +430,8 @@ export class CanvasEngine implements CanvasEngineApi {
     });
 
     listen("pointermove", (event) => {
+      const at = this.toCanvasPoint(event);
+      this.lastPointer = this.screenToWorld(at.x, at.y);
       if (this.middlePan?.pointerId === event.pointerId) {
         const screen = this.toCanvasPoint(event);
         this.host.setCamera({

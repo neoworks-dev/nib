@@ -16,7 +16,7 @@ import {
 const cwd = "/home/dev/repo";
 
 function board(rev: number, objects: BoardDoc["objects"] = []): BoardDoc {
-  return { version: 1, rev, cwd, objects };
+  return { version: 1, rev, cwd, objects, placements: {}, stacks: {} };
 }
 
 describe("boardFileName", () => {
@@ -69,7 +69,14 @@ describe("parseBoard", () => {
   });
 
   it("anything that is not a board is an empty board for the directory", () => {
-    expect(parseBoard("nonsense", cwd)).toEqual({ version: 1, rev: 0, cwd, objects: [] });
+    expect(parseBoard("nonsense", cwd)).toEqual({
+      version: 1,
+      rev: 0,
+      cwd,
+      objects: [],
+      placements: {},
+      stacks: {},
+    });
   });
 });
 
@@ -259,7 +266,14 @@ describe("board files", () => {
   });
 
   it("a directory with no board yet reads as an empty one", async () => {
-    expect(await readBoardFile(directory, cwd)).toEqual({ version: 1, rev: 0, cwd, objects: [] });
+    expect(await readBoardFile(directory, cwd)).toEqual({
+      version: 1,
+      rev: 0,
+      cwd,
+      objects: [],
+      placements: {},
+      stacks: {},
+    });
   });
 
   it("accepts exactly the next revision and reads it back", async () => {
@@ -330,7 +344,14 @@ describe("board files", () => {
 
   it("two directories keep separate boards", async () => {
     await writeBoardFile(directory, board(1, [{ kind: "note", id: "a", x: 0, y: 0, body: "a" }]));
-    await writeBoardFile(directory, { version: 1, rev: 1, cwd: "/other", objects: [] });
+    await writeBoardFile(directory, {
+      version: 1,
+      rev: 1,
+      cwd: "/other",
+      objects: [],
+      placements: {},
+      stacks: {},
+    });
 
     expect((await readBoardFile(directory, cwd)).objects).toHaveLength(1);
     expect((await readBoardFile(directory, "/other")).objects).toHaveLength(0);
@@ -338,7 +359,14 @@ describe("board files", () => {
 
   it("lists every board, reading each directory out of its document", async () => {
     await writeBoardFile(directory, board(1));
-    await writeBoardFile(directory, { version: 1, rev: 1, cwd: "/other", objects: [] });
+    await writeBoardFile(directory, {
+      version: 1,
+      rev: 1,
+      cwd: "/other",
+      objects: [],
+      placements: {},
+      stacks: {},
+    });
 
     expect((await listBoardFiles(directory)).map((entry) => entry.cwd).sort()).toEqual([
       "/home/dev/repo",

@@ -6,7 +6,7 @@ import {
   type PaneLayout,
   type TransportService,
 } from "@nib-ui/ui-contracts";
-import type { PlacementMap } from "@nib-ui/vault";
+import type { PlacementMap, StackMap } from "@nib-ui/vault";
 import * as ops from "./board-ops";
 import type { BoardObject } from "./board-view";
 
@@ -22,6 +22,8 @@ const HISTORY_LIMIT = 100;
 export interface BoardSnapshot {
   objects: CanvasObject[];
   placements: PlacementMap;
+  /** Where the piles sit. Undoing a collapse has to put the board back, not just the cards. */
+  stacks: StackMap;
 }
 
 /**
@@ -196,6 +198,13 @@ export class BoardStore {
     this.scheduleSave();
   }
 
+  /** Where the piles sit. Written by the same rule as the placements. */
+  setStacks(stacks: StackMap): void {
+    if (JSON.stringify(this.doc.stacks) === JSON.stringify(stacks)) return;
+    this.doc = { ...this.doc, stacks };
+    this.scheduleSave();
+  }
+
   removeObjects(ids: string[]): void {
     if (ids.length === 0) return;
 
@@ -296,14 +305,20 @@ export class BoardStore {
    * hold values rather than live references into the board.
    */
   private snapshot(): BoardSnapshot {
-    return {
-      objects: $state.snapshot(this.doc.objects) as CanvasObject[],
-      placements: $state.snapshot(this.doc.placements) as PlacementMap,
-    };
+    // One cast for the whole document rather than one per field: `$state.snapshot`
+    // reports a deep-readonly type, and the three parts are taken off the same
+    // copy so they cannot come from different instants either.
+    const copied = $state.snapshot(this.doc) as BoardDoc;
+    return { objects: copied.objects, placements: copied.placements, stacks: copied.stacks };
   }
 
   private restore(entry: BoardSnapshot): void {
-    this.doc = { ...this.doc, objects: entry.objects, placements: entry.placements };
+    this.doc = {
+      ...this.doc,
+      objects: entry.objects,
+      placements: entry.placements,
+      stacks: entry.stacks,
+    };
     this.scheduleSave();
     // The vault derives its cards from the placements it is handed back, so it has
     // to be told: nothing here is reactive on the document by design.
@@ -346,6 +361,7 @@ export class BoardStore {
           cwd,
           objects,
           placements: this.doc.placements,
+          stacks: this.doc.stacks,
           layout,
         });
         if (this.doc.cwd !== cwd) return;

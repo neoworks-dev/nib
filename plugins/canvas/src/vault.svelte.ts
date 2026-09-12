@@ -13,6 +13,7 @@ import type { CanvasObject, Point, TransportService, VaultMoveResult } from "@ni
 import type { Placement, Size, VaultDoc, VaultSnapshotItem } from "@nib-ui/vault";
 import type { BoardStore } from "./board.svelte";
 import { cardKindFor, extensionOf, isImagePath, isMarkdownPath, isVideoPath } from "./card-kind";
+import { collapse, createStackId, dissolve, membersOf, spread, type StackMember } from "./stacks";
 import {
   type BoardObject,
   boardView,
@@ -76,6 +77,8 @@ export class VaultStore {
 
   /** Page captures this window has, by the url they were taken of. */
   private captures = $state<Record<string, string>>({});
+  /** The pile that is spread open, if any. Only one is open at a time. */
+  private opened = $state<string | null>(null);
 
   /**
    * Set by the app: reading a note is the editor's business. It answers false when
@@ -241,11 +244,90 @@ export class VaultStore {
     this.derive();
   }
 
-  /** Clicking away from everything puts a previewed folder back. */
+  /** Clicking away from everything puts a previewed folder back, and re-piles a stack. */
   closePreview(): void {
-    if (this.preview === null) return;
+    const changed = this.preview !== null || this.opened !== null;
+    if (!changed) return;
     this.preview = null;
+    if (this.opened !== null) {
+      const stack = this.opened;
+      this.opened = null;
+      this.repile(stack);
+      return;
+    }
     this.derive();
+  }
+
+  /**
+   * Folds a selection into a pile at the centre of what it covered, with the card
+   * nearest the cursor on top. Two is the fewest that can be a pile: one card in
+   * a stack is just a card.
+   */
+  collapseStack(ids: readonly string[], cursor: Point): string | null {
+    const slice = this.slice();
+    const members = ids
+      .map((path) => ({ path, placement: slice[path] }))
+      .filter((entry): entry is StackMember => entry.placement !== undefined);
+    if (members.length < 2) return null;
+
+    const stack = createStackId();
+    const folded = collapse(members, stack, cursor);
+    if (!folded) return null;
+
+    this.opened = null;
+    this.writeSlice({ ...slice, ...folded.placements });
+    this.board.setStacks({ ...this.board.doc.stacks, [stack]: folded.rect });
+    this.derive();
+    return stack;
+  }
+
+  /** A click on a pile: its cards fan out around it and the rest of the board dims. */
+  openStack(stack: string): void {
+    const rect = this.board.doc.stacks[stack];
+    if (!rect) return;
+
+    const slice = this.slice();
+    this.opened = stack;
+    this.preview = null;
+    this.writeSlice({ ...slice, ...spread(membersOf(slice, stack), rect) });
+    this.derive();
+  }
+
+  /** Clicking away from a spread pile puts the cards back into the cascade. */
+  private repile(stack: string): void {
+    const rect = this.board.doc.stacks[stack];
+    const slice = this.slice();
+    const members = membersOf(slice, stack);
+    if (!rect || members.length === 0) {
+      this.derive();
+      return;
+    }
+
+    const folded = collapse(members, stack, { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 });
+    if (folded) {
+      this.writeSlice({ ...slice, ...folded.placements });
+      this.board.setStacks({ ...this.board.doc.stacks, [stack]: folded.rect });
+    }
+    this.derive();
+  }
+
+  /** Takes a pile apart. The cards stay where they are; only the grouping goes. */
+  dissolveStack(stack: string): void {
+    const taken = dissolve(this.slice(), this.board.doc.stacks, stack);
+    if (this.opened === stack) this.opened = null;
+    this.writeSlice(taken.placements);
+    this.board.setStacks(taken.stacks);
+    this.derive();
+  }
+
+  /** The pile a card is in, or null for one that is loose. */
+  stackOf(path: string): string | null {
+    return this.slice()[path]?.stack ?? null;
+  }
+
+  /** Whether this pile is the one spread open. */
+  isOpen(stack: string): boolean {
+    return this.opened === stack;
   }
 
   /**
@@ -578,9 +660,14 @@ export class VaultStore {
       placements: this.slice(),
       board: this.view,
       size: sizeForItem,
+      stacks: this.board.doc.stacks,
     });
     this.cards = viewed.objects;
     this.writeSlice(viewed.placements);
+    // A pile whose every member is gone goes with them, and a card left pointing
+    // at one that is not there has already been taken out of it by `reconcile`.
+    this.board.setStacks(viewed.stacks);
+    if (this.opened !== null && viewed.stacks[this.opened] === undefined) this.opened = null;
     this.repositionPreview();
     this.publish();
   }
@@ -604,11 +691,25 @@ export class VaultStore {
         });
       }
     }
-    // The folder and what it is showing stay lit; everything else on the board
-    // drops to the dim. Nothing moves, which is what makes it read as a preview.
-    this.focus =
-      path === null ? null : new Set([path, ...this.contents.map((object) => object.id)]);
+    // What is being looked at stays lit and everything else drops to the dim:
+    // a previewed folder with its contents beside it, or a pile spread open.
+    // Nothing moves, which is what makes both read as looking closer.
+    this.focus = this.focusSet(path);
     this.publish();
+  }
+
+  /**
+   * What stays lit. A previewed folder keeps its own card and the block beside
+   * it; a spread pile keeps its members. Null leaves the whole board at full
+   * strength, which is the resting state.
+   */
+  private focusSet(previewed: string | null): ReadonlySet<string> | null {
+    if (previewed !== null)
+      return new Set([previewed, ...this.contents.map((object) => object.id)]);
+
+    const opened = this.opened;
+    if (opened === null) return null;
+    return new Set(membersOf(this.slice(), opened).map((member) => member.path));
   }
 
   /** What this board draws: its own cards, plus a previewed topic's contents. */

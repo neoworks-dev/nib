@@ -78,8 +78,11 @@ export const canvasPlugin: Plugin = {
     // directory and opens it: the vault is the truth, so a sticky is a file on
     // disk before it is a card.
     registry.onCreateAt = (at) => void canvasState.createSticky(at);
-    // Clicking away puts a previewed folder back and closes an open sheet.
+    // Clicking away puts a previewed folder back and re-piles a spread stack.
     registry.onClearFocus = () => canvasState.vault.closePreview();
+    // A card in a folded pile is the pile before it is itself, so the click
+    // spreads the stack rather than reaching the card's own gesture.
+    registry.onInterceptActivate = (id) => canvasState.spreadStackAt(id);
     // What the board draws at full strength; everything else falls to the dim.
     registry.focusSource = () => canvasState.vault.focus;
 
@@ -94,6 +97,10 @@ export const canvasPlugin: Plugin = {
     registry.onOpenWorkstream = (workstreamId) => canvasState.open(workstreamId);
     ctx.effect(() => () => {
       registry.onActivate = null;
+      registry.onCreateAt = null;
+      registry.onInterceptActivate = null;
+      registry.onClearFocus = null;
+      registry.focusSource = null;
       registry.onDropOnto = null;
       registry.onOpenBoard = null;
       registry.onOpenWorkstream = null;
@@ -211,6 +218,28 @@ export const canvasPlugin: Plugin = {
           if (isVaultCard(target.kind)) {
             const folder = target.kind === "folder";
             const items: CanvasMenuItem[] = [];
+
+            // Piling and unpiling are about the arrangement, so they come first
+            // and nothing below them touches the filesystem.
+            const stack = canvasState.vault.stackOf(target.id);
+            if (stack !== null) {
+              items.push({
+                kind: "action",
+                id: "canvas.stack.dissolve",
+                label: "Take this stack apart",
+                run: () => canvasState.vault.dissolveStack(stack),
+              });
+              items.push({ kind: "separator", id: "canvas.stackSep" });
+            } else if (registry.selection.length >= 2 && registry.selection.includes(target.id)) {
+              items.push({
+                kind: "action",
+                id: "canvas.stack.collapse",
+                label: `Collapse ${registry.selection.length} into a stack`,
+                run: () => canvasState.collapseSelection(),
+              });
+              items.push({ kind: "separator", id: "canvas.stackSep" });
+            }
+
             if (folder) {
               items.push({
                 kind: "action",
@@ -370,6 +399,25 @@ export const canvasPlugin: Plugin = {
         run: () => panes.toggle(searchPaneId),
       }),
     );
+    ctx.effect(() =>
+      commands.register({
+        id: "canvas.stack.collapse",
+        title: "Collapse into a stack",
+        keybinding: "\u2318/Ctrl+G",
+        when: () => canvasState.registry.selection.length >= 2,
+        run: () => canvasState.collapseSelection(),
+      }),
+    );
+    ctx.effect(() =>
+      commands.register({
+        id: "canvas.stack.dissolve",
+        title: "Take this stack apart",
+        keybinding: "\u2318/Ctrl+Shift+G",
+        when: () => canvasState.registry.selection.length > 0,
+        run: () => canvasState.dissolveSelection(),
+      }),
+    );
+
     // A conversation handed to another harness continues in a new session, so the
     // card that stood for it moves with the work.
     ctx.effect(() =>

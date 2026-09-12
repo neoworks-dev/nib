@@ -3,6 +3,8 @@ import {
   boardOf,
   flowSlot,
   overlaps,
+  parsePlacements,
+  parseStacks,
   placementsFor,
   reconcileBoard,
   type Placement,
@@ -124,6 +126,104 @@ describe("reconcileBoard", () => {
   });
 });
 
+describe("stacks", () => {
+  /** A placement that is in a pile. */
+  function piled(x: number, y: number, stack: string): Placement {
+    return { x, y, w: 200, h: 120, z: 1, stack };
+  }
+
+  it("keeps a pile that still holds something", () => {
+    const result = reconcileBoard(
+      [entry("a.md"), entry("b.md")],
+      { "a.md": piled(0, 0, "s1"), "b.md": piled(4, 4, "s1") },
+      { size, stacks: { s1: { x: 0, y: 0, w: 200, h: 120 } } },
+    );
+
+    expect(result.stacks).toEqual({ s1: { x: 0, y: 0, w: 200, h: 120 } });
+    expect(result.placements["a.md"]?.stack).toBe("s1");
+  });
+
+  it("keeps a pile that has lost some of its members but not all", () => {
+    const result = reconcileBoard(
+      [entry("a.md")],
+      { "a.md": piled(0, 0, "s1"), "b.md": piled(4, 4, "s1") },
+      { size, stacks: { s1: { x: 0, y: 0, w: 200, h: 120 } } },
+    );
+
+    expect(result.removed).toEqual(["b.md"]);
+    expect(Object.keys(result.stacks)).toEqual(["s1"]);
+  });
+
+  it("drops a pile whose every member is gone", () => {
+    const result = reconcileBoard(
+      [entry("c.md")],
+      { "a.md": piled(0, 0, "s1"), "b.md": piled(4, 4, "s1") },
+      { size, stacks: { s1: { x: 0, y: 0, w: 200, h: 120 } } },
+    );
+
+    expect(result.stacks).toEqual({});
+  });
+
+  it("takes an item out of a pile the document does not have", () => {
+    const result = reconcileBoard(
+      [entry("a.md")],
+      { "a.md": piled(30, 40, "ghost") },
+      { size, stacks: {} },
+    );
+
+    // The position stays; only the membership goes.
+    expect(result.placements["a.md"]).toEqual({ x: 30, y: 40, w: 200, h: 120, z: 1 });
+    expect(result.stacks).toEqual({});
+  });
+
+  it("does not edit the map it was handed", () => {
+    const stored = { "a.md": piled(30, 40, "ghost") };
+    reconcileBoard([entry("a.md")], stored, { size, stacks: {} });
+
+    expect(stored["a.md"].stack).toBe("ghost");
+  });
+
+  it("reports no piles when the caller passes none", () => {
+    expect(reconcileBoard([entry("a.md")], {}, { size }).stacks).toEqual({});
+  });
+});
+
+describe("parseStacks", () => {
+  it("reads a stored map", () => {
+    expect(parseStacks({ s1: { x: 1, y: 2, w: 3, h: 4 } })).toEqual({
+      s1: { x: 1, y: 2, w: 3, h: 4 },
+    });
+  });
+
+  it("drops an entry with no usable rectangle", () => {
+    expect(
+      parseStacks({
+        good: { x: 0, y: 0, w: 10, h: 10 },
+        noSize: { x: 0, y: 0, w: 0, h: 10 },
+        notNumbers: { x: "a", y: 0, w: 10, h: 10 },
+        missing: { x: 0, y: 0 },
+      }),
+    ).toEqual({ good: { x: 0, y: 0, w: 10, h: 10 } });
+  });
+
+  it("reads anything unusable as nothing at all", () => {
+    expect(parseStacks(null)).toEqual({});
+    expect(parseStacks([])).toEqual({});
+    expect(parseStacks("nope")).toEqual({});
+  });
+});
+
+describe("parsePlacements", () => {
+  it("keeps a stack id, and drops an empty one", () => {
+    expect(parsePlacements({ "": { "a.md": { x: 0, y: 0, w: 1, h: 1, stack: "s1" } } })).toEqual({
+      "": { "a.md": { x: 0, y: 0, w: 1, h: 1, z: 0, stack: "s1" } },
+    });
+    expect(parsePlacements({ "": { "a.md": { x: 0, y: 0, w: 1, h: 1, stack: "" } } })).toEqual({
+      "": { "a.md": { x: 0, y: 0, w: 1, h: 1, z: 0 } },
+    });
+  });
+});
+
 describe("flowSlot", () => {
   it("steps along a row before wrapping", () => {
     const slot = flowSlot({ maxWidth: 1000, gap: 24 });
@@ -198,5 +298,46 @@ describe("overlaps", () => {
 
   it("is true for rects that share any area", () => {
     expect(overlaps({ x: 0, y: 0, w: 10, h: 10 }, { x: 9, y: 9, w: 10, h: 10 })).toBe(true);
+  });
+});
+
+describe("parsePlacements", () => {
+  it("reads a stored map", () => {
+    const parsed = parsePlacements({ "": { "a.md": { x: 1, y: 2, w: 3, h: 4, z: 5 } } });
+    expect(parsed).toEqual({ "": { "a.md": { x: 1, y: 2, w: 3, h: 4, z: 5 } } });
+  });
+
+  it("keeps an id, and drops an empty one", () => {
+    const withId = parsePlacements({ "": { "a.md": { x: 0, y: 0, w: 1, h: 1, z: 0, id: "n-1" } } });
+    expect(withId[""]?.["a.md"]?.id).toBe("n-1");
+    const empty = parsePlacements({ "": { "a.md": { x: 0, y: 0, w: 1, h: 1, z: 0, id: "" } } });
+    expect(empty[""]?.["a.md"]?.id).toBeUndefined();
+  });
+
+  it("defaults a missing z", () => {
+    const parsed = parsePlacements({ "": { "a.md": { x: 0, y: 0, w: 1, h: 1 } } });
+    expect(parsed[""]?.["a.md"]?.z).toBe(0);
+  });
+
+  it("drops anything that could not be drawn", () => {
+    const parsed = parsePlacements({
+      "": {
+        "no-geometry.md": { z: 1 },
+        "nan.md": { x: Number.NaN, y: 0, w: 1, h: 1, z: 0 },
+        "zero.md": { x: 0, y: 0, w: 0, h: 10, z: 0 },
+        "negative.md": { x: 0, y: 0, w: -5, h: 10, z: 0 },
+        "fine.md": { x: 0, y: 0, w: 1, h: 1, z: 0 },
+      },
+    });
+    expect(Object.keys(parsed[""] ?? {})).toEqual(["fine.md"]);
+  });
+
+  it("reads anything unusable as nothing at all", () => {
+    expect(parsePlacements(null)).toEqual({});
+    expect(parsePlacements([])).toEqual({});
+    expect(parsePlacements("nope")).toEqual({});
+    expect(parsePlacements({ "": "nope" })).toEqual({});
+    expect(parsePlacements({ "": {} })).toEqual({});
+    expect(parsePlacements({ "": { "a.md": { z: 1 } } })).toEqual({});
   });
 });

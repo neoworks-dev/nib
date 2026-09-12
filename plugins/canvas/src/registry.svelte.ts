@@ -46,6 +46,11 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
   onActivate: ((object: CanvasObject) => void) | null = null;
   /** A double click on empty board space: what it creates is the plugin's call. */
   onCreateAt: ((at: Point) => void) | null = null;
+  /**
+   * A first look at an activation, ahead of the kind that owns the object. True
+   * claims the gesture: a card in a folded pile is the pile before it is itself.
+   */
+  onInterceptActivate: ((id: string, gesture: ActivationGesture) => boolean) | null = null;
   /** A click away from everything: whatever had the focus gives it up. */
   onClearFocus: (() => void) | null = null;
   /**
@@ -222,6 +227,9 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
   }
 
   activate(id: string, gesture: ActivationGesture = "click"): void {
+    // A card in a folded pile is part of the pile before it is itself: clicking
+    // one opens the stack, and the kind's own gesture is never reached.
+    if (this.onInterceptActivate?.(id, gesture)) return;
     const object = this.board.find(id);
     if (object) activateObject(this.kindFor(object.kind), object, this.onActivate, gesture);
   }
@@ -276,6 +284,7 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
     this.focusSource = null;
     this.onActivate = null;
     this.onCreateAt = null;
+    this.onInterceptActivate = null;
     this.onClearFocus = null;
     this.onDropOnto = null;
   }

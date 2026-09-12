@@ -18,6 +18,7 @@ import {
   type ReconcileOptions,
   type Size,
   type SlotChooser,
+  type StackMap,
   type VaultSnapshot,
   type VaultSnapshotItem,
   flowSlot,
@@ -133,6 +134,8 @@ export interface BoardViewInput {
   board: string;
   size?: (item: VaultSnapshotItem) => Size;
   slot?: SlotChooser;
+  /** The piles this board had. One whose members are all gone does not come back. */
+  stacks?: StackMap;
 }
 
 export interface BoardView {
@@ -142,6 +145,8 @@ export interface BoardView {
    * paths that are gone dropped. Nothing else in the document is touched.
    */
   placements: Record<string, Placement>;
+  /** The piles that still hold something. */
+  stacks: StackMap;
   added: string[];
   removed: string[];
   carried: string[];
@@ -160,6 +165,7 @@ export function boardView(input: BoardViewInput): BoardView {
 
   const options: ReconcileOptions = { size: STICKY_SIZE };
   if (input.slot !== undefined) options.slot = input.slot;
+  if (input.stacks !== undefined) options.stacks = input.stacks;
   const reconciled = reconcileBoard(entries, input.placements, options);
 
   const objects: BoardObject[] = [];
@@ -170,10 +176,14 @@ export function boardView(input: BoardViewInput): BoardView {
     if (!placement) continue;
     objects.push(objectFor(item, placement, byPath));
   }
+  // Drawing order is `z`, so a pile's cascade stacks the way it was folded and
+  // the card on top is the one that answers a click.
+  objects.sort((left, right) => left.z - right.z);
 
   return {
     objects,
     placements: reconciled.placements,
+    stacks: reconciled.stacks,
     added: reconciled.added,
     removed: reconciled.removed,
     carried: reconciled.carried,

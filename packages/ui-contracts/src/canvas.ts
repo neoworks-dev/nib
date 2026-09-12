@@ -1,6 +1,6 @@
 import type { Disposer } from "@nib-ui/kernel";
 import type { MessageAttachment } from "@nib-ui/protocol";
-import type { PlacementMap } from "@nib-ui/vault";
+import type { PlacementMap, StackMap } from "@nib-ui/vault";
 import type { Application, Container } from "pixi.js";
 import type { PaneLayout } from "./panes";
 
@@ -66,20 +66,29 @@ export interface BoardDoc {
    * part of a board that is the app's own.
    */
   placements: PlacementMap;
+  /**
+   * Where each pile sits, by stack id. Beside the placements rather than inside
+   * them because a stack outlives any one member: the pile stays put while items
+   * are dragged out of it, and an id is unique across the document.
+   */
+  stacks: StackMap;
   /** Where the panes of this workspace were floating. Absent until one is opened. */
   layout?: PaneLayout;
 }
 
 export function emptyBoard(cwd: string): BoardDoc {
-  return { version: 1, rev: 0, cwd, objects: [], placements: {} };
+  return { version: 1, rev: 0, cwd, objects: [], placements: {}, stacks: {} };
 }
 
 /**
- * What a window sends back. `placements` is optional here and only here: a build
- * that predates the vault sends a document without it, and the stored map has to
- * survive that rather than be deleted by an older window.
+ * What a window sends back. `placements` and `stacks` are optional here and only
+ * here: a build that predates them sends a document without them, and the stored
+ * maps have to survive that rather than be deleted by an older window.
  */
-export type BoardWrite = Omit<BoardDoc, "placements"> & { placements?: PlacementMap };
+export type BoardWrite = Omit<BoardDoc, "placements" | "stacks"> & {
+  placements?: PlacementMap;
+  stacks?: StackMap;
+};
 
 export interface CanvasObjectRenderer<TData extends CanvasObject = CanvasObject> {
   readonly container: Container;

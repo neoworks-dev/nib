@@ -1,23 +1,40 @@
 export { metaString, parseFrontmatter, type Frontmatter } from "./frontmatter";
-export { extractLinks, stripCode, type RawLink } from "./links";
+export { vaultInstructions, VAULT_DIRECTORY, VAULT_GUIDE, VAULT_GUIDE_FILE } from "./instructions";
+export {
+  extractLinks,
+  type LinkRename,
+  movedLinkTarget,
+  type RawLink,
+  rewriteLinks,
+  stripCode,
+} from "./links";
 export {
   boardOf,
   flowSlot,
   overlaps,
+  parsePlacements,
+  parseStacks,
   placementsFor,
   reconcileBoard,
+  type FlowOptions,
   type Placement,
   type PlacementEntry,
   type PlacementMap,
-  type FlowOptions,
   type ReconcileOptions,
   type ReconcileResult,
   type Rect,
   type Size,
   type SlotChooser,
+  type StackMap,
 } from "./placements";
-export { readVault, scanVault, DEFAULT_MAX_FILE_BYTES, DEFAULT_SKIPPED_DIRECTORIES } from "./scan";
-export type { ScanOptions } from "./scan";
+export {
+  toSnapshot,
+  DEFAULT_PREVIEW_CHARS,
+  type SnapshotOptions,
+  type VaultDoc,
+  type VaultSnapshot,
+  type VaultSnapshotItem,
+} from "./snapshot";
 export {
   buildVaultIndex,
   entryName,

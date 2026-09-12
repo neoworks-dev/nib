@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   type BoardDoc,
   type BoardSummary,
+  type BoardWrite,
   type BoardWorkstream,
   type CanvasObject,
   emptyBoard,
@@ -13,6 +14,7 @@ import {
   type PaneNode,
   type PaneRect,
 } from "@nib-ui/ui-contracts";
+import { parsePlacements, parseStacks } from "@nib-ui/vault";
 
 /** Directory names are not portable filenames, and a board is one per directory. */
 export function boardFileName(cwd: string): string {
@@ -46,6 +48,8 @@ export function parseBoard(raw: unknown, cwd: string): BoardDoc {
     rev,
     cwd: typeof candidate.cwd === "string" && candidate.cwd.length > 0 ? candidate.cwd : cwd,
     objects: parseObjects(candidate.objects),
+    placements: parsePlacements(candidate.placements),
+    stacks: parseStacks(candidate.stacks),
     ...(layout ? { layout } : {}),
   };
 }
@@ -224,16 +228,24 @@ export async function readBoardFile(directory: string, cwd: string): Promise<Boa
  * Rejects anything but the next revision. A window that slept through another
  * window's write would otherwise overwrite it with the board it still holds.
  */
-export async function writeBoardFile(directory: string, board: BoardDoc): Promise<BoardDoc> {
+export async function writeBoardFile(directory: string, board: BoardWrite): Promise<BoardDoc> {
   const current = await readBoardFile(directory, board.cwd);
   if (board.rev !== current.rev + 1) throw new StaleBoardWriteError(current.rev);
 
   const layout = parseLayout(board.layout);
+  // A window that predates placements sends none, and keeping what is stored is the
+  // only reading that does not silently throw the user's layout away. Removed once
+  // every client carries the map back.
+  const placements =
+    board.placements === undefined ? current.placements : parsePlacements(board.placements);
+  const stacks = board.stacks === undefined ? current.stacks : parseStacks(board.stacks);
   const stored: BoardDoc = {
     version: 1,
     rev: board.rev,
     cwd: board.cwd,
     objects: parseObjects(board.objects),
+    placements,
+    stacks,
     ...(layout ? { layout } : {}),
   };
   await mkdir(directory, { recursive: true });
