@@ -1,12 +1,7 @@
 name: macos-desktop
 
-# Builds the Electron desktop app on macOS and, on request, opens an
-# interactive Screen Sharing session over Tailscale so the build can be
-# driven by hand. macOS runners cost a 10x minute multiplier once this
-# repo is private, so it stays workflow_dispatch only.
-#
-# The VNC session is brought up before the build so that a broken build
-# still leaves a usable machine to debug it on.
+# Builds the Electron desktop app on macOS. Dispatch-only, since macOS
+# runners cost a 10x minute multiplier on private repos.
 
 on:
   workflow_dispatch:
@@ -18,19 +13,11 @@ on:
           - macos-15
           - macos-26
         default: macos-15
-      interactive:
-        description: "Open a VNC session before the build"
-        type: boolean
-        default: false
-      minutes:
-        description: "Minutes to hold the VNC session open (max 300)"
-        type: string
-        default: "120"
 
 jobs:
   desktop:
     runs-on: ${{ inputs.runner }}
-    timeout-minutes: 360
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
@@ -45,85 +32,13 @@ jobs:
           # match the version this repo's bun.lock was generated with
           bun-version: 1.3.11
 
-      - name: Start tailscaled
-        if: ${{ inputs.interactive }}
-        env:
-          TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
-        run: |
-          brew install tailscale
-          sudo brew services start tailscale
-          # brew services returns before the daemon accepts connections
-          for _ in $(seq 1 30); do
-            sudo tailscale status >/dev/null 2>&1 && break
-            sleep 2
-          done
-          sudo tailscale up \
-            --authkey="${TS_AUTHKEY}" \
-            --hostname=gh-mac \
-            --timeout=90s
-
-      - name: Enable Screen Sharing
-        if: ${{ inputs.interactive }}
-        env:
-          VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
-        run: |
-          # macOS truncates the legacy VNC password to 8 characters
-          VNC8="$(printf '%s' "${VNC_PASSWORD}" | cut -c1-8)"
-
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-            -activate -configure -access -on \
-            -users runner -privs -all \
-            -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw "${VNC8}" \
-            -restart -agent
-
-          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
-
-          # Screen Sharing auth (as opposed to legacy VNC auth) checks the
-          # account password, and Remote Login gives us a way in when the
-          # framebuffer is unusable.
-          sudo dscl . -passwd /Users/runner "${VNC_PASSWORD}" || true
-          sudo systemsetup -setremotelogin on || true
-
-          # A sleeping display hands VNC a black framebuffer.
-          sudo pmset -a displaysleep 0 sleep 0 disablesleep 1 || true
-          defaults -currentHost write com.apple.screensaver idleTime 0 || true
-          nohup caffeinate -dimsu >/dev/null 2>&1 &
-          caffeinate -u -t 5 || true
-
-          sleep 5
-          sudo lsof -nP -iTCP:5900 -sTCP:LISTEN || echo "WARNING: nothing listening on 5900"
-          echo "console user: $(stat -f%Su /dev/console)"
-          who
-
-      - name: Connection details
-        if: ${{ inputs.interactive }}
-        run: |
-          TS_IP="$(sudo tailscale ip -4 | head -1)"
-          echo "::notice title=VNC ready::vncviewer ${TS_IP}:5900"
-          echo "Tailscale IP: ${TS_IP}"
-          echo "Connect with: vncviewer ${TS_IP}:5900"
-          echo "Shell with:   ssh runner@${TS_IP}"
-
+      # Not --frozen-lockfile: the committed bun.lock is stale against the
+      # committed package.json set and fails to verify.
       - name: Install dependencies
-        continue-on-error: ${{ inputs.interactive }}
         run: bun install
 
       - name: Build web app
-        continue-on-error: ${{ inputs.interactive }}
         run: bun run build
 
       - name: Build desktop app
-        continue-on-error: ${{ inputs.interactive }}
         run: bun --filter '@nib-ui/desktop' build
-
-      - name: Hold session open
-        if: ${{ inputs.interactive }}
-        run: |
-          MINUTES="${{ inputs.minutes }}"
-          [ "${MINUTES}" -gt 300 ] && MINUTES=300
-          echo "Holding ${MINUTES} minutes. Release early with: touch /tmp/release"
-          for i in $(seq 1 "${MINUTES}"); do
-            [ -f /tmp/release ] && { echo "released"; break; }
-            echo "[$i/${MINUTES}] alive"
-            sleep 60
-          done
