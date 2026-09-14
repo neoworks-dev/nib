@@ -2,8 +2,8 @@ name: macos-desktop
 
 # Builds the Electron desktop app on macOS and, on request, opens an
 # interactive Screen Sharing session over Tailscale so the build can be
-# driven by hand. macOS runners are billed at a 10x minute multiplier on
-# private repos, so this is workflow_dispatch only.
+# driven by hand. macOS runners cost a 10x minute multiplier once this
+# repo is private, so it stays workflow_dispatch only.
 
 on:
   workflow_dispatch:
