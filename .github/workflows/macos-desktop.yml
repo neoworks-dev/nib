@@ -1,0 +1,107 @@
+name: macos-desktop
+
+# Builds the Electron desktop app on macOS and, on request, opens an
+# interactive Screen Sharing session over Tailscale so the build can be
+# driven by hand. macOS runners are billed at a 10x minute multiplier on
+# private repos, so this is workflow_dispatch only.
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Runner image"
+        type: choice
+        options:
+          - macos-15
+          - macos-26
+        default: macos-15
+      interactive:
+        description: "Open a VNC session after the build"
+        type: boolean
+        default: false
+      minutes:
+        description: "Minutes to hold the VNC session open (max 300)"
+        type: string
+        default: "120"
+
+jobs:
+  desktop:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 360
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Report machine
+        run: |
+          sw_vers
+          uname -m
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build web app
+        run: bun run build
+
+      - name: Build desktop app
+        run: bun --filter '@nib-ui/desktop' build
+
+      - name: Start tailscaled
+        if: ${{ inputs.interactive }}
+        env:
+          TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
+        run: |
+          brew install tailscale
+          sudo brew services start tailscale
+          # brew services returns before the daemon is accepting connections
+          for _ in $(seq 1 30); do
+            sudo tailscale status >/dev/null 2>&1 && break
+            sleep 2
+          done
+          sudo tailscale up \
+            --authkey="${TS_AUTHKEY}" \
+            --hostname=gh-mac \
+            --timeout=90s
+
+      - name: Enable Screen Sharing
+        if: ${{ inputs.interactive }}
+        env:
+          VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
+        run: |
+          # macOS truncates the legacy VNC password to 8 characters
+          VNC8="$(printf '%s' "${VNC_PASSWORD}" | cut -c1-8)"
+
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -activate -configure -access -on \
+            -users runner -privs -all \
+            -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw "${VNC8}" \
+            -restart -agent
+
+          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
+
+          sleep 5
+          sudo lsof -nP -iTCP:5900 -sTCP:LISTEN || echo "WARNING: nothing listening on 5900"
+
+      - name: Connection details
+        if: ${{ inputs.interactive }}
+        run: |
+          TS_IP="$(sudo tailscale ip -4 | head -1)"
+          echo "::notice title=VNC ready::vncviewer ${TS_IP}:5900"
+          echo "Tailscale IP: ${TS_IP}"
+          echo "Connect with: vncviewer ${TS_IP}:5900"
+
+      - name: Hold session open
+        if: ${{ inputs.interactive }}
+        run: |
+          MINUTES="${{ inputs.minutes }}"
+          [ "${MINUTES}" -gt 300 ] && MINUTES=300
+          echo "Holding ${MINUTES} minutes. Release early with: touch /tmp/release"
+          for i in $(seq 1 "${MINUTES}"); do
+            [ -f /tmp/release ] && { echo "released"; break; }
+            echo "[$i/${MINUTES}] alive"
+            sleep 60
+          done
