@@ -78,8 +78,22 @@ jobs:
 
           sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
 
+          # Screen Sharing auth (as opposed to legacy VNC auth) checks the
+          # account password, and Remote Login gives us a way in when the
+          # framebuffer is unusable.
+          sudo dscl . -passwd /Users/runner "${VNC_PASSWORD}" || true
+          sudo systemsetup -setremotelogin on || true
+
+          # A sleeping display hands VNC a black framebuffer.
+          sudo pmset -a displaysleep 0 sleep 0 disablesleep 1 || true
+          defaults -currentHost write com.apple.screensaver idleTime 0 || true
+          nohup caffeinate -dimsu >/dev/null 2>&1 &
+          caffeinate -u -t 5 || true
+
           sleep 5
           sudo lsof -nP -iTCP:5900 -sTCP:LISTEN || echo "WARNING: nothing listening on 5900"
+          echo "console user: $(stat -f%Su /dev/console)"
+          who
 
       - name: Connection details
         if: ${{ inputs.interactive }}
@@ -88,6 +102,7 @@ jobs:
           echo "::notice title=VNC ready::vncviewer ${TS_IP}:5900"
           echo "Tailscale IP: ${TS_IP}"
           echo "Connect with: vncviewer ${TS_IP}:5900"
+          echo "Shell with:   ssh runner@${TS_IP}"
 
       - name: Install dependencies
         continue-on-error: ${{ inputs.interactive }}
