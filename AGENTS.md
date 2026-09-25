@@ -16,7 +16,7 @@ Write to GitHub as the bot: issues, comments, PRs and their edits, labels and `g
 
 Before starting on anything, check whether it is already half-built: `git branch -a` and `gh pr list` for the feature, and read what is on the branch. Sessions end mid-feature, and a branch is where that work is — starting again on `main` writes it a second time and loses whatever the first attempt learned. If a branch for it exists, continue on it.
 
-Anything more than a tiny change: open an issue (`gh bot issue create`) with the labels below, branch off `main` as `<issue-number>-<slug>` (e.g. `12-tab-strip-overflow`), then open a draft PR towards `main` straight away.
+Anything more than a tiny change: open an issue (`gh bot issue create`) with the labels below, branch off `main` as `feat/<slug>` (e.g. `feat/comfyui-client`), then open a draft PR towards `main` straight away.
 
 A PR is a small batch: one issue, or a few that touch the same code. Anything found along the way gets its own issue and stays out of the PR, unless the PR can't finish without it. Branch off `main`; stack on another branch only when the code depends on it, and name the base in the body.
 
