@@ -692,9 +692,11 @@ export abstract class CardRenderer<TData extends CanvasObject = CanvasObject>
    * it is being dragged, though — the alignment guides are drawn against the
    * card's own rectangle, and a card 3% over that size reads as missing the line
    * it has actually been snapped to. A drag has the shadow to say it is lifted.
+   * Nor while it is being resized: the lift scales about the middle, so the edge
+   * being dragged would sit 1.5% of the card away from the pointer holding it.
    */
   protected get lifted(): boolean {
-    if (this.raised) return false;
+    if (this.raised || this.resizeFrom !== null) return false;
     return this.hovered || this.selected;
   }
 
@@ -719,6 +721,7 @@ export abstract class CardRenderer<TData extends CanvasObject = CanvasObject>
 
   beginResize(): void {
     this.resizeFrom = this.bounds();
+    this.liftTo(this.lifted);
   }
 
   applyResize(handle: ResizeHandle, deltaX: number, deltaY: number): void {
@@ -733,6 +736,7 @@ export abstract class CardRenderer<TData extends CanvasObject = CanvasObject>
 
   endResize(): void {
     this.resizeFrom = null;
+    this.liftTo(this.lifted);
   }
 
   /**
