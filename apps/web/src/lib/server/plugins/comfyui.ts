@@ -34,7 +34,7 @@ import {
   queuedRun,
   succeedRun,
 } from "../comfyui-runs";
-import { resultSlot, slotPlacements } from "../comfyui-slot";
+import { lineageObjects, resultSlot, slotPlacements } from "../comfyui-slot";
 import type { BoardService, ComfyUIService, VaultService } from "../services";
 import { userConfigPath } from "../user-config";
 
@@ -64,7 +64,7 @@ export type SocketFactory = (url: string, handlers: SocketHandlers) => { close()
 export interface ComfyHostOptions {
   vault: Pick<VaultService, "readFile" | "write">;
   /** Read to choose where a result goes, and written to put it there. */
-  boards: Pick<BoardService, "read" | "place">;
+  boards: Pick<BoardService, "read" | "place" | "addObjects">;
   settingsPath: string;
   fetchImpl: FetchImpl;
   openSocket: SocketFactory;
@@ -467,6 +467,7 @@ export class ComfyHost implements ComfyUIService {
       const paths: string[] = [];
       for (const file of saved) paths.push(await this.writeOutput(tracked, file));
       await this.placeOutputs(tracked.run, paths);
+      await this.linkOutputs(tracked.run, paths);
       this.update(tracked, succeedRun(tracked.run, paths, Date.now()));
     } catch (cause) {
       this.update(tracked, failRun(tracked.run, messageOf(cause), Date.now()));
@@ -508,6 +509,20 @@ export class ComfyHost implements ComfyUIService {
       await this.options.boards.place(run.cwd, slotPlacements(run.slot, paths));
     } catch {
       // Placed by the scan instead; see above.
+    }
+  }
+
+  /**
+   * Ties the outputs to the pictures they were made from, as board objects the
+   * canvas draws as lines. A board that cannot be written costs only the lines.
+   */
+  private async linkOutputs(run: ComfyRun, paths: string[]): Promise<void> {
+    const links = lineageObjects(run, paths);
+    if (links.length === 0) return;
+    try {
+      await this.options.boards.addObjects(run.cwd, links);
+    } catch {
+      // Drawn without the lines; the files and their placement are unaffected.
     }
   }
 

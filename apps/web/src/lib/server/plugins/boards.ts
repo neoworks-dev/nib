@@ -6,6 +6,7 @@ import {
   listBoardFiles,
   type PlacementWrite,
   readBoardFile,
+  withObjects,
   writeBoardFile,
 } from "../board-store";
 import { boardsDirectory } from "../data-dir";
@@ -44,6 +45,21 @@ class BoardStore implements BoardService {
         ...board,
         rev: board.rev + 1,
         placements: applyPlacements(board.placements, writes),
+      });
+    });
+  }
+
+  /**
+   * Adds authored objects without a window being open on the board — a link a
+   * ComfyUI run leaves between a picture and what it made of it.
+   */
+  addObjects(cwd: string, objects: readonly CanvasObject[]): Promise<BoardDoc> {
+    return this.chain(cwd, async () => {
+      const board = await readBoardFile(this.directory, cwd);
+      return writeBoardFile(this.directory, {
+        ...board,
+        rev: board.rev + 1,
+        objects: withObjects(board.objects, objects),
       });
     });
   }

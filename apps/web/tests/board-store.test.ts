@@ -10,6 +10,7 @@ import {
   parseBoard,
   readBoardFile,
   StaleBoardWriteError,
+  withObjects,
   writeBoardFile,
 } from "../src/lib/server/board-store";
 
@@ -415,5 +416,20 @@ describe("boardSummary", () => {
     );
 
     expect(summary.workstreams[0]?.reviewedAt).toBeNull();
+  });
+});
+
+describe("withObjects", () => {
+  it("appends objects, skipping ids the board already has", () => {
+    const existing = [{ kind: "edge", id: "a" }];
+    const added = [
+      { kind: "comfy-lineage", id: "a" },
+      { kind: "comfy-lineage", id: "b" },
+      { kind: "comfy-lineage", id: "b" },
+    ];
+    expect(withObjects(existing, added)).toEqual([
+      { kind: "edge", id: "a" },
+      { kind: "comfy-lineage", id: "b" },
+    ]);
   });
 });

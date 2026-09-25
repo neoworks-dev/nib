@@ -11,6 +11,7 @@ import type {
   BoardDoc,
   BoardSummary,
   BoardWrite,
+  CanvasObject,
   ComfyNodeDefinitions,
   ComfyQueueInput,
   ComfyRun,
@@ -132,6 +133,8 @@ export interface BoardService {
   write(board: BoardWrite): Promise<BoardDoc>;
   /** Moves cards on the board the vault's items sit on, read-modify-write in one link of the chain. */
   place(cwd: string, writes: readonly PlacementWrite[]): Promise<BoardDoc>;
+  /** Adds authored objects, skipping ids the board already has, in one link of the chain. */
+  addObjects(cwd: string, objects: readonly CanvasObject[]): Promise<BoardDoc>;
   /** Sets or clears a workstream's review mark; throws when the workstream is gone. */
   reviewWorkstream(cwd: string, workstreamId: string, reviewed: boolean): Promise<BoardDoc>;
   subscribe(cwd: string, listener: (board: BoardDoc) => void): Disposer;
