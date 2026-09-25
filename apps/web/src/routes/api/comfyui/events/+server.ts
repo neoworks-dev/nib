@@ -1,12 +1,17 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import type { ComfyRun } from "@nib-ui/ui-contracts";
-import { comfyui } from "$lib/server/context";
+import type { ComfyEditorRequest, ComfyRun } from "@nib-ui/ui-contracts";
+import { comfyui, comfyWorkflows } from "$lib/server/context";
 
 const keepAliveMs = 25_000;
 
 /** One run as a server-sent event. */
 function runEvent(run: ComfyRun): string {
   return `event: run\ndata: ${JSON.stringify(run)}\n\n`;
+}
+
+/** A request to open a workflow in the node editor, as a server-sent event. Not replayed. */
+function editorEvent(request: ComfyEditorRequest): string {
+  return `event: editor\ndata: ${JSON.stringify(request)}\n\n`;
 }
 
 /**
@@ -22,7 +27,14 @@ export const GET: RequestHandler = () => {
     start(controller) {
       const service = comfyui();
       for (const run of service.runs().reverse()) controller.enqueue(runEvent(run));
-      unsubscribe = service.subscribe((run) => controller.enqueue(runEvent(run)));
+      const stopRuns = service.subscribe((run) => controller.enqueue(runEvent(run)));
+      const stopEditor = comfyWorkflows().subscribeEditorRequests((request) =>
+        controller.enqueue(editorEvent(request)),
+      );
+      unsubscribe = () => {
+        stopRuns();
+        stopEditor();
+      };
       keepAlive = setInterval(() => controller.enqueue(": keep-alive\n\n"), keepAliveMs);
     },
     cancel() {

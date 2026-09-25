@@ -1,0 +1,104 @@
+{
+  "id": "asset-variation",
+  "name": "Asset variation",
+  "description": "A new version of an existing asset from the image and a prompt. Low strength keeps the silhouette and style; high strength follows the prompt.",
+  "category": "image",
+  "parameters": [
+    {
+      "id": "image",
+      "label": "Asset",
+      "kind": "image",
+      "targets": [{ "nodeId": "2", "input": "image" }]
+    },
+    {
+      "id": "prompt",
+      "label": "Prompt",
+      "kind": "text",
+      "multiline": true,
+      "description": "What the new version should be, e.g. \"the same chest, covered in frost\".",
+      "targets": [{ "nodeId": "5", "input": "text" }]
+    },
+    {
+      "id": "negative",
+      "label": "Avoid",
+      "kind": "text",
+      "default": "blurry, low quality, watermark, text, deformed",
+      "targets": [{ "nodeId": "6", "input": "text" }]
+    },
+    {
+      "id": "strength",
+      "label": "Strength",
+      "kind": "number",
+      "description": "How far the result may move from the asset: 0.3 is a touch-up, 0.8 a redesign.",
+      "default": 0.55,
+      "min": 0.05,
+      "max": 1,
+      "step": 0.05,
+      "targets": [{ "nodeId": "7", "input": "denoise" }]
+    },
+    {
+      "id": "seed",
+      "label": "Seed",
+      "kind": "seed",
+      "targets": [{ "nodeId": "7", "input": "seed" }]
+    },
+    {
+      "id": "steps",
+      "label": "Steps",
+      "kind": "integer",
+      "default": 30,
+      "min": 5,
+      "max": 80,
+      "targets": [{ "nodeId": "7", "input": "steps" }]
+    }
+  ],
+  "workflow": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": { "ckpt_name": "RealVisXL_V5.0_fp16.safetensors" },
+      "_meta": { "title": "Load Checkpoint" }
+    },
+    "2": { "class_type": "LoadImage", "inputs": { "image": "" }, "_meta": { "title": "Asset" } },
+    "3": {
+      "class_type": "ImageScaleToTotalPixels",
+      "inputs": {
+        "image": ["2", 0],
+        "upscale_method": "lanczos",
+        "megapixels": 1,
+        "resolution_steps": 8
+      },
+      "_meta": { "title": "Scale to SDXL size" }
+    },
+    "4": { "class_type": "VAEEncode", "inputs": { "pixels": ["3", 0], "vae": ["1", 2] } },
+    "5": {
+      "class_type": "CLIPTextEncode",
+      "inputs": { "text": "", "clip": ["1", 1] },
+      "_meta": { "title": "Prompt" }
+    },
+    "6": {
+      "class_type": "CLIPTextEncode",
+      "inputs": { "text": "", "clip": ["1", 1] },
+      "_meta": { "title": "Avoid" }
+    },
+    "7": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": ["1", 0],
+        "seed": 0,
+        "steps": 30,
+        "cfg": 5,
+        "sampler_name": "dpmpp_2m",
+        "scheduler": "karras",
+        "positive": ["5", 0],
+        "negative": ["6", 0],
+        "latent_image": ["4", 0],
+        "denoise": 0.55
+      }
+    },
+    "8": { "class_type": "VAEDecode", "inputs": { "samples": ["7", 0], "vae": ["1", 2] } },
+    "9": {
+      "class_type": "SaveImage",
+      "inputs": { "images": ["8", 0], "filename_prefix": "variation" }
+    }
+  }
+}

@@ -17,6 +17,7 @@ const queueBodySchema = z.object({
     .array(z.object({ nodeId: z.string(), input: z.string(), path: z.string() }))
     .optional(),
   outputDirectory: z.string().optional(),
+  at: z.object({ x: z.number(), y: z.number() }).optional(),
 });
 
 export const GET: RequestHandler = () => json({ runs: comfyui().runs() });

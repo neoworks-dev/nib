@@ -14,10 +14,13 @@
     }
   },
   "dependencies": {
+    "@comfyorg/litegraph": "0.17.2",
     "@neoworks-dev/ui": "link:@neoworks-dev/ui",
+    "@nib-ui/comfy": "workspace:*",
     "@nib-ui/kernel": "workspace:*",
     "@nib-ui/ui-contracts": "workspace:*",
-    "phosphor-svelte": "^3.1.0"
+    "phosphor-svelte": "^3.1.0",
+    "pixi.js": "8.14.2"
   },
   "peerDependencies": {
     "svelte": "^5.56.4"

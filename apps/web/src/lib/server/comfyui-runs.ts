@@ -4,11 +4,24 @@
 import type { ComfyRun, ComfyWorkflow } from "@nib-ui/ui-contracts";
 import type { ComfyEvent } from "./comfyui";
 
+/** What a run is known by before it starts: what it is, what it was given, where it goes. */
+export type QueuedRunDetails = Pick<ComfyRun, "label" | "inputs" | "slot">;
+
+const NO_DETAILS: QueuedRunDetails = { label: null, inputs: [], slot: null };
+
 /** A run ComfyUI has just accepted. */
-export function queuedRun(id: string, cwd: string, now: number): ComfyRun {
+export function queuedRun(
+  id: string,
+  cwd: string,
+  now: number,
+  details: QueuedRunDetails = NO_DETAILS,
+): ComfyRun {
   return {
     id,
     cwd,
+    label: details.label,
+    inputs: details.inputs,
+    slot: details.slot,
     status: "queued",
     queuedAt: now,
     finishedAt: null,

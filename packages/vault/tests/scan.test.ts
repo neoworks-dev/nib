@@ -58,7 +58,12 @@ describe("readVault", () => {
   });
 
   it("skips directories that are not content", async () => {
-    const root = scaffold({ ".git/HEAD": "", "node_modules/pkg/index.js": "", "a.md": "Body" });
+    const root = scaffold({
+      ".git/HEAD": "",
+      "node_modules/pkg/index.js": "",
+      ".comfyui/workflows/upscale.json": "{}",
+      "a.md": "Body",
+    });
     const { entries } = await readVault(root);
     expect(pathsOf(entries)).toEqual(["a.md"]);
   });

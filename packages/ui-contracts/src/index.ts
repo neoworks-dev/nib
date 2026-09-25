@@ -16,12 +16,17 @@ import type { Component } from "svelte";
 import type { TrashEntry, VaultDoc } from "@nib-ui/vault";
 import type { BoardDoc, BoardSummary, BoardWrite, CanvasRegistry } from "./canvas";
 import type {
+  ComfyEditorRequest,
+  ComfyLibraryEntry,
   ComfyNodeDefinitions,
   ComfyQueueInput,
   ComfyRun,
+  ComfyRunWorkflowInput,
+  ComfySaveWorkflowInput,
   ComfyService,
   ComfyStatus,
 } from "./comfyui";
+import type { ComposerTargetRegistry } from "./composer";
 import type { DesktopAgentService } from "./desktop-agent";
 import type { AttachmentsService, PaneRegistry } from "./panes";
 
@@ -144,6 +149,10 @@ export interface TransportService {
   listTrash(cwd: string): Promise<TrashEntry[]>;
   /** Throws bytes away for good: one entry, or the whole bin when no id is given. */
   purgeTrash(cwd: string, id?: string): Promise<void>;
+  /** Where a vault file is served, for an `<img>`; it is fetched by the browser, not through here. */
+  vaultFileUrl(cwd: string, path: string): string;
+  /** A vault file's bytes. */
+  readVaultFile(cwd: string, path: string): Promise<Uint8Array>;
   /** The vault changed on disk. A file the model wrote arrives through here. */
   subscribeVault(cwd: string, onChange: () => void): Disposer;
   /** Whether the configured ComfyUI answers, and where it is. */
@@ -154,8 +163,21 @@ export interface TransportService {
   /** Uploads the inputs, queues the workflow and answers with the run as queued. */
   queueComfy(input: ComfyQueueInput): Promise<ComfyRun>;
   cancelComfyRun(runId: string): Promise<void>;
-  /** Every run the server holds, then each change to one as it happens. */
-  subscribeComfyRuns(onRun: (run: ComfyRun) => void): Disposer;
+  /**
+   * Every run the server holds, then each change to one as it happens; and each
+   * request to open a workflow in the editor, from the moment of subscribing.
+   */
+  subscribeComfy(
+    onRun: (run: ComfyRun) => void,
+    onEditorRequest: (request: ComfyEditorRequest) => void,
+  ): Disposer;
+  /** The workflow library; `cwd` adds that project's workflows. */
+  comfyLibrary(cwd: string | null): Promise<ComfyLibraryEntry[]>;
+  runComfyWorkflow(input: ComfyRunWorkflowInput): Promise<ComfyRun>;
+  saveComfyWorkflow(input: ComfySaveWorkflowInput): Promise<ComfyLibraryEntry>;
+  deleteComfyWorkflow(source: "user" | "project", id: string, cwd: string | null): Promise<void>;
+  /** Tells every window's editor to open a workflow. */
+  openComfyEditor(request: ComfyEditorRequest): Promise<void>;
 }
 
 export interface VaultLoadOptions {
@@ -265,6 +287,7 @@ export interface RendererRegistry {
 export * from "./agent-tabs";
 export * from "./canvas";
 export * from "./comfyui";
+export * from "./composer";
 export * from "./desktop";
 export * from "./desktop-agent";
 export * from "./display";
@@ -412,6 +435,7 @@ declare module "@nib-ui/kernel" {
     canvas: CanvasRegistry;
     desktopAgent: DesktopAgentService;
     comfy: ComfyService;
+    composerTargets: ComposerTargetRegistry;
   }
   interface Events {
     "session/opened"(sessionId: string): void;

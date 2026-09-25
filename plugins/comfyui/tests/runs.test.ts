@@ -7,6 +7,9 @@ function run(fields: Partial<ComfyRun>): ComfyRun {
   return {
     id: "run-1",
     cwd: "/project",
+    label: null,
+    inputs: [],
+    slot: null,
     status: "queued",
     queuedAt: 1,
     finishedAt: null,

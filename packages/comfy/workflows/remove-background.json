@@ -1,0 +1,31 @@
+{
+  "id": "remove-background",
+  "name": "Remove background",
+  "description": "Cuts the subject out onto transparency with BiRefNet, for sprites and asset sheets.",
+  "category": "image",
+  "parameters": [
+    {
+      "id": "image",
+      "label": "Image",
+      "kind": "image",
+      "targets": [{ "nodeId": "1", "input": "image" }]
+    }
+  ],
+  "workflow": {
+    "1": { "class_type": "LoadImage", "inputs": { "image": "" }, "_meta": { "title": "Image" } },
+    "2": {
+      "class_type": "LoadBackgroundRemovalModel",
+      "inputs": { "bg_removal_name": "birefnet.safetensors" }
+    },
+    "3": {
+      "class_type": "RemoveBackground",
+      "inputs": { "bg_removal_model": ["2", 0], "image": ["1", 0] }
+    },
+    "4": { "class_type": "InvertMask", "inputs": { "mask": ["3", 0] } },
+    "5": { "class_type": "JoinImageWithAlpha", "inputs": { "image": ["1", 0], "alpha": ["4", 0] } },
+    "6": {
+      "class_type": "SaveImage",
+      "inputs": { "images": ["5", 0], "filename_prefix": "cutout" }
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ComfyToolName } from "./comfy-tools";
 import { type SessionStatus, sessionStatusSchema } from "./events";
 import { modelInfoSchema } from "./metadata";
 
@@ -328,7 +329,7 @@ export type ListAgentsResult = z.infer<typeof listAgentsResultSchema>;
  * MCP server would have returned.
  */
 export interface AgentControlTool {
-  name: AgentToolName;
+  name: AgentToolName | ComfyToolName;
   description: string;
   inputSchema: z.ZodObject;
   handler(input: unknown): Promise<unknown>;

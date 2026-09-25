@@ -71,6 +71,8 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
    * members — is not a fact the board itself knows.
    */
   focusSource: (() => ReadonlySet<string> | null) | null = null;
+  /** Set by the plugin: which topic is entered is the vault state's, not the board's. */
+  boardSource: (() => string) | null = null;
   /** Cards released over a card, or over empty board space: a `mv`, or nothing. */
   onDropOnto: ((ids: string[], toId: string | null, at: Point) => void) | null = null;
   /** A drag of these cards has begun: whatever they were laid out as part of is put away. */
@@ -177,6 +179,12 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
 
   get cwd(): string {
     return this.board.cwd;
+  }
+
+  /** The topic entered, as the plugin's `boardSource` reports it; the vault root without one. */
+  get boardDirectory(): string {
+    if (!this.boardSource) return "";
+    return this.boardSource();
   }
 
   async openBoard(cwd: string): Promise<void> {

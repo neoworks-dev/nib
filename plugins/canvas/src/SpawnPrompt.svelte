@@ -6,8 +6,10 @@
    *
    * The card's plus dragged off and dropped opens it: the card's picture is at
    * the top and the new workstream is linked to it, so a picture becomes "make a
-   * 3D model of this" in one gesture. Asking the board itself is the composer
-   * docked at the foot of the pane, not this.
+   * 3D model of this" in one gesture. The composer can also send it to a
+   * ComfyUI workflow, which takes the picture as its input and puts the result
+   * where the plus was dropped. Asking the board itself is the composer docked
+   * at the foot of the pane, not this.
    *
    * `@neoworks-dev/ui` has no popover, and the composer is the chat's own.
    */
@@ -87,8 +89,21 @@
         registry.closePrompt();
         await canvasState.startFromAsset([sourceId], text, at);
       },
+      target: {
+        cwd: registry.cwd,
+        boardDirectory: registry.boardDirectory,
+        sources: sourcePaths(),
+        at: prompt.at,
+      },
+      onTargetSent: () => registry.closePrompt(),
     };
   });
+
+  /** The vault path of the card asked from, which a workflow's image input takes. */
+  function sourcePaths(): string[] {
+    if (!source || typeof source.path !== "string") return [];
+    return [source.path];
+  }
 
   // The card the question was about has gone — moved off the board, deleted —
   // so there is nothing left to ask it.

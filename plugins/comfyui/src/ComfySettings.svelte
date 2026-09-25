@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Button, Card, ListRow, SectionHeader, StatusBadge } from "@neoworks-dev/ui";
   import type { ComfyRun, SlotProps } from "@nib-ui/ui-contracts";
+  import { errorMessage } from "./form";
   import { describeRun, isActive } from "./runs";
   import { comfyPluginState } from "./store.svelte";
 
@@ -29,7 +30,7 @@
     try {
       await store.configure(baseUrl.trim());
     } catch (cause) {
-      saveError = cause instanceof Error ? cause.message : String(cause);
+      saveError = errorMessage(cause);
     } finally {
       saving = false;
     }

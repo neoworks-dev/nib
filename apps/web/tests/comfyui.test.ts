@@ -2,7 +2,14 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
-import type { ComfyRun, ComfyWorkflow } from "@nib-ui/ui-contracts";
+import {
+  type CanvasObject,
+  type ComfyRun,
+  type ComfyWorkflow,
+  emptyBoard,
+} from "@nib-ui/ui-contracts";
+import type { PlacementMap } from "@nib-ui/vault";
+import type { PlacementWrite } from "../src/lib/server/board-store";
 import {
   ComfyApiError,
   ComfyClient,
@@ -126,12 +133,20 @@ interface TestHost {
   written: WrittenOutput[];
   seen: ComfyRun[];
   directory: string;
+  /** Each `boards.place` call, with the run's status at the moment it was made. */
+  placed: { writes: readonly PlacementWrite[]; status: ComfyRun["status"] | undefined }[];
+  /** Every object handed to `boards.addObjects`. */
+  linked: CanvasObject[];
 }
 
-/** A host against a fake ComfyUI, with a vault that keeps writes in memory. */
-async function createHost(comfy: FakeComfy): Promise<TestHost> {
+/** A host against a fake ComfyUI, with a vault and a board that keep writes in memory. */
+async function createHost(comfy: FakeComfy, placements: PlacementMap = {}): Promise<TestHost> {
   const directory = await mkdtemp(join(tmpdir(), "nib-comfy-"));
   const written: WrittenOutput[] = [];
+  const seen: ComfyRun[] = [];
+  const placed: TestHost["placed"] = [];
+  const linked: CanvasObject[] = [];
+  const board = { ...emptyBoard("/project"), placements };
   const host = new ComfyHost({
     vault: {
       readFile: (_cwd, path) =>
@@ -141,15 +156,25 @@ async function createHost(comfy: FakeComfy): Promise<TestHost> {
         return Promise.resolve({ path: `${directory}/${name}` });
       },
     },
+    boards: {
+      read: () => Promise.resolve(board),
+      place: (_cwd, writes) => {
+        placed.push({ writes, status: seen.at(-1)?.status });
+        return Promise.resolve(board);
+      },
+      addObjects: (_cwd, objects) => {
+        linked.push(...objects);
+        return Promise.resolve(board);
+      },
+    },
     settingsPath: join(directory, "comfyui.json"),
     fetchImpl: comfy.fetch,
     openSocket: comfy.openSocket,
     reconnectDelayMs: 10,
   });
   await host.configure(BASE_URL);
-  const seen: ComfyRun[] = [];
   host.subscribe((run) => seen.push(run));
-  return { host, written, seen, directory };
+  return { host, written, seen, directory, placed, linked };
 }
 
 /** The run through a whole successful execution, as the socket reports it. */
@@ -364,7 +389,7 @@ describe("ComfyClient", () => {
 });
 
 describe("ComfyHost", () => {
-  it("uploads the inputs, follows the run and writes the outputs into the vault", async () => {
+  it("uploads the inputs, follows the run and writes the outputs beside the first input", async () => {
     const comfy = new FakeComfy();
     const { host, written, seen } = await createHost(comfy);
 
@@ -385,15 +410,88 @@ describe("ComfyHost", () => {
     expect(written).toEqual([
       {
         cwd: "/project",
-        directory: "comfyui",
+        directory: "refs",
         name: "nib_00001_.png",
         text: "bytes of nib_00001_.png",
       },
     ]);
     expect(host.runs()[0]).toMatchObject({
       status: "succeeded",
-      outputs: ["comfyui/nib_00001_.png"],
+      outputs: ["refs/nib_00001_.png"],
     });
+    host.dispose();
+  });
+
+  it("writes outputs into comfyui/ without an input, and at the root beside a root-level one", async () => {
+    const comfy = new FakeComfy();
+    const { host, written } = await createHost(comfy);
+
+    await host.queue({ cwd: "/project", workflow });
+    sendSuccessfulRun(comfy);
+    await settle();
+    host.dispose();
+
+    const second = await createHost(comfy);
+    await second.host.queue({
+      cwd: "/project",
+      workflow,
+      uploads: [{ nodeId: "1", input: "image", path: "sprite.png" }],
+    });
+    sendSuccessfulRun(comfy);
+    await settle();
+    second.host.dispose();
+
+    expect(written.map((entry) => entry.directory)).toEqual(["comfyui"]);
+    expect(second.written.map((entry) => entry.directory)).toEqual([""]);
+  });
+
+  it("holds a spot beside the input while running, and places the output there before it succeeds", async () => {
+    const comfy = new FakeComfy();
+    const sprite = { x: 100, y: 50, w: 200, h: 150, z: 1 };
+    const { host, placed } = await createHost(comfy, { refs: { "refs/sprite.png": sprite } });
+
+    const run = await host.queue({
+      cwd: "/project",
+      workflow,
+      uploads: [{ nodeId: "1", input: "image", path: "refs/sprite.png" }],
+      label: "Upscale",
+    });
+    const slot = { board: "refs", x: 332, y: 50, w: 200, h: 150 };
+    expect(run).toMatchObject({ label: "Upscale", inputs: ["refs/sprite.png"], slot });
+
+    sendSuccessfulRun(comfy);
+    await settle();
+
+    expect(placed).toEqual([
+      {
+        writes: [{ path: "refs/nib_00001_.png", x: 332, y: 50, w: 200, h: 150 }],
+        status: "running",
+      },
+    ]);
+    expect(host.runs()[0]?.status).toBe("succeeded");
+    host.dispose();
+  });
+
+  it("links each output to the picture it was made from", async () => {
+    const comfy = new FakeComfy();
+    const { host, linked } = await createHost(comfy);
+
+    await host.queue({
+      cwd: "/project",
+      workflow,
+      uploads: [{ nodeId: "1", input: "image", path: "refs/sprite.png" }],
+    });
+    sendSuccessfulRun(comfy);
+    await settle();
+
+    expect(linked).toEqual([
+      {
+        kind: "comfy-lineage",
+        id: `comfy-lineage:${PROMPT_ID}:refs/sprite.png:refs/nib_00001_.png`,
+        from: "refs/sprite.png",
+        to: "refs/nib_00001_.png",
+      },
+    ]);
     host.dispose();
   });
 

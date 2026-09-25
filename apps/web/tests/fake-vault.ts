@@ -1,7 +1,7 @@
 import type { Disposer } from "@nib-ui/kernel";
-import { type BoardDoc, emptyBoard } from "@nib-ui/ui-contracts";
+import { type BoardDoc, type CanvasObject, emptyBoard } from "@nib-ui/ui-contracts";
 import { buildVaultIndex, toSnapshot, type VaultEntry } from "@nib-ui/vault";
-import { applyPlacements, type PlacementWrite } from "../src/lib/server/board-store";
+import { applyPlacements, type PlacementWrite, withObjects } from "../src/lib/server/board-store";
 import type { BoardService, VaultService } from "../src/lib/server/services";
 import type { VaultOpenResult } from "../src/lib/server/vault";
 
@@ -25,6 +25,15 @@ export class FakeBoards implements BoardService {
       ...this.doc,
       rev: this.doc.rev + 1,
       placements: applyPlacements(this.doc.placements, writes),
+    };
+    return Promise.resolve(this.doc);
+  }
+
+  addObjects(_cwd: string, objects: readonly CanvasObject[]): Promise<BoardDoc> {
+    this.doc = {
+      ...this.doc,
+      rev: this.doc.rev + 1,
+      objects: withObjects(this.doc.objects, objects),
     };
     return Promise.resolve(this.doc);
   }

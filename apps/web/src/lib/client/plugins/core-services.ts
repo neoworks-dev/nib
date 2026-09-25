@@ -3,6 +3,7 @@ import FallbackRenderer from "../components/FallbackRenderer.svelte";
 import SpotlightButton from "../components/SpotlightButton.svelte";
 import { PaneAttachments } from "../registries/attachments";
 import { ReactiveCommandRegistry } from "../registries/commands.svelte";
+import { ReactiveComposerTargetRegistry } from "../registries/composer-targets.svelte";
 import { ReactivePaneRegistry } from "../registries/panes.svelte";
 import { ReactiveRendererRegistry } from "../registries/renderers.svelte";
 import { ReactiveSessionsStore } from "../registries/sessions.svelte";
@@ -33,6 +34,8 @@ export const slotsPlugin: Plugin = {
   name: "slots",
   apply(ctx) {
     ctx.provide("slots", new ReactiveSlotRegistry());
+    // Where a composer can send besides an agent: contributed, like the slots.
+    ctx.provide("composerTargets", new ReactiveComposerTargetRegistry());
   },
 };
 
