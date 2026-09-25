@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { ComfyRun } from "@nib-ui/ui-contracts";
 import {
   awaitingResult,
+  deliveredRuns,
   type PlaceholderScene,
   placeholdersFor,
   SWAP_GRACE_MS,
@@ -36,10 +37,24 @@ function scene(runs: ComfyRun[], fields: Partial<PlaceholderScene> = {}): Placeh
     cwd: "/project",
     boardDirectory: "art",
     shownIds: new Set(),
+    cardBounds: new Map(),
+    delivered: new Set(),
     now: 1_000,
     ...fields,
   };
 }
+
+describe("placeholdersFor, once the result has landed", () => {
+  it("stays gone after the result card is deleted", () => {
+    const done = run({ status: "succeeded", finishedAt: 5_000, outputs: ["art/a.png"] });
+    // The clock can be older than the finish when the card landed before the
+    // success did, so no grace timer ever ran to move it on.
+    const landed = scene([done], { shownIds: new Set(["art/a.png"]), now: 1_000 });
+    expect(placeholdersFor(landed)).toEqual([]);
+    const deleted = scene([done], { now: 1_000, delivered: deliveredRuns(landed) });
+    expect(placeholdersFor(deleted)).toEqual([]);
+  });
+});
 
 describe("placeholdersFor", () => {
   it("holds the slot of a queued and a running run, with where each has got to", () => {
@@ -50,9 +65,15 @@ describe("placeholdersFor", () => {
       progress: { value: 5, max: 20 },
     });
     expect(placeholdersFor(scene([running, run({})]))).toEqual([
-      { runId: "run-1", slot, label: "Upscale", detail: "Queued", progress: null },
-      { runId: "run-2", slot, label: "Upscale", detail: "25%", progress: 0.25 },
+      { runId: "run-1", slot, label: "Upscale", detail: "Queued", progress: null, sources: [] },
+      { runId: "run-2", slot, label: "Upscale", detail: "25%", progress: 0.25, sources: [] },
     ]);
+  });
+
+  it("carries where the pictures it was given sit, to link them", () => {
+    const sprite = { x: 0, y: 0, width: 100, height: 80 };
+    const cardBounds = new Map([["art/sprite.png", sprite]]);
+    expect(placeholdersFor(scene([run({})], { cardBounds }))[0]?.sources).toEqual([sprite]);
   });
 
   it("draws nothing for another board, another project, or a run without a slot", () => {

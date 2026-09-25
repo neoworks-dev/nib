@@ -29,9 +29,6 @@ const SLOT_GAP = 32;
 const DEFAULT_RESULT_SIZE: Size = { w: 340, h: 340 };
 /** How far the search walks right of the reference before settling for the flow. */
 const MAX_STEPS = 64;
-/** Rows above and below a requested point searched for the nearest free spot. */
-const NEAR_ROWS = 3;
-
 /**
  * The spot on the board the outputs land on, at the reference picture's size,
  * clear of every card and of the spots `reserved` for runs still going: at `at`
@@ -74,30 +71,65 @@ function clearSpot(
 }
 
 /**
- * The free spot closest to `start`, searching its row and the rows above and
- * below it rightwards: a point in a crowded row should not send the result
- * across the whole board.
+ * The free spot closest to `start`, a gap clear of every card. The closest spot
+ * always sits at `start` or a gap off some card's edge on each axis, so those
+ * are the only places tried; on a tie, below wins, then right.
  */
 function nearestClear(start: Rect, occupied: readonly Rect[]): Rect | null {
+  const xs = edgeCandidates(start.x, start.w, occupied, "x", "w");
+  const ys = edgeCandidates(start.y, start.h, occupied, "y", "h");
   let best: Rect | null = null;
-  let bestDistance = Number.POSITIVE_INFINITY;
-  for (const row of rowsOutward()) {
-    const rowStart = { ...start, y: start.y + row * (start.h + SLOT_GAP) };
-    const clear = firstClearFrom(rowStart, occupied);
-    if (!clear) continue;
-    const distance = Math.hypot(clear.x - start.x, clear.y - start.y);
-    if (distance >= bestDistance) continue;
-    best = clear;
-    bestDistance = distance;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (const x of xs) {
+    for (const y of ys) {
+      const candidate = { x, y, w: start.w, h: start.h };
+      const score = placementScore(start, candidate);
+      if (score >= bestScore || !keepsGap(candidate, occupied)) continue;
+      best = candidate;
+      bestScore = score;
+    }
   }
   return best;
 }
 
-/** Row offsets from the start outwards, below before above, so a tie lands below. */
-function rowsOutward(): number[] {
-  const rows = [0];
-  for (let distance = 1; distance <= NEAR_ROWS; distance += 1) rows.push(distance, -distance);
-  return rows;
+/** Positions on one axis: the start, and a gap before and after each card. */
+function edgeCandidates(
+  start: number,
+  size: number,
+  occupied: readonly Rect[],
+  position: "x" | "y",
+  extent: "w" | "h",
+): number[] {
+  const candidates = [start];
+  for (const rect of occupied) {
+    candidates.push(rect[position] + rect[extent] + SLOT_GAP, rect[position] - size - SLOT_GAP);
+  }
+  return candidates;
+}
+
+/**
+ * How far a candidate is from the start, lowest best. A hair's preference for
+ * below, then right, decides between spots that are equally far.
+ */
+function placementScore(start: Rect, candidate: Rect): number {
+  const distance = Math.hypot(candidate.x - start.x, candidate.y - start.y);
+  let tieBreak = 0;
+  if (candidate.y < start.y) tieBreak += 0.002;
+  if (candidate.x < start.x) tieBreak += 0.001;
+  return distance + tieBreak;
+}
+
+/** Whether a spot stays at least a gap away from every card. */
+function keepsGap(candidate: Rect, occupied: readonly Rect[]): boolean {
+  // A hair under the gap, so a spot placed exactly a gap off an edge still fits.
+  const margin = SLOT_GAP - 0.5;
+  const padded = {
+    x: candidate.x - margin,
+    y: candidate.y - margin,
+    w: candidate.w + margin * 2,
+    h: candidate.h + margin * 2,
+  };
+  return !occupied.some((other) => overlaps(padded, other));
 }
 
 /** Placements for a finished run's outputs: the first in its slot, the rest in a row to its right. */

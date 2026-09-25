@@ -39,14 +39,26 @@ describe("resultSlot", () => {
     });
   });
 
-  it("steps right of a card covering the point it was asked for", () => {
-    const placements: PlacementMap = { "": { "note.md": { x: 0, y: 0, w: 100, h: 100, z: 1 } } };
-    expect(resultSlot(placements, "", null, [], { x: 50, y: 50 })).toEqual({
+  it("moves off a card covering the point by the shortest way", () => {
+    const tall: PlacementMap = { "": { "note.md": { x: 0, y: -500, w: 100, h: 1000, z: 1 } } };
+    expect(resultSlot(tall, "", null, [], { x: 50, y: 50 })).toEqual({
       board: "",
       x: 132,
       y: 50,
       w: 340,
       h: 340,
+    });
+    const square: PlacementMap = { "": { "note.md": { x: 0, y: 0, w: 100, h: 100, z: 1 } } };
+    expect(resultSlot(square, "", null, [], { x: 50, y: 50 })).toMatchObject({ x: 50, y: 132 });
+  });
+
+  it("slides left past a card that fills the space right of and below the point", () => {
+    const placements: PlacementMap = {
+      "": { "session.jsonl": { x: 930, y: 560, w: 300, h: 420, z: 1 } },
+    };
+    expect(resultSlot(placements, "", null, [], { x: 700, y: 480 })).toMatchObject({
+      x: 558,
+      y: 480,
     });
   });
 
