@@ -122,7 +122,9 @@ function inputSpec(name: string, raw: unknown, required: boolean): InputSpec | n
   if (typeof head !== "string") return null;
   let options: string[] | null = null;
   if (head === "COMBO") options = strings(config.options);
-  const widget = WIDGET_TYPES.has(head) && config.forceInput !== true;
+  // A socketless input of any type — a `COLOR` picker — takes a value, never a link.
+  const takesValue = WIDGET_TYPES.has(head) || config.socketless === true;
+  const widget = takesValue && config.forceInput !== true;
   return { name, type: head, required, widget, options, config };
 }
 

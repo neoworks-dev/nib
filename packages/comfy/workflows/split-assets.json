@@ -1,0 +1,114 @@
+{
+  "id": "split-assets",
+  "name": "Split into assets",
+  "description": "Cuts each named part out of a picture onto transparency, one image per part: a character into its jacket, boots and hat. Finds the parts with SAM 3.1.",
+  "category": "image",
+  "parameters": [
+    {
+      "id": "image",
+      "label": "Image",
+      "kind": "image",
+      "targets": [{ "nodeId": "1", "input": "image" }]
+    },
+    {
+      "id": "parts",
+      "label": "Parts",
+      "kind": "text",
+      "multiline": true,
+      "description": "What to cut out, separated by commas. Add :N to take up to N of one, e.g. \"jacket, boots:2, hat\".",
+      "targets": [{ "nodeId": "3", "input": "text" }]
+    },
+    {
+      "id": "threshold",
+      "label": "Confidence",
+      "kind": "number",
+      "default": 0.4,
+      "min": 0.05,
+      "max": 0.95,
+      "step": 0.05,
+      "description": "How sure the model must be that it found a part. Lower finds more, and more that is wrong.",
+      "targets": [{ "nodeId": "4", "input": "threshold" }]
+    },
+    {
+      "id": "size",
+      "label": "Size",
+      "kind": "integer",
+      "default": 1024,
+      "min": 256,
+      "max": 2048,
+      "step": 64,
+      "description": "Edge of each square asset in pixels.",
+      "targets": [
+        { "nodeId": "6", "input": "width" },
+        { "nodeId": "6", "input": "height" },
+        { "nodeId": "8", "input": "width" },
+        { "nodeId": "8", "input": "height" }
+      ]
+    }
+  ],
+  "workflow": {
+    "1": { "class_type": "LoadImage", "inputs": { "image": "" }, "_meta": { "title": "Image" } },
+    "2": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": { "ckpt_name": "sam3.1_multiplex_fp16.safetensors" }
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "inputs": { "clip": ["2", 1], "text": "" },
+      "_meta": { "title": "Parts" }
+    },
+    "4": {
+      "class_type": "SAM3_Detect",
+      "inputs": {
+        "model": ["2", 0],
+        "image": ["1", 0],
+        "conditioning": ["3", 0],
+        "threshold": 0.4,
+        "refine_iterations": 2,
+        "individual_masks": true
+      }
+    },
+    "5": {
+      "class_type": "JoinImageWithAlpha",
+      "inputs": { "image": ["1", 0], "alpha": ["4", 0] },
+      "_meta": { "title": "The picture once per part" }
+    },
+    "6": {
+      "class_type": "ImageCropToMask",
+      "inputs": {
+        "images": ["5", 0],
+        "masks": ["4", 0],
+        "width": 1024,
+        "height": 1024,
+        "pad_factor": 1.1,
+        "grow_mask": 0,
+        "background": "#000000"
+      },
+      "_meta": { "title": "Each part, cropped" }
+    },
+    "7": { "class_type": "MaskToImage", "inputs": { "mask": ["4", 0] } },
+    "8": {
+      "class_type": "ImageCropToMask",
+      "inputs": {
+        "images": ["7", 0],
+        "masks": ["4", 0],
+        "width": 1024,
+        "height": 1024,
+        "pad_factor": 1.1,
+        "grow_mask": 0,
+        "background": "#000000"
+      },
+      "_meta": { "title": "Each part's mask, cropped the same way" }
+    },
+    "9": { "class_type": "ImageToMask", "inputs": { "image": ["8", 0], "channel": "red" } },
+    "10": { "class_type": "InvertMask", "inputs": { "mask": ["9", 0] } },
+    "11": {
+      "class_type": "JoinImageWithAlpha",
+      "inputs": { "image": ["6", 0], "alpha": ["10", 0] }
+    },
+    "12": {
+      "class_type": "SaveImage",
+      "inputs": { "images": ["11", 0], "filename_prefix": "part" }
+    }
+  }
+}

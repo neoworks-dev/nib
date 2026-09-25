@@ -79,6 +79,7 @@
             "ace_step_v1_3.5b.safetensors",
             "chord_v1.safetensors",
             "hunyuan_3d_v2.1.safetensors",
+            "sam3.1_multiplex_fp16.safetensors",
             "stable-audio-open-1.0.safetensors"
           ],
           {
@@ -2308,6 +2309,272 @@
     "api_node": false,
     "price_badge": null,
     "search_aliases": null,
+    "essentials_category": null,
+    "has_intermediate_output": false
+  },
+  "SAM3_Detect": {
+    "input": {
+      "required": {
+        "model": [
+          "MODEL",
+          {
+            "display_name": "model"
+          }
+        ],
+        "image": [
+          "IMAGE",
+          {
+            "display_name": "image"
+          }
+        ],
+        "threshold": [
+          "FLOAT",
+          {
+            "display_name": "threshold",
+            "default": 0.5,
+            "min": 0.0,
+            "max": 1.0,
+            "step": 0.01
+          }
+        ],
+        "refine_iterations": [
+          "INT",
+          {
+            "display_name": "refine_iterations",
+            "tooltip": "SAM decoder refinement passes (0=use raw detector masks)",
+            "default": 2,
+            "min": 0,
+            "max": 5
+          }
+        ],
+        "individual_masks": [
+          "BOOLEAN",
+          {
+            "display_name": "individual_masks",
+            "tooltip": "Output per-object masks instead of union",
+            "default": false
+          }
+        ]
+      },
+      "optional": {
+        "conditioning": [
+          "CONDITIONING",
+          {
+            "display_name": "conditioning",
+            "tooltip": "Text conditioning from CLIPTextEncode"
+          }
+        ],
+        "bboxes": [
+          "BOUNDING_BOX",
+          {
+            "display_name": "bboxes",
+            "tooltip": "Bounding boxes to segment within",
+            "default": {
+              "x": 0,
+              "y": 0,
+              "width": 512,
+              "height": 512
+            },
+            "socketless": true,
+            "forceInput": true
+          }
+        ],
+        "positive_coords": [
+          "STRING",
+          {
+            "display_name": "positive_coords",
+            "tooltip": "Positive point prompts as JSON [{\"x\": int, \"y\": int}, ...] (pixel coords)",
+            "forceInput": true,
+            "multiline": false
+          }
+        ],
+        "negative_coords": [
+          "STRING",
+          {
+            "display_name": "negative_coords",
+            "tooltip": "Negative point prompts as JSON [{\"x\": int, \"y\": int}, ...] (pixel coords)",
+            "forceInput": true,
+            "multiline": false
+          }
+        ]
+      }
+    },
+    "input_order": {
+      "required": ["model", "image", "threshold", "refine_iterations", "individual_masks"],
+      "optional": ["conditioning", "bboxes", "positive_coords", "negative_coords"]
+    },
+    "is_input_list": false,
+    "output": ["MASK", "BOUNDING_BOX"],
+    "output_is_list": [false, false],
+    "output_name": ["masks", "bboxes"],
+    "output_tooltips": [null, null],
+    "output_matchtypes": null,
+    "name": "SAM3_Detect",
+    "display_name": "SAM3 Detect",
+    "description": "",
+    "python_module": "comfy_extras.nodes_sam3",
+    "category": "image/detection",
+    "output_node": false,
+    "deprecated": false,
+    "experimental": false,
+    "dev_only": false,
+    "api_node": false,
+    "price_badge": null,
+    "search_aliases": ["sam3", "segment anything", "open vocabulary", "text detection", "segment"],
+    "essentials_category": null,
+    "has_intermediate_output": false
+  },
+  "ImageCropToMask": {
+    "input": {
+      "required": {
+        "images": ["IMAGE", {}],
+        "masks": ["MASK", {}],
+        "width": [
+          "INT",
+          {
+            "tooltip": "Output width in pixels.",
+            "default": 1024,
+            "min": 64,
+            "max": 4096,
+            "step": 8
+          }
+        ],
+        "height": [
+          "INT",
+          {
+            "tooltip": "Output height in pixels.",
+            "default": 1024,
+            "min": 64,
+            "max": 4096,
+            "step": 8
+          }
+        ],
+        "pad_factor": [
+          "FLOAT",
+          {
+            "tooltip": "Extra margin around the mask bounding box as a multiplier.",
+            "default": 1.0,
+            "min": 1.0,
+            "max": 2.0,
+            "step": 0.01
+          }
+        ],
+        "grow_mask": [
+          "INT",
+          {
+            "tooltip": "Grow or shrink the mask by this many pixels before cropping.",
+            "default": 0,
+            "min": -32,
+            "max": 32,
+            "step": 1
+          }
+        ],
+        "background": [
+          "COLOR",
+          {
+            "tooltip": "Background color behind the masked subject.",
+            "default": "#000000",
+            "socketless": true
+          }
+        ]
+      }
+    },
+    "input_order": {
+      "required": ["images", "masks", "width", "height", "pad_factor", "grow_mask", "background"]
+    },
+    "is_input_list": false,
+    "output": ["IMAGE"],
+    "output_is_list": [false],
+    "output_name": ["images"],
+    "output_tooltips": [null],
+    "output_matchtypes": null,
+    "name": "ImageCropToMask",
+    "display_name": "Crop Image to Mask",
+    "description": "",
+    "python_module": "comfy_extras.nodes_images",
+    "category": "image/transform",
+    "output_node": false,
+    "deprecated": false,
+    "experimental": false,
+    "dev_only": false,
+    "api_node": false,
+    "price_badge": null,
+    "search_aliases": [
+      "crop to mask",
+      "mask crop",
+      "crop mask",
+      "mask crop resize",
+      "crop mask resize",
+      "trellis2",
+      "pixal3d"
+    ],
+    "essentials_category": null,
+    "has_intermediate_output": false
+  },
+  "MaskToImage": {
+    "input": {
+      "required": {
+        "mask": ["MASK", {}]
+      }
+    },
+    "input_order": {
+      "required": ["mask"]
+    },
+    "is_input_list": false,
+    "output": ["IMAGE"],
+    "output_is_list": [false],
+    "output_name": ["IMAGE"],
+    "output_tooltips": [null],
+    "output_matchtypes": null,
+    "name": "MaskToImage",
+    "display_name": "Convert Mask to Image",
+    "description": "",
+    "python_module": "comfy_extras.nodes_mask",
+    "category": "image/mask",
+    "output_node": false,
+    "deprecated": false,
+    "experimental": false,
+    "dev_only": false,
+    "api_node": false,
+    "price_badge": null,
+    "search_aliases": ["convert mask"],
+    "essentials_category": null,
+    "has_intermediate_output": false
+  },
+  "ImageToMask": {
+    "input": {
+      "required": {
+        "image": ["IMAGE", {}],
+        "channel": [
+          "COMBO",
+          {
+            "multiselect": false,
+            "options": ["red", "green", "blue", "alpha"]
+          }
+        ]
+      }
+    },
+    "input_order": {
+      "required": ["image", "channel"]
+    },
+    "is_input_list": false,
+    "output": ["MASK"],
+    "output_is_list": [false],
+    "output_name": ["MASK"],
+    "output_tooltips": [null],
+    "output_matchtypes": null,
+    "name": "ImageToMask",
+    "display_name": "Convert Image to Mask",
+    "description": "",
+    "python_module": "comfy_extras.nodes_mask",
+    "category": "image/mask",
+    "output_node": false,
+    "deprecated": false,
+    "experimental": false,
+    "dev_only": false,
+    "api_node": false,
+    "price_badge": null,
+    "search_aliases": ["extract channel", "channel to mask"],
     "essentials_category": null,
     "has_intermediate_output": false
   }
