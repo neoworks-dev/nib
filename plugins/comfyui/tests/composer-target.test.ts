@@ -78,7 +78,21 @@ describe("workflowOptions", () => {
     expect(workflowOptions(entries, fromPicture).map((option) => option.id)).toEqual([
       "bundled:variation",
     ]);
-    expect(workflowOptions(entries, fromBoard)).toHaveLength(2);
+  });
+
+  it("offers only workflows that need no picture when asked of the board", () => {
+    const optionalImage = {
+      ...variation,
+      id: "restyle",
+      parameters: variation.parameters.map((parameter) =>
+        parameter.kind === "image" ? { ...parameter, default: "reference.png" } : parameter,
+      ),
+    };
+    const entries = [entry(variation), entry(texture), entry(optionalImage)];
+    expect(workflowOptions(entries, fromBoard).map((option) => option.id)).toEqual([
+      "bundled:texture",
+      "bundled:restyle",
+    ]);
   });
 
   it("shows a workflow ComfyUI cannot run, disabled, with why", () => {

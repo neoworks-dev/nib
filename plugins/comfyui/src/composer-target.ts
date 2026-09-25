@@ -49,14 +49,17 @@ export function promptParameter(manifest: ComfyWorkflowManifest): ComfyParameter
 
 /**
  * The workflows a composer offers: asked from a picture, those that take one;
- * asked of the board, every one. A workflow ComfyUI cannot run is shown, not pickable.
+ * asked of the board, which has no picture to give, those that need none. A
+ * workflow ComfyUI cannot run is shown, not pickable.
  */
 export function workflowOptions(
   entries: readonly ComfyLibraryEntry[],
   context: ComposerTargetContext,
 ): ComposerTargetOption[] {
   const fromPicture = sourceImage(context) !== null;
-  return filterEntries(entries, "", fromPicture).map((entry) => {
+  let offered = filterEntries(entries, "", fromPicture);
+  if (!fromPicture) offered = offered.filter((entry) => !needsPicture(entry.manifest));
+  return offered.map((entry) => {
     const unavailable = describeAvailability(entry.availability);
     return {
       id: entryKey(entry),
@@ -65,6 +68,12 @@ export function workflowOptions(
       disabled: unavailable !== null,
     };
   });
+}
+
+/** Whether a workflow cannot run without a picture: it has an image input with no default. */
+function needsPicture(manifest: ComfyWorkflowManifest): boolean {
+  const image = imageParameter(manifest);
+  return image !== null && image.default === undefined;
 }
 
 /**

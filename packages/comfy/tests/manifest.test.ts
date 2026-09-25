@@ -46,6 +46,7 @@ describe("bundled workflows", () => {
   it("are the initial set", () => {
     expect(manifests.map((manifest) => manifest.id).sort()).toEqual([
       "asset-variation",
+      "generate-image",
       "image-to-3d",
       "remove-background",
       "split-assets",

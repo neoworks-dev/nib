@@ -1,0 +1,103 @@
+{
+  "id": "generate-image",
+  "name": "Generate image",
+  "description": "A picture from a prompt with FLUX.2 [klein] 4B, in four steps.",
+  "category": "image",
+  "parameters": [
+    {
+      "id": "prompt",
+      "label": "Prompt",
+      "kind": "text",
+      "multiline": true,
+      "targets": [{ "nodeId": "4", "input": "text" }]
+    },
+    {
+      "id": "width",
+      "label": "Width",
+      "kind": "integer",
+      "default": 1024,
+      "min": 256,
+      "max": 2048,
+      "step": 16,
+      "targets": [
+        { "nodeId": "7", "input": "width" },
+        { "nodeId": "8", "input": "width" }
+      ]
+    },
+    {
+      "id": "height",
+      "label": "Height",
+      "kind": "integer",
+      "default": 1024,
+      "min": 256,
+      "max": 2048,
+      "step": 16,
+      "targets": [
+        { "nodeId": "7", "input": "height" },
+        { "nodeId": "8", "input": "height" }
+      ]
+    },
+    {
+      "id": "count",
+      "label": "Count",
+      "kind": "integer",
+      "default": 1,
+      "min": 1,
+      "max": 4,
+      "description": "How many pictures to make from the prompt at once.",
+      "targets": [{ "nodeId": "8", "input": "batch_size" }]
+    },
+    {
+      "id": "seed",
+      "label": "Seed",
+      "kind": "seed",
+      "targets": [{ "nodeId": "9", "input": "noise_seed" }]
+    }
+  ],
+  "workflow": {
+    "1": {
+      "class_type": "UNETLoader",
+      "inputs": { "unet_name": "flux-2-klein-4b-fp8.safetensors", "weight_dtype": "default" }
+    },
+    "2": {
+      "class_type": "CLIPLoader",
+      "inputs": { "clip_name": "qwen_3_4b_fp8_mixed.safetensors", "type": "flux2" }
+    },
+    "3": { "class_type": "VAELoader", "inputs": { "vae_name": "flux2-vae.safetensors" } },
+    "4": {
+      "class_type": "CLIPTextEncode",
+      "inputs": { "clip": ["2", 0], "text": "" },
+      "_meta": { "title": "Prompt" }
+    },
+    "5": { "class_type": "ConditioningZeroOut", "inputs": { "conditioning": ["4", 0] } },
+    "6": {
+      "class_type": "CFGGuider",
+      "inputs": { "model": ["1", 0], "positive": ["4", 0], "negative": ["5", 0], "cfg": 1 }
+    },
+    "7": {
+      "class_type": "Flux2Scheduler",
+      "inputs": { "steps": 4, "width": 1024, "height": 1024 }
+    },
+    "8": {
+      "class_type": "EmptyFlux2LatentImage",
+      "inputs": { "width": 1024, "height": 1024, "batch_size": 1 }
+    },
+    "9": { "class_type": "RandomNoise", "inputs": { "noise_seed": 0 } },
+    "10": { "class_type": "KSamplerSelect", "inputs": { "sampler_name": "euler" } },
+    "11": {
+      "class_type": "SamplerCustomAdvanced",
+      "inputs": {
+        "noise": ["9", 0],
+        "guider": ["6", 0],
+        "sampler": ["10", 0],
+        "sigmas": ["7", 0],
+        "latent_image": ["8", 0]
+      }
+    },
+    "12": { "class_type": "VAEDecode", "inputs": { "samples": ["11", 0], "vae": ["3", 0] } },
+    "13": {
+      "class_type": "SaveImage",
+      "inputs": { "images": ["12", 0], "filename_prefix": "image" }
+    }
+  }
+}

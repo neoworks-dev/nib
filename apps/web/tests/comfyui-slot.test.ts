@@ -87,9 +87,25 @@ describe("resultSlot", () => {
 describe("slotPlacements", () => {
   it("puts the first output in the slot and the rest in a row", () => {
     const slot = { board: "art", x: 10, y: 20, w: 100, h: 50 };
-    expect(slotPlacements(slot, ["art/a.png", "art/b.png"])).toEqual([
+    const outputs = [
+      { path: "art/a.png", pixels: null },
+      { path: "art/b.png", pixels: null },
+    ];
+    expect(slotPlacements(slot, outputs)).toEqual([
       { path: "art/a.png", x: 10, y: 20, w: 100, h: 50 },
       { path: "art/b.png", x: 142, y: 20, w: 100, h: 50 },
+    ]);
+  });
+
+  it("keeps each output's own shape inside the slot, so a tall picture is not cropped", () => {
+    const square = { board: "", x: 0, y: 0, w: 340, h: 340 };
+    const outputs = [
+      { path: "character.png", pixels: { width: 832, height: 1216 } },
+      { path: "banner.png", pixels: { width: 2000, height: 500 } },
+    ];
+    expect(slotPlacements(square, outputs)).toEqual([
+      { path: "character.png", x: 0, y: 0, w: 233, h: 340 },
+      { path: "banner.png", x: 265, y: 0, w: 340, h: 85 },
     ]);
   });
 });

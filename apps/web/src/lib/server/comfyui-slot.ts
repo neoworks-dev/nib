@@ -132,15 +132,36 @@ function keepsGap(candidate: Rect, occupied: readonly Rect[]): boolean {
   return !occupied.some((other) => overlaps(padded, other));
 }
 
-/** Placements for a finished run's outputs: the first in its slot, the rest in a row to its right. */
-export function slotPlacements(slot: ComfyResultSlot, paths: readonly string[]): PlacementWrite[] {
-  return paths.map((path, index) => ({
-    path,
-    x: slot.x + index * (slot.w + SLOT_GAP),
-    y: slot.y,
-    w: slot.w,
-    h: slot.h,
-  }));
+/** An output written into the vault, with its size in pixels when it is known. */
+export interface PlacedOutput {
+  path: string;
+  pixels: { width: number; height: number } | null;
+}
+
+/**
+ * Placements for a finished run's outputs: the first in its slot, the rest in a
+ * row to its right. Each keeps its own shape, fitted inside the slot's box, so a
+ * tall picture from a wide source is not cropped; one of unknown size fills it.
+ */
+export function slotPlacements(
+  slot: ComfyResultSlot,
+  outputs: readonly PlacedOutput[],
+): PlacementWrite[] {
+  const placements: PlacementWrite[] = [];
+  let x = slot.x;
+  for (const output of outputs) {
+    const size = fitInside(slot, output.pixels);
+    placements.push({ path: output.path, x, y: slot.y, w: size.w, h: size.h });
+    x += size.w + SLOT_GAP;
+  }
+  return placements;
+}
+
+/** The largest size of the picture's shape that fits the slot, or the slot itself for an unknown shape. */
+function fitInside(slot: Size, pixels: PlacedOutput["pixels"]): Size {
+  if (!pixels) return { w: slot.w, h: slot.h };
+  const scale = Math.min(slot.w / pixels.width, slot.h / pixels.height);
+  return { w: Math.round(pixels.width * scale), h: Math.round(pixels.height * scale) };
 }
 
 /**

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join, posix } from "node:path";
+import { pngSize } from "@nib-ui/comfy";
 import type { Disposer, Plugin } from "@nib-ui/kernel";
 import {
   type BoardDoc,
@@ -35,7 +36,7 @@ import {
   queuedRun,
   succeedRun,
 } from "../comfyui-runs";
-import { lineageObjects, resultSlot, slotPlacements } from "../comfyui-slot";
+import { lineageObjects, type PlacedOutput, resultSlot, slotPlacements } from "../comfyui-slot";
 import type { BoardService, ComfyUIService, VaultService } from "../services";
 import { userConfigPath } from "../user-config";
 
@@ -469,9 +470,10 @@ export class ComfyHost implements ComfyUIService {
     try {
       let saved = files;
       if (saved.length === 0) saved = await this.historyFiles(tracked);
-      const paths: string[] = [];
-      for (const file of saved) paths.push(await this.writeOutput(tracked, file));
-      await this.placeOutputs(tracked.run, paths);
+      const outputs: PlacedOutput[] = [];
+      for (const file of saved) outputs.push(await this.writeOutput(tracked, file));
+      const paths = outputs.map((output) => output.path);
+      await this.placeOutputs(tracked.run, outputs);
       await this.linkOutputs(tracked.run, paths);
       this.update(tracked, succeedRun(tracked.run, paths, Date.now()));
     } catch (cause) {
@@ -491,8 +493,8 @@ export class ComfyHost implements ComfyUIService {
     return [];
   }
 
-  /** One output file into the vault, answering with where it landed. */
-  private async writeOutput(tracked: Tracked, file: ComfyFile): Promise<string> {
+  /** One output file into the vault, answering with where it landed and its size in pixels. */
+  private async writeOutput(tracked: Tracked, file: ComfyFile): Promise<PlacedOutput> {
     const bytes = await tracked.client.download(file);
     const written = await this.options.vault.write(
       tracked.run.cwd,
@@ -500,7 +502,7 @@ export class ComfyHost implements ComfyUIService {
       file.filename,
       bytes,
     );
-    return written.path;
+    return { path: written.path, pixels: pngSize(bytes) };
   }
 
   /**
@@ -508,10 +510,10 @@ export class ComfyHost implements ComfyUIService {
    * written costs only the spot: the files are in the vault, and the scan places
    * them wherever the board has room.
    */
-  private async placeOutputs(run: ComfyRun, paths: string[]): Promise<void> {
-    if (run.slot === null || paths.length === 0) return;
+  private async placeOutputs(run: ComfyRun, outputs: PlacedOutput[]): Promise<void> {
+    if (run.slot === null || outputs.length === 0) return;
     try {
-      await this.options.boards.place(run.cwd, slotPlacements(run.slot, paths));
+      await this.options.boards.place(run.cwd, slotPlacements(run.slot, outputs));
     } catch {
       // Placed by the scan instead; see above.
     }

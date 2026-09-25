@@ -20,6 +20,17 @@ export function isPng(bytes: Uint8Array): boolean {
   return SIGNATURE.every((byte, index) => bytes[index] === byte);
 }
 
+/** A PNG's size in pixels from its header, or null for anything that is not a PNG. */
+export function pngSize(bytes: Uint8Array): { width: number; height: number } | null {
+  // The signature, then IHDR: length, type, width, height — both big-endian.
+  if (!isPng(bytes) || bytes.length < 24) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const width = view.getUint32(16);
+  const height = view.getUint32(20);
+  if (width === 0 || height === 0) return null;
+  return { width, height };
+}
+
 /** The text chunks of a PNG by keyword; `tEXt` and uncompressed `iTXt`. */
 export function pngTextChunks(bytes: Uint8Array): Map<string, string> {
   const chunks = new Map<string, string>();
