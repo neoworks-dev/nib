@@ -26,6 +26,7 @@ import type {
   ComfyService,
   ComfyStatus,
 } from "./comfyui";
+import type { ComposerTargetRegistry } from "./composer";
 import type { DesktopAgentService } from "./desktop-agent";
 import type { AttachmentsService, PaneRegistry } from "./panes";
 
@@ -286,6 +287,7 @@ export interface RendererRegistry {
 export * from "./agent-tabs";
 export * from "./canvas";
 export * from "./comfyui";
+export * from "./composer";
 export * from "./desktop";
 export * from "./desktop-agent";
 export * from "./display";
@@ -433,6 +435,7 @@ declare module "@nib-ui/kernel" {
     canvas: CanvasRegistry;
     desktopAgent: DesktopAgentService;
     comfy: ComfyService;
+    composerTargets: ComposerTargetRegistry;
   }
   interface Events {
     "session/opened"(sessionId: string): void;

@@ -6,7 +6,7 @@
  */
 
 import type { Disposer } from "@nib-ui/kernel";
-import type { CanvasObject } from "./canvas";
+import type { CanvasObject, Point } from "./canvas";
 
 /** Where ComfyUI listens unless the user says otherwise. */
 export const DEFAULT_COMFY_URL = "http://127.0.0.1:8188";
@@ -71,6 +71,11 @@ export interface ComfyQueueInput {
    * first upload, or into `comfyui` when there is none.
    */
   outputDirectory?: string;
+  /**
+   * Board point, in world units, the result's top-left corner goes to — where it
+   * was asked for. Left out, it goes beside the first upload.
+   */
+  at?: Point;
 }
 
 export type ComfyRunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
@@ -222,6 +227,8 @@ export interface ComfyRunWorkflowInput {
   workflowId: string;
   values: Record<string, unknown>;
   outputDirectory?: string;
+  /** See `ComfyQueueInput.at`. */
+  at?: Point;
 }
 
 /** Saves a workflow into the user's library or a project's. */

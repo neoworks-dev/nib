@@ -3,6 +3,7 @@
   import {
     type PaneProps,
     parseWorkspaceFileRefs,
+    type Point,
     workspaceFileTransferType,
   } from "@nib-ui/ui-contracts";
   import CornersOutIcon from "phosphor-svelte/lib/CornersOutIcon";
@@ -86,16 +87,29 @@
       setPermissionMode: (permissionMode) => canvasState.configureBoard({ permissionMode }),
       setEffort: (effort) => canvasState.configureBoard({ effort }),
       start: async (text) => {
-        // The card is centred on what the pane is looking at, not dropped at its
-        // top-left corner, so it lands in view above the composer.
-        const at = boardPoint();
-        await canvasState.startWorkstream(text, {
-          x: at.x - CARD_WIDTH / 2,
-          y: at.y - CARD_MIN_HEIGHT,
-        });
+        await canvasState.startWorkstream(text, inView());
+      },
+      target: {
+        cwd: registry.cwd,
+        boardDirectory: registry.boardDirectory,
+        sources: [],
+        // Read on send: the board may have panned since the composer rendered.
+        get at() {
+          return inView();
+        },
       },
     };
   });
+
+  /**
+   * Where something the board's composer makes goes: centred on what the pane is
+   * looking at, not dropped at its top-left corner, so it lands in view above
+   * the composer.
+   */
+  function inView(): Point {
+    const at = boardPoint();
+    return { x: at.x - CARD_WIDTH / 2, y: at.y - CARD_MIN_HEIGHT };
+  }
 
   // The menu coordinates are canvas-element relative, which is what the pane's
   // own box is, and it is flipped rather than clipped near an edge.

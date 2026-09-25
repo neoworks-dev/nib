@@ -9,6 +9,7 @@ const runBodySchema = z.object({
   workflowId: z.string().min(1),
   values: z.record(z.string(), z.unknown()),
   outputDirectory: z.string().optional(),
+  at: z.object({ x: z.number(), y: z.number() }).optional(),
 });
 
 /** Fills a library workflow's parameters and queues it. */

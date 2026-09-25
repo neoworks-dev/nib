@@ -14,6 +14,9 @@ import type {
 } from "@nib-ui/ui-contracts";
 import { upsertRun } from "./runs";
 
+/** How old the composer's copy of the library may get before it is read again. */
+const LIBRARY_STALE_MS = 15_000;
+
 /**
  * The loaded plugin's store, for the settings section: slot components are
  * handed a session, not the kernel.
@@ -45,6 +48,10 @@ export interface ComfyPaneHost {
 export class ComfyStore implements ComfyService {
   status = $state<ComfyStatus | null>(null);
   runs = $state<ComfyRun[]>([]);
+  /** The last library read per project, keyed by cwd; "" for none. */
+  private libraries = $state<Record<string, { entries: ComfyLibraryEntry[]; readAt: number }>>({});
+  /** Projects whose library is being read, so a render does not start a second read. */
+  private readonly reading = new Set<string>();
   private readonly listeners = new Set<(run: ComfyRun) => void>();
   private readonly editorListeners = new Set<(request: ComfyEditorRequest) => void>();
 
@@ -64,9 +71,24 @@ export class ComfyStore implements ComfyService {
     };
   }
 
-  /** The library, with the project's workflows when `cwd` names one. */
-  library(cwd: string | null): Promise<ComfyLibraryEntry[]> {
-    return this.transport.comfyLibrary(cwd);
+  /** The library, with the project's workflows when `cwd` names one. Read fresh, and kept for `cachedLibrary`. */
+  async library(cwd: string | null): Promise<ComfyLibraryEntry[]> {
+    const entries = await this.transport.comfyLibrary(cwd);
+    this.libraries = { ...this.libraries, [cwd ?? ""]: { entries, readAt: Date.now() } };
+    return entries;
+  }
+
+  /**
+   * Reactive: the library as last read for this project, read again in the
+   * background once it is older than `LIBRARY_STALE_MS` — for the composer,
+   * which asks on every render and cannot wait. Empty until the first read.
+   */
+  cachedLibrary(cwd: string): ComfyLibraryEntry[] {
+    const cached = this.libraries[cwd];
+    const stale = !cached || Date.now() - cached.readAt > LIBRARY_STALE_MS;
+    if (stale && !this.reading.has(cwd)) this.readInBackground(cwd);
+    if (!cached) return [];
+    return cached.entries;
   }
 
   /** Runs a library workflow; the run arrives here as it progresses. */
@@ -76,12 +98,37 @@ export class ComfyStore implements ComfyService {
     return run;
   }
 
-  saveWorkflow(input: ComfySaveWorkflowInput): Promise<ComfyLibraryEntry> {
-    return this.transport.saveComfyWorkflow(input);
+  async saveWorkflow(input: ComfySaveWorkflowInput): Promise<ComfyLibraryEntry> {
+    const saved = await this.transport.saveComfyWorkflow(input);
+    this.markLibrariesStale();
+    return saved;
   }
 
-  deleteWorkflow(source: "user" | "project", id: string, cwd: string | null): Promise<void> {
-    return this.transport.deleteComfyWorkflow(source, id, cwd);
+  async deleteWorkflow(source: "user" | "project", id: string, cwd: string | null): Promise<void> {
+    await this.transport.deleteComfyWorkflow(source, id, cwd);
+    this.markLibrariesStale();
+  }
+
+  /** Has every cached library read again on its next use, keeping what it shows until then. */
+  private markLibrariesStale(): void {
+    const stale: typeof this.libraries = {};
+    for (const [cwd, cached] of Object.entries(this.libraries)) {
+      stale[cwd] = { entries: cached.entries, readAt: 0 };
+    }
+    this.libraries = stale;
+  }
+
+  /**
+   * Reads a project's library off the render that asked: writing state while a
+   * derivation runs is not allowed, so the read and the write are a tick later.
+   */
+  private readInBackground(cwd: string): void {
+    this.reading.add(cwd);
+    queueMicrotask(() => {
+      this.library(cwd.length > 0 ? cwd : null)
+        .catch(() => undefined)
+        .finally(() => this.reading.delete(cwd));
+    });
   }
 
   /**

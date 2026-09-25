@@ -11,6 +11,7 @@ import {
   type ComfyStatus,
   type ComfyWorkflow,
   DEFAULT_COMFY_URL,
+  type Point,
 } from "@nib-ui/ui-contracts";
 import {
   ComfyApiError,
@@ -296,8 +297,9 @@ export class ComfyHost implements ComfyUIService {
   }
 
   /**
-   * Where the result will sit: beside the first input on the board the outputs
-   * land on, clear of the spots held for runs still going. Null when the board
+   * Where the result will sit: at the point it was asked for, else beside the
+   * first input, on the board the outputs land on and clear of the spots held
+   * for runs still going. Null when the board
    * cannot be read — the run goes ahead, and the scan places its outputs.
    */
   private async chooseSlot(
@@ -313,7 +315,10 @@ export class ComfyHost implements ComfyUIService {
     let reference: string | null = null;
     const first = input.uploads?.[0];
     if (first) reference = first.path;
-    return resultSlot(board.placements, outputDirectory, reference, this.reservedSlots(input.cwd));
+    let at: Point | null = null;
+    if (input.at) at = input.at;
+    const reserved = this.reservedSlots(input.cwd);
+    return resultSlot(board.placements, outputDirectory, reference, reserved, at);
   }
 
   /** The spots held for this project's runs that have not finished. */

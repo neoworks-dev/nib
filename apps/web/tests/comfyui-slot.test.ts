@@ -28,6 +28,37 @@ describe("resultSlot", () => {
     });
   });
 
+  it("sits at the point it was asked for, at the reference's size", () => {
+    const placements: PlacementMap = { art: { "art/sprite.png": sprite } };
+    expect(resultSlot(placements, "art", "art/sprite.png", [], { x: 500, y: 400 })).toEqual({
+      board: "art",
+      x: 500,
+      y: 400,
+      w: 200,
+      h: 100,
+    });
+  });
+
+  it("steps right of a card covering the point it was asked for", () => {
+    const placements: PlacementMap = { "": { "note.md": { x: 0, y: 0, w: 100, h: 100, z: 1 } } };
+    expect(resultSlot(placements, "", null, [], { x: 50, y: 50 })).toEqual({
+      board: "",
+      x: 132,
+      y: 50,
+      w: 340,
+      h: 340,
+    });
+  });
+
+  it("takes a free row near the point over a far spot in a crowded one", () => {
+    const cards = Array.from({ length: 10 }, (_, index) => [
+      `card-${index}.png`,
+      { x: index * 400, y: 0, w: 380, h: 340, z: 1 },
+    ]);
+    const row: PlacementMap = { "": Object.fromEntries(cards) };
+    expect(resultSlot(row, "", null, [], { x: 0, y: 0 })).toMatchObject({ x: 0, y: 372 });
+  });
+
   it("takes the board's next flow slot without a placed reference", () => {
     const placements: PlacementMap = { comfyui: { "comfyui/a.png": { ...sprite, w: 340 } } };
     expect(resultSlot(placements, "comfyui", null, [])).toEqual({

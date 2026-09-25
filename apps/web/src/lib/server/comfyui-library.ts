@@ -117,6 +117,7 @@ export class ComfyLibrary {
       uploads: applied.uploads,
       label: manifest.name,
       outputDirectory: input.outputDirectory,
+      at: input.at,
     });
   }
 

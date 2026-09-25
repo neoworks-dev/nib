@@ -3,14 +3,24 @@
   import type { MessageAttachment, SessionView } from "@nib-ui/protocol";
   import {
     assetUrl,
+    type ComposerTarget,
+    type ComposerTargetRequest,
     effortLabel,
     fuzzyRank,
     permissionModeLabel,
     type SessionSummary,
   } from "@nib-ui/ui-contracts";
-  import { harnessIcon, kernelContext, PillSelect, SlotHost } from "@nib-ui/ui-contracts/svelte";
+  import {
+    harnessIcon,
+    kernelContext,
+    type PillOption,
+    PillSelect,
+    SlotHost,
+  } from "@nib-ui/ui-contracts/svelte";
   import BrainIcon from "phosphor-svelte/lib/BrainIcon";
   import PaperPlaneRightIcon from "phosphor-svelte/lib/PaperPlaneRightIcon";
+  import PlayIcon from "phosphor-svelte/lib/PlayIcon";
+  import RobotIcon from "phosphor-svelte/lib/RobotIcon";
   import ShieldCheckIcon from "phosphor-svelte/lib/ShieldCheckIcon";
   import StopCircleIcon from "phosphor-svelte/lib/StopCircleIcon";
   import AgentTabs from "./AgentTabs.svelte";
@@ -24,6 +34,12 @@
     planHarnessSwitch,
   } from "./harness-switch";
   import type { PendingComposer } from "./pending";
+  import {
+    AGENT_PICK,
+    composerTargetPicks,
+    parsePickValue,
+    pickValue,
+  } from "./target-picks.svelte";
   import TriggerPopup from "./TriggerPopup.svelte";
 
   const {
@@ -66,6 +82,7 @@
 
   const context = kernelContext();
   const sessions = context.require("sessions");
+  const composerTargets = context.require("composerTargets");
 
   /** Keyed by session, or by the workstream while there is no session to key by. */
   const draftKey = $derived(session?.sessionId ?? pending?.id ?? "");
@@ -124,6 +141,49 @@
     proposed ? describeHarnessSwitch(proposed, harnessName(proposed.toHarnessId)) : null,
   );
 
+  // Targets other than an agent are offered only before there is a session, and
+  // only where the surface said what the request is about.
+  const targetContext = $derived(session ? undefined : pending?.target);
+  const targetOptions = $derived.by((): PillOption[] => {
+    const current = targetContext;
+    if (!current) return [];
+    const options: PillOption[] = [];
+    for (const target of composerTargets.targets) {
+      options.push(...optionsOf(target, current));
+    }
+    if (options.length === 0) return [];
+    return [
+      { value: AGENT_PICK, label: "Agent", icon: RobotIcon, hint: "Starts a workstream" },
+      ...options,
+    ];
+  });
+  const targetPick = $derived(targetContext ? composerTargetPicks.get(draftKey) : null);
+  /** The picked option's target, while it is still registered. */
+  const pickedTarget = $derived.by((): ComposerTarget | null => {
+    if (!targetPick) return null;
+    const pickedId = targetPick.targetId;
+    return composerTargets.targets.find((target) => target.id === pickedId) ?? null;
+  });
+  const targetRequest = $derived.by((): ComposerTargetRequest | null => {
+    if (!targetPick || !pickedTarget || !targetContext) return null;
+    return {
+      optionId: targetPick.optionId,
+      text: draft.trim(),
+      values: targetPick.values,
+      context: targetContext,
+    };
+  });
+  const targetPrompt = $derived(
+    pickedTarget && targetPick && targetContext
+      ? pickedTarget.prompt(targetPick.optionId, targetContext)
+      : null,
+  );
+  const targetBlocked = $derived(
+    pickedTarget && targetRequest ? pickedTarget.blocked(targetRequest) : null,
+  );
+  let targetSending = $state(false);
+  let targetError = $state<string | null>(null);
+
   $effect(() => {
     if (trigger?.kind !== "file") {
       fileMatches = [];
@@ -152,7 +212,54 @@
     if (session && sessions.activeId !== session.sessionId) sessions.open(session.sessionId);
   }
 
+  /** A target's options as rows of the picker, each wearing the target's icon. */
+  function optionsOf(
+    target: ComposerTarget,
+    current: NonNullable<PendingComposer["target"]>,
+  ): PillOption[] {
+    return target.options(current).map((option) => ({
+      value: pickValue(target.id, option.id),
+      label: option.label,
+      hint: option.hint,
+      icon: target.icon,
+      disabled: option.disabled,
+    }));
+  }
+
+  /** Switches between the agent and a target's option; a new option starts with an empty form. */
+  function chooseTarget(value: string): void {
+    targetError = null;
+    const parsed = parsePickValue(value, composerTargets.targets);
+    if (!parsed) {
+      composerTargetPicks.clear(draftKey);
+      return;
+    }
+    composerTargetPicks.choose(draftKey, parsed.target.id, parsed.optionId);
+  }
+
+  /** Hands the request to the picked target; the draft is only cleared once it has taken it. */
+  async function sendToTarget(
+    target: ComposerTarget,
+    request: ComposerTargetRequest,
+  ): Promise<void> {
+    if (targetSending || target.blocked(request) !== null) return;
+    targetSending = true;
+    targetError = null;
+    try {
+      await target.send(request);
+    } catch (cause) {
+      targetError = cause instanceof Error ? cause.message : String(cause);
+      return;
+    } finally {
+      targetSending = false;
+    }
+    composerDrafts.set(draftKey, "");
+    caret = 0;
+    pending?.onTargetSent?.();
+  }
+
   async function submit() {
+    if (pickedTarget && targetRequest) return sendToTarget(pickedTarget, targetRequest);
     const text = composeAnnotatedMessage(annotations, draft);
     if (text.length === 0 && attachments.length === 0) return;
     composerDrafts.set(draftKey, "");
@@ -220,6 +327,13 @@
     dismissed = false;
     composerDrafts.set(draftKey, event.currentTarget.value);
     caret = event.currentTarget.selectionStart ?? event.currentTarget.value.length;
+  }
+
+  /** The text area's hint: the picked target's, else whether it continues or starts work. */
+  function placeholder(): string {
+    if (targetPrompt) return targetPrompt.placeholder;
+    if (session) return "Ask for follow-up changes — / for commands, @ for files";
+    return "What needs doing? — @ for files";
   }
 
   function syncCaret() {
@@ -321,83 +435,45 @@
         </div>
       {/if}
 
-      <textarea
-        bind:this={textarea}
-        value={draft}
-        oninput={onInput}
-        onkeyup={syncCaret}
-        onclick={syncCaret}
-        onkeydown={onKeydown}
-        rows="2"
-        placeholder={session
-          ? "Ask for follow-up changes — / for commands, @ for files"
-          : "What needs doing? — @ for files"}
-        class="min-h-14 w-full resize-none bg-transparent px-1 py-1 text-base text-default placeholder:text-faint focus:outline-none"
-      ></textarea>
+      {#if !targetPrompt || targetPrompt.takesText}
+        <textarea
+          bind:this={textarea}
+          value={draft}
+          oninput={onInput}
+          onkeyup={syncCaret}
+          onclick={syncCaret}
+          onkeydown={onKeydown}
+          rows="2"
+          placeholder={placeholder()}
+          class="min-h-14 w-full resize-none bg-transparent px-1 py-1 text-base text-default placeholder:text-faint focus:outline-none"
+        ></textarea>
+      {/if}
+
+      {#if pickedTarget && targetPick && targetContext}
+        {@const TargetForm = pickedTarget.form}
+        <TargetForm
+          optionId={targetPick.optionId}
+          context={targetContext}
+          values={targetPick.values}
+          onchange={(values) => composerTargetPicks.setValues(draftKey, values)}
+        />
+      {/if}
 
       <div class="flex flex-wrap items-center gap-2">
-        {#if permissionModes.length > 0}
+        {#if targetOptions.length > 0}
           <PillSelect
-            icon={ShieldCheckIcon}
-            value={selectedPermissionMode}
-            placeholder="Permission"
-            options={permissionModes.map((mode) => ({
-              value: mode,
-              label: permissionModeLabel(mode),
-              hint: mode,
-            }))}
-            onChange={(mode) => {
-              if (!session) return pending?.setPermissionMode(mode);
-              focusSession();
-              void sessions.setPermissionMode(mode);
-            }}
+            icon={RobotIcon}
+            value={targetPick ? pickValue(targetPick.targetId, targetPick.optionId) : AGENT_PICK}
+            placeholder="Send to"
+            searchable
+            searchPlaceholder="Search workflows"
+            options={targetOptions}
+            onChange={chooseTarget}
           />
         {/if}
 
-        {#if models.length > 0}
-          <PillSelect
-            value={selectedModel}
-            placeholder="Model"
-            options={models.map((model) => ({
-              value: model.id,
-              label: model.displayName ?? model.id,
-              hint: model.description,
-            }))}
-            onChange={(model) => {
-              if (!session) return pending?.setModel(model);
-              focusSession();
-              void sessions.setModel(model);
-            }}
-          />
-        {/if}
-
-        {#if effortLevels.length > 0}
-          <PillSelect
-            icon={BrainIcon}
-            value={selectedEffort}
-            placeholder="Effort"
-            options={effortLevels.map((level) => ({ value: level, label: effortLabel(level) }))}
-            onChange={(effort) => {
-              if (!session) return pending?.setEffort(effort);
-              focusSession();
-              void sessions.setEffort(effort);
-            }}
-          />
-        {/if}
-
-        {#if sessions.harnesses.length > 1}
-          <PillSelect
-            icon={HarnessIcon}
-            value={harnessId}
-            placeholder="Harness"
-            options={sessions.harnesses.map((entry) => ({
-              value: entry.id,
-              label: entry.displayName,
-              icon: harnessIcon(entry.id),
-              hint: harnessHint(entry.id),
-            }))}
-            onChange={proposeHarness}
-          />
+        {#if !pickedTarget}
+          {@render agentPills()}
         {/if}
 
         <SlotHost
@@ -406,8 +482,23 @@
           class="flex items-center gap-2"
         />
 
-        <span class="ml-auto">
-          {#if canInterrupt}
+        <span class="ml-auto flex items-center gap-2">
+          {#if pickedTarget}
+            {#if targetError}
+              <span class="max-w-72 truncate text-2xs text-red" title={targetError}
+                >{targetError}</span
+              >
+            {:else if targetBlocked}
+              <span class="text-2xs text-faint">{targetBlocked}</span>
+            {/if}
+            <Button
+              size="sm"
+              variant="primary"
+              icon={PlayIcon}
+              disabled={targetBlocked !== null || targetSending}
+              onclick={submit}>Run</Button
+            >
+          {:else if canInterrupt}
             <span class="animate-pulse">
               <Button
                 size="sm"
@@ -438,6 +529,72 @@
     </div>
   </div>
 </div>
+
+{#snippet agentPills()}
+  {#if permissionModes.length > 0}
+    <PillSelect
+      icon={ShieldCheckIcon}
+      value={selectedPermissionMode}
+      placeholder="Permission"
+      options={permissionModes.map((mode) => ({
+        value: mode,
+        label: permissionModeLabel(mode),
+        hint: mode,
+      }))}
+      onChange={(mode) => {
+        if (!session) return pending?.setPermissionMode(mode);
+        focusSession();
+        void sessions.setPermissionMode(mode);
+      }}
+    />
+  {/if}
+
+  {#if models.length > 0}
+    <PillSelect
+      value={selectedModel}
+      placeholder="Model"
+      options={models.map((model) => ({
+        value: model.id,
+        label: model.displayName ?? model.id,
+        hint: model.description,
+      }))}
+      onChange={(model) => {
+        if (!session) return pending?.setModel(model);
+        focusSession();
+        void sessions.setModel(model);
+      }}
+    />
+  {/if}
+
+  {#if effortLevels.length > 0}
+    <PillSelect
+      icon={BrainIcon}
+      value={selectedEffort}
+      placeholder="Effort"
+      options={effortLevels.map((level) => ({ value: level, label: effortLabel(level) }))}
+      onChange={(effort) => {
+        if (!session) return pending?.setEffort(effort);
+        focusSession();
+        void sessions.setEffort(effort);
+      }}
+    />
+  {/if}
+
+  {#if sessions.harnesses.length > 1}
+    <PillSelect
+      icon={HarnessIcon}
+      value={harnessId}
+      placeholder="Harness"
+      options={sessions.harnesses.map((entry) => ({
+        value: entry.id,
+        label: entry.displayName,
+        icon: harnessIcon(entry.id),
+        hint: harnessHint(entry.id),
+      }))}
+      onChange={proposeHarness}
+    />
+  {/if}
+{/snippet}
 
 {#if confirmation}
   <HarnessSwitchDialog

@@ -3,6 +3,7 @@ import type { ComfyEditorRequest } from "@nib-ui/ui-contracts";
 import FlowArrowIcon from "phosphor-svelte/lib/FlowArrowIcon";
 import GraphIcon from "phosphor-svelte/lib/GraphIcon";
 import ComfySettings from "./ComfySettings.svelte";
+import { workflowComposerTarget } from "./composer-workflows";
 import { manifestFromImport, readImport } from "./editor/document";
 import EditorPane from "./editor/EditorPane.svelte";
 import { errorMessage } from "./form";
@@ -20,11 +21,12 @@ export const EDITOR_PANE = "comfyui.editor";
 /**
  * ComfyUI in the app: provides the `comfy` service the library, the node editor
  * and the composer queue workflows through, the settings section that points
- * it at a server, the workflow library, and the node editor.
+ * it at a server, the workflow library, the node editor, and the workflows as
+ * a target the composer can send to.
  */
 export const comfyuiPlugin: Plugin = {
   name: "comfyui",
-  inject: ["transport", "slots", "commands", "panes", "canvas"],
+  inject: ["transport", "slots", "commands", "panes", "canvas", "composerTargets"],
   apply(ctx) {
     const transport = ctx.require("transport");
     const panes = ctx.require("panes");
@@ -32,6 +34,7 @@ export const comfyuiPlugin: Plugin = {
     const store = new ComfyStore(transport);
     ctx.effect(() => store.connect());
     ctx.provide("comfy", store);
+    ctx.effect(() => ctx.require("composerTargets").register(workflowComposerTarget(store)));
     ctx.effect(() => mountPlaceholders(canvas, store));
     ctx.effect(() => canvas.registerKind(lineageKind()));
 
