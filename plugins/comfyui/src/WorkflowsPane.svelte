@@ -15,6 +15,7 @@
   import {
     describeAvailability,
     entryKey,
+    errorMessage,
     filterEntries,
     type FormValues,
     groupByCategory,
@@ -60,6 +61,12 @@
     void loadImages(cwd);
   });
 
+  // The pane is reused for the next picture a card's menu sends it; that starts over at the list.
+  $effect(() => {
+    void imagePath;
+    selectedKey = null;
+  });
+
   /** Reads the library, with the open project's workflows, and opens the one the pane was asked for. */
   async function load(project: string): Promise<void> {
     if (!store) return;
@@ -67,7 +74,7 @@
       entries = await store.library(project.length > 0 ? project : null);
       loadError = null;
     } catch (cause) {
-      loadError = cause instanceof Error ? cause.message : String(cause);
+      loadError = errorMessage(cause);
       return;
     }
     const wanted = entries.find((entry) => entryKey(entry) === params?.workflow);
@@ -103,7 +110,7 @@
       });
       runId = queued.id;
     } catch (cause) {
-      runError = cause instanceof Error ? cause.message : String(cause);
+      runError = errorMessage(cause);
     } finally {
       starting = false;
     }

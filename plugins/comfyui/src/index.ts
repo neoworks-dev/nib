@@ -51,9 +51,16 @@ export const comfyuiPlugin: Plugin = {
         component: WorkflowsPane,
       }),
     );
+    /** Points the open workflows pane at a picture, or opens one for it. */
+    const openWorkflowsFor = (path: string): void => {
+      const [existing] = panes.instances(WORKFLOWS_PANE);
+      if (existing) panes.reparam(existing.instanceId, { image: path });
+      panes.open(WORKFLOWS_PANE, { image: path });
+    };
     ctx.effect(() =>
       canvas.registerContextMenu({
-        order: 30,
+        // Ahead of the board's own entries, so the delete stays last.
+        order: -10,
         items: (target) => {
           const path = picturePath(target);
           if (path === null) return [];
@@ -63,10 +70,9 @@ export const comfyuiPlugin: Plugin = {
               id: "comfyui.runWorkflow",
               label: "Run workflow…",
               icon: FlowArrowIcon,
-              run: () => {
-                panes.openInstance(WORKFLOWS_PANE, { image: path });
-              },
+              run: () => openWorkflowsFor(path),
             },
+            { kind: "separator", id: "comfyui.separator" },
           ];
         },
       }),

@@ -98,6 +98,24 @@ export function missingRequired(
   });
 }
 
+/**
+ * A failed call's message for the user. The server's errors arrive as
+ * SvelteKit's `{"message": …}` body, which is unwrapped here.
+ */
+export function errorMessage(cause: unknown): string {
+  let text = String(cause);
+  if (cause instanceof Error) text = cause.message;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (typeof parsed === "object" && parsed !== null && "message" in parsed) {
+      return String(parsed.message);
+    }
+  } catch {
+    // Not JSON: the text is the message.
+  }
+  return text;
+}
+
 /** Why a workflow cannot run, in one line; null when it can or when nobody knows yet. */
 export function describeAvailability(availability: ComfyAvailability | null): string | null {
   if (!availability || availability.available) return null;

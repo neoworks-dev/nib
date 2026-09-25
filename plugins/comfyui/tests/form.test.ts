@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { ComfyLibraryEntry, ComfyWorkflowManifest } from "@nib-ui/ui-contracts";
 import {
   describeAvailability,
+  errorMessage,
   filterEntries,
   groupByCategory,
   initialValues,
@@ -82,6 +83,15 @@ describe("the form", () => {
       "prompt",
     ]);
     expect(valuesToSend(values)).toEqual({ image: "art/chest.png", strength: 0.5 });
+  });
+});
+
+describe("errorMessage", () => {
+  it("unwraps the server's error body", () => {
+    expect(errorMessage(new Error('{"message":"ComfyUI is not reachable"}'))).toBe(
+      "ComfyUI is not reachable",
+    );
+    expect(errorMessage(new Error("plain"))).toBe("plain");
   });
 });
 
