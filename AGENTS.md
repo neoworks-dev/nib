@@ -1,256 +1,148 @@
-# Agent Instructions
+## Git
 
-Be direct, concise, and technically precise.
+Commit the worktree first if it's dirty, then write your changes. Short, to-the-point commit title; a body explaining the change when the title doesn't carry it; ask if you're unsure what to write. Always say the commit was made by you, not a human. On a feature branch, only commit what that branch is for.
 
-- State incorrect assumptions clearly and explain why they are wrong.
-- Point out simpler or safer alternatives when a proposed approach is flawed.
-- Avoid pleasantries, filler, emotional cushioning, and meta-narration.
-- Preserve exact technical identifiers, commands, API names, code, and error messages.
-- Do not invent abbreviations for identifiers or technical concepts.
-- Quote the shortest possible log/output snippet needed to identify a problem.
-- Ask only when missing information materially affects correctness, safety, public API, or architecture. Otherwise, make a sound engineering decision and proceed.
+No trailers, ever: no `Co-Authored-By` on a commit, no "Generated with Claude Code" on a PR.
 
----
+## Writing
 
-## Design System
+Commits, issues and pull requests carry only what matters. Say the thing, explain what a reader won't see for themselves, stop. No restating the diff, no summarising what you just said, no section that exists because the format seemed to want one.
 
-NeoWorks uses the shared design system from `@neoworks-dev/ui`.
+## Issues and branches
 
-Local development links the package from:
+Work lives in GitHub issues on `neoworks-dev/nib`, not in a file in the repo.
 
-```text
-/home/moritz/Documents/neoworks/neoworks.dev/packages/ui
+Write to GitHub as the bot: issues, comments, PRs and their edits, labels and `gh pr ready` go through `gh bot` (`gh bot issue comment 12 --body …`), so they show as `neoworks-bot[bot]`, not as me. Plain `gh` is for reading only. The bot as author already says a model wrote it, so no "written by Claude" line in the text. If `gh bot` fails, say so rather than falling back to plain `gh`. It lives in `~/Documents/neoworks/gh-bot`.
+
+Before starting on anything, check whether it is already half-built: `git branch -a` and `gh pr list` for the feature, and read what is on the branch. Sessions end mid-feature, and a branch is where that work is — starting again on `main` writes it a second time and loses whatever the first attempt learned. If a branch for it exists, continue on it.
+
+Anything more than a tiny change: open an issue (`gh bot issue create`) with the labels below, branch off `main` as `<issue-number>-<slug>` (e.g. `12-tab-strip-overflow`), then open a draft PR towards `main` straight away.
+
+A PR is a small batch: one issue, or a few that touch the same code. Anything found along the way gets its own issue and stays out of the PR, unless the PR can't finish without it. Branch off `main`; stack on another branch only when the code depends on it, and name the base in the body.
+
+The PR body opens with its issues as a checklist, followed by the `Closes` lines:
+
+```
+- [ ] #23 code theme
+- [ ] #24 indent guides
+
+Closes #23
+Closes #24
 ```
 
-`node_modules/@neoworks-dev/ui` must resolve to this linked directory. Inspect components via `node_modules`, but make design-system edits only inside the source repository itself.
+Straight to `main`, no issue and no branch: typos, one-liners, and anything that only touches how we work rather than the app — this file, `.claude/skills/`, lint and editor config.
 
-Before creating a new UI component:
+No issue either when the work is still undefined — building out a surface we're feeling our way through, where the shape comes from what we find as we go. An issue describes a known outcome, and there isn't one yet; writing it up front would be a guess, and keeping it current would cost more than it tells anyone. Still branch, and still open a PR — just without a `Closes`.
 
-1. Check `@neoworks-dev/ui` for an existing component that satisfies the requirement.
-2. Reuse or compose existing components when practical.
-3. Create an app-specific component only when design-system components cannot be adapted.
-4. When introducing a custom component, state in one sentence which existing components were considered and why they were insufficient.
+The moment that exploration names something concrete, it gets an issue — and anything that won't finish in one session always does, however loosely defined it still is. A session ends and its context goes with it; an issue is the only thing that carries a goal across to the next one. Write them as soon as the list exists, not once the work starts.
 
-Never edit files under `node_modules/`.
+Labels are two axes. Type is GitHub's default `bug` or `enhancement`. Area is exactly one of:
 
-If `@neoworks-dev/ui` is unresolved:
+- `area:canvas` — the board: Pixi engine, cards, stacks, the right-click menu, the `canvas-*` plugins
+- `area:vault` — the vault as data and its writes: `@nib-ui/vault`, vault-write, trash, board store
+- `area:agents` — harness plugins, sessions, protocol, chat pane, composer
+- `area:comfyui` — ComfyUI client, workflow library, node graph editor
+- `area:panes` — layout, splits, pane chrome
+- `area:plugins` — kernel, ui-contracts, plugin loading, and the panes built as plugins (git, file browser, web browser, …)
+- `area:ui` — app shell: sidebar, command palette, settings, theming
+- `area:desktop` — Electron app, packaging, desktop agent
 
-1. Verify the local source repository path.
-2. Attempt to restore the link:
+Two areas is fine when an issue genuinely spans them; three means split it.
 
-   ```bash
-   bun link @neoworks-dev/ui
-   ```
+`ai-found` is not a third axis — it marks issues a model found on its own, so they can be told apart from a person's. Nothing else uses it.
 
-3. Do not install from an external registry, vendor components into the app, or delete the dependency as a workaround.
-4. If linking fails, output the shortest actionable error and halt.
+## Done means verified
 
----
+An issue is done when its fix has been shown to work, not when the code is written. Shown means one of:
 
-## Repository Map
+- reproduced through `bun run debug` beforehand and shown fixed afterwards, with screenshots of both;
+- a test under the workspace's `tests/` that fails without the fix and passes with it.
 
-Bun workspaces monorepo. Three roots: `apps/web` (SvelteKit app, also packaged for Electron via `apps/desktop`), `packages/*` (shared libraries), `plugins/*` (features loaded into the kernel at runtime). Lint plugins live in `tools/`. Tests sit in each workspace's own `tests/` directory and all run from `bun test` at the root.
+`bun test` passes on the branch either way.
 
-### Packages
+As soon as one issue is done, before starting the next:
 
-- `@nib-ui/kernel` — the plugin kernel: `Plugin`, `Context`, revertible `ctx.effect`, `inject`/`provide`. See the `extension-system` skill before writing one.
-- `@nib-ui/ui-contracts` — the service interfaces plugins talk through (`PaneRegistry`, `TransportService`, `SessionsService`, `CanvasObject`, `CanvasMenuItem`).
-- `@nib-ui/protocol` — harness/session wire types and event reduction.
-- `@nib-ui/vault` — the markdown vault as data: `scan`/`tree` (index and snapshot), `placements`, `frontmatter`, `links`, `trash`. Pure, no IO.
+1. Comment on the issue with `bun run debug evidence --issue <n> --body … --screenshot …`: what changed, in a sentence or two, plus the screenshots or the test's output.
+2. Tick its box in the PR body and link that comment.
+3. Merge the branch into `next` and push.
 
-### The vault is the truth
+Once every box is ticked, `gh bot pr ready`. Don't leave a PR in draft with its work finished, and don't tick a box without evidence to show for it.
 
-A project's vault — a directory of markdown, images and transcripts — is what the board draws. The board document holds **only** placements (`x/y/w/h/z`, optional `stack`) plus authored objects; a card stands for a file, so creating, moving or deleting one is a filesystem operation and the scan is what puts it on screen.
+## `next`
 
-- Server writes: `apps/web/src/lib/server/vault-write.ts` (`moveVaultEntry` — `mv`, creates the destination directory, rewrites `[[links]]`; `writeVaultFile`; `writeVaultText`; `deleteVaultEntry`), `vault-trash.ts` (the recycling bin behind Delete), `board-store.ts` (board documents).
-- Client transport: `apps/web/src/lib/client/plugins/transport.ts` — one method per API route; plugins never call `fetch` for vault work.
+`next` is what I run nib from: it stays checked out in the repo root, so verified work shows up there straight away. Never switch branches in the root. Work happens in a worktree under `.worktrees/<branch>` (`git worktree add .worktrees/<branch> <branch>`), and merges into `next` are made in the root, where they land in my running app. When a merge touches `apps/desktop/src/main` or `apps/desktop/src/preload`, tell me to restart. It gets merges only — never commit on it directly, and never merge anything into it without evidence. If merging into `next` conflicts, resolve the conflict in the merge commit on `next`.
 
-### The canvas plugin (`plugins/canvas`)
+`main` is what I've reviewed. I merge PRs into `main` myself; after that, merge `main` back into `next`.
 
-The board itself: a Pixi surface, its cards, and everything the right button offers.
+## Validation
 
-- `state.svelte.ts` — `canvasState`, the one store the app and the menu reach into. Holds `board`, `vault`, `registry`, `editor` and the selection-level gestures (`collapseSelection`, `arrangeSelection`).
-- `vault.svelte.ts` — `VaultStore`: which directory the board shows, what it holds, previews, piles, and every write that reaches the vault. The only writer of placements.
-- `board-view.ts` — the snapshot-to-cards derivation, the per-kind card sizes (`FOLDER_SIZE`, `STICKY_SIZE`, …) and the folder-preview layout.
-- `stacks.ts` — pile and grid geometry: `collapse`, `spread`, `arrangeGrid`, `dissolve`, `release`. Pure.
-- `menu.ts` — the whole right-click menu, built pure from state plus callbacks, so what a selection offers is testable without a renderer.
-- `theme.ts` — every drawn constant, including `CARD_GAP` (the one gutter a drag snaps to and the grid arranges by).
-- `index.ts` — the plugin: registers panes, card kinds, the context menu, commands, and hands the menu its phosphor icons.
-- `engine/` — the Pixi layer: camera, tools, snapping, hit testing. `objects/` — one renderer per card kind.
+Never launch or restart my instance of the app. Ask me to restart it after Electron main-process changes; the renderer and the SvelteKit server hot-reload on their own.
 
-### Gotchas
+Debug through `bun run debug` rather than asking me what I see: it launches the built app as an isolated instance of its own on a VNC display (I watch with `vncviewer`) and drives it by clicking, dragging and typing, and `bun run debug explore` hands that to a Claude Code instance which files what it finds. The `nib-debug` skill has the commands. It is the only way to drive the app — no Claude in Chrome, no ad-hoc Playwright or CDP scripts.
 
-- `plugins/canvas/src/state.svelte.ts` holds a literal `\0` inside a key template. `grep`/`rg` treat the file as binary and print **nothing** for a match; pass `-a` (`rg -na …`) when searching it.
-- `bun run lint` is not green on this tree — several plugins carry pre-existing errors. Compare the output against the files you touched rather than the exit code.
-- `plugins/trajectory-inspector/src/filter.ts` has two pre-existing errors, so `bun run typecheck` and `bun run check:svelte` both exit non-zero on a clean tree.
+Reproduce a reported UI bug through the harness and confirm the mechanism before proposing a fix. Guessing from source has been wrong more often than right. After changing app code, `bun run debug start --build`, or you are testing the old build.
 
----
+Every change that touches code passes, compared against the files you touched:
 
-## Code Quality & Architecture
+- `bun run lint` — oxlint (all JS/TS, `--type-aware`) plus ESLint (Svelte markup only). Local rules live in `tools/oxlint-local-plugin.ts` and `tools/eslint-local-plugin.js`. Never give ESLint a `projectService`. `.oxlintrc.json` and `eslint.config.js` are mine — don't edit them to make a check pass, and state why for any disable comment.
+- `bun run format` — Prettier owns all formatting; `bun run format:fix` applies it.
+- `bun run check:svelte` for anything under `apps/web` or any `.svelte` file; `bun run typecheck` when types move.
 
-Prioritize cohesion, standard TypeScript idioms, and end-to-end readability over arbitrary line-count rules or micro-abstractions.
+Known noise on a clean tree:
 
-### Anti-Patterns to Avoid
+- `bun run lint` is not green — several plugins carry pre-existing errors.
+- `plugins/trajectory-inspector/src/filter.ts` has two pre-existing errors, so `typecheck` and `check:svelte` exit non-zero.
+- `plugins/canvas/src/state.svelte.ts` holds a literal `\0`; `grep`/`rg` treat it as binary and print nothing for a match. Use `rg -na`.
 
-- **Micro-Extraction / Function Splattering:** Do not extract 3–5 line single-use helper functions (e.g., `toSpec`, `isSuccess`, `buildResult`) purely to avoid nesting or reduce function length. Keep linear async flows readable from top to bottom.
-- **Trivial Factory Functions:** Do not create constructor helpers for plain object literals unless they encapsulate complex invariant validation.
-- **Redundant Event/Hook Duplication:** Consolidate repeated telemetry, event bus emissions, and lifecycle hooks into single dispatch calls or pipeline wrappers rather than scattering them across loops.
-- **Manual Type Guards for Discriminated Unions:** Rely on TypeScript's native control flow narrowing on discriminant fields (`kind`, `type`) rather than writing redundant `isX()` predicate functions.
-- **Forced Indentation Rules:** Do not artificially extract blocks solely to satisfy arbitrary indentation targets. Use early returns and guard clauses instead.
-- **Branching to an Empty Value:** Do not add a branch or default whose only job is to produce `""`, `[]` or `{}`. Either the empty case is unreachable, in which case the fallback is dead code that implies a state the code never sees, or it is reachable and deserves a named, explicit path. `local/no-empty-ternary-branch` catches the ternary form; the `??` form is not lint-caught, so watch for it in review:
+## Directory structure
 
-  ```ts
-  // Dead fallback: `split` always returns at least one element, so `?? ""` can never fire.
-  // It exists only to satisfy `noUncheckedIndexedAccess`.
-  const preview = block.text.trim().split("\n")[0] ?? "";
-  ```
+A Bun workspaces monorepo. The web app is the product; the desktop app packages it.
 
-  Rewriting this is not automatically an improvement — every alternative trades the dead fallback for either an allocation, a multi-line block, or a `.join("")` trick. Prefer leaving a line like this alone over replacing one wart with a worse one; the point is to avoid writing new ones.
-
-- **Casting at the Call Site:** A cast at a call site means the signature is wrong. Fix the function, not the callers. A cast repeated across files is proof.
-
-  ```ts
-  // Bad — `blockToolInput(block: BlockView): unknown` forced this into six files.
-  const input = $derived((blockToolInput(block) ?? {}) as Record<string, unknown>);
-
-  // Good — one type parameter deletes the cast and the `?? {}` at every call site.
-  export function blockToolInput<T = unknown>(block: BlockView): T | undefined;
-  const input = blockToolInput<{ file_path?: string; notebook_path?: string }>(block);
-  ```
-
-  A defaulted type parameter keeps this backward compatible. Before adding a cast, check whether the callee is ours, then grep for other callers. Apply the same reading to parameters: if callers keep writing `x ? fn(x) : undefined`, widen the parameter to accept `undefined` and return `undefined` from a guard clause.
-
-- **Chained Fallbacks and Nested Ternaries:** Do not stack `?:` or `??` to select among candidates. Use guard clauses, one condition per line. `no-nested-ternary` catches the ternary form.
-
-  ```ts
-  // Bad
-  const path = $derived(
-    typeof input.file_path === "string"
-      ? input.file_path
-      : typeof input.notebook_path === "string"
-        ? input.notebook_path
-        : "unknown file",
-  );
-
-  // Also bad — reads as one dense expression rather than a decision.
-  const path = $derived(input?.file_path ?? input?.notebook_path ?? "unknown file");
-
-  // Good
-  const path = $derived.by(() => {
-    const input = blockToolInput<{ file_path?: string; notebook_path?: string }>(block);
-    if (input?.file_path) return input.file_path;
-    if (input?.notebook_path) return input.notebook_path;
-    return "unknown file";
-  });
-  ```
-
-- **Intermediate `$derived` Feeding Only One Other:** If a derived value has exactly one consumer, inline it as a local inside that consumer's `$derived.by`. A separate top-level `$derived` should earn its place by being read from more than one site or from the template.
-
-### Structure & Naming
-
-- Use descriptive, full-word `camelCase` identifiers (`paymentMethod`, `customerAccount`, `toolExecutionResult`). Never use truncated names (`pm`, `acct`, `res`).
-- Co-locate types with the domain logic that owns them. Prefer `interface` for public contracts and `type` for unions/intersections.
-- Avoid multi-level ternaries and deeply nested conditionals. Flatten execution paths using guard clauses.
-
-### Comments
-
-- Write comments **only** for non-obvious business rules, external API quirks, or hardware/runtime constraints.
-- Never write comments that:
-  - Restate obvious code or type signatures.
-  - Narrate routine control flow (e.g., `// loop through items`).
-  - Explain historical changes or mention "previous implementation" (rely on Git history).
-
-### Behavior & API Preservation
-
-- Preserve existing public APIs, exported types, data shapes, and error contracts unless explicitly directed to change them.
-- Do not broaden scope or perform unrelated refactorings during bug fixes.
-- If a requested refactor requires breaking an existing contract, pause and explain the conflict before proceeding.
-
----
-
-## Scope & Execution
-
-Make the smallest coherent change that completely solves the task.
-
-Do not:
-
-- Refactor unrelated files or modules.
-- Reformat lines outside the direct scope of the change.
-- Upgrade, swap, or add dependencies without explicit approval.
-- Touch unrelated failing tests.
-
-If an adjacent defect blocks current work, state it directly and request guidance.
-
----
-
-## Tests & Verification
-
-Verify every behavioral change with targeted automated tests.
-
-1. **Test Runner:** Always execute tests using:
-
-   ```bash
-   bun test
-   ```
-
-2. **Lint (required):** Every change that touches JS/TS/Svelte must pass before it is reported as done:
-
-   ```bash
-   bun run lint
-   ```
-
-   This runs two linters with disjoint scopes. Keep them that way.
-
-   - **oxlint** (`bun run lint:ts`, `.oxlintrc.json`) owns all JS/TS, including `<script>` blocks inside `.svelte`. `--type-aware` is on: `no-floating-promises`, `no-misused-promises`, `require-await` and friends run through `tsgolint`, the Go TypeScript compiler.
-   - **Local rules** live in two plugins, split by what each linter can parse. `tools/oxlint-local-plugin.ts` loads through oxlint's `jsPlugins` for JS/TS rules — oxlint resolves that TypeScript source directly, no build step, though JS plugins are alpha there and not subject to semver. `tools/eslint-local-plugin.js` holds rules that inspect Svelte _markup_, which oxlint cannot see at all. Put new rules in whichever plugin matches the syntax they target rather than reaching for a third linter.
-   - **ESLint** (`bun run lint:svelte`, `eslint.config.js`) owns `.svelte` markup only — `svelte/prefer-style-directive` and the rest of `eslint-plugin-svelte`. This is the one thing oxlint cannot do, since it parses script blocks and ignores templates.
-
-   Never give ESLint a `projectService`. Type-aware linting through the Svelte parser costs roughly 0.8s per component and took the full run from 2s to 105s; oxlint already covers those rules. Never disable a rule or add an `eslint-disable`/`oxlint-disable` comment without stating why in the response. Both config files are user-owned — do not edit them to make a check pass.
-
-3. **Svelte check (required):** Every change that touches `.svelte` files or anything under `apps/web` must pass:
-
-   ```bash
-   bun run check:svelte
-   ```
-
-   This runs `svelte-kit sync && svelte-check` for `@nib-ui/web`. Neither linter type-checks `.svelte` templates, so neither substitutes for this.
-
-4. **Formatting (required):** Every change must pass:
-
-   ```bash
-   bun run format
-   ```
-
-   Prettier owns formatting for every language, `.svelte` included via `prettier-plugin-svelte`. Use `bun run format:fix` to apply. Neither linter formats: `svelte.configs.prettier` switches off ESLint's stylistic rules so the two never conflict. Do not add formatting rules to either lint config.
-
-5. **Additional Checks:** Run type-checking (`bun run typecheck` or `tsc --noEmit`) and build steps when relevant.
-6. **Playwright:** Resolve base URLs strictly from Playwright configuration (`playwright.config.ts`). Never hardcode `http://localhost:...` inside test files.
-7. **Integrity:** Never weaken, skip, or remove valid tests to force a green suite. If a test is fundamentally obsolete due to an intentional API change, explain why before editing it.
-8. **Zero Tests Justification:** If an edit does not include tests (e.g., pure documentation, comment fix, config change), provide a one-sentence rationale.
-9. **No Browser Driving:** Do not verify UI changes by driving a browser. This means no Claude in Chrome (`mcp__claude-in-chrome__*`) and no ad-hoc scripts that launch or attach to a headless browser (CDP, Puppeteer, Playwright `chromium.launch()`, screenshot harnesses). The user runs the app and reports what is broken.
-
-   Verify UI work with `bun run lint`, `bun run format`, `bun run check:svelte`, `bun run typecheck`, `bun test`, and reading the code. When a change genuinely cannot be verified that way, say so and hand it to the user to check.
-
----
-
-## Git Safety & Workflow
-
-Before modifying files, check working tree status:
-
-```bash
-git status --short
+```
+apps/web/        the SvelteKit app: src/lib/server (vault writes, board store, harness host), src/lib/client, src/routes/api
+apps/desktop/    Electron: src/main, src/preload, wrapping apps/web
+packages/        shared libraries: kernel, ui-contracts, protocol, vault, render, file-icons
+plugins/         features loaded into the kernel at runtime: canvas, chat, harness-*, …
+tools/           the local lint plugins
+scripts/debug/   the debug harness behind `bun run debug`; driver/ runs under node
+*/tests/         `bun test` from the root runs every workspace's tests; one file per subject, named after it
 ```
 
-- Treat pre-existing dirty files as user-owned. Do not stash, reset, overwrite, stage, or commit them.
-- Create commits only when explicitly instructed or when the active prompt is an explicit commit task.
-- Keep commits atomic and scoped to one logical change.
-- Commit messages: Use imperative, concise subjects. Include a body only when the context cannot be deduced from the diff.
-- AI attribution (if requested):
+nib runs on a plugin kernel (`@nib-ui/kernel`): every feature is a plugin talking through the service interfaces in `@nib-ui/ui-contracts`. Read the `extension-system` skill before touching any plugin or service.
 
-  ```text
-  Generated by: AI agent
+The vault is the truth. A project's vault — a directory of markdown, images and transcripts — is what the board draws. The board document holds only placements plus authored objects; a card stands for a file, so creating, moving or deleting one is a filesystem operation, and the scan is what puts it on screen. Server writes go through `apps/web/src/lib/server/vault-write.ts`; plugins reach the server only through `apps/web/src/lib/client/plugins/transport.ts`, never `fetch`.
+
+## Style
+
+Neoworks has a shared design system in `/home/moritz/Documents/neoworks/neoworks.dev/packages/ui` (`@neoworks-dev/ui`), including ready-made components. Scan what it offers before designing anything frontend, reuse what's there, and follow its guidelines for anything new. `node_modules/@neoworks-dev/ui` is linked to that directory; if it doesn't resolve, `bun link @neoworks-dev/ui` — never install it from a registry or vendor it. Change it only in its own repo.
+
+## Code style
+
+Readability and maintainability over cleverness. Match the surrounding code when it conflicts with the rules below.
+
+- Give every function a `/** … */` doc comment saying what it does, so it reads clearly at the call site. The signature carries the types — don't restate them in `@param`/`@returns` tags.
+
+  ```ts
+  /** Resolves a vault path to the card that stands for it, or null if none does. */
+  function findCardForPath(vaultPath: string): CanvasObject | null {
   ```
 
-  _(Never use `Co-Authored-By` for AI tools)._
+- Comments are technical, concise, and for the reader who arrives later. Add them where skimming the code isn't enough — not to restate it. Don't document a feature you just removed.
+  - Good: `// Normalize external IDs before database lookup.`
+  - Bad: `// Now we loop through the items and do the thing.`
+- Descriptive names, never shortened. `camelCase` for variables, functions, parameters and object fields unless the language or the existing code says otherwise.
+  - Good: `recordId`, `customerAccount`, `paymentMethod`
+  - Bad: `rid`, `acct`, `pm`
+- Explicit control flow over shorthand. Avoid `??`, ternaries and compact conditionals unless they clearly save a lot of repetition.
+  - Good: `if (timeout === undefined) { timeout = DEFAULT_TIMEOUT }`
+  - Bad: `const timeout = options.timeout ?? DEFAULT_TIMEOUT`
+- More than 2 levels of nesting is too much — use guard clauses, early returns, or extracted helpers.
+  - Good: `if (!session) { return null }` up front, then the real work unindented.
+  - Bad: `if (session) { if (session.worktree) { for (…) { … } } }`
+- Short, focused functions, one responsibility each. Prefer a named helper over long inline logic with a comment above it.
+- A cast at a call site means the signature is wrong. Fix the function, not the callers.
+- Don't change behaviour, public APIs, data shapes, validation or side effects unless asked.
 
-- **Push/Merge Safety:** Never force-push. Never merge an unverified branch into `main`. Push/merge only on direct request.
+## Tests
+
+When your changes are written, consider whether they need a test. If so, add one under the workspace's `tests/` and run `bun test`. Failures mean investigate, not move on.
