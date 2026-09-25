@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import type { Plugin } from "@nib-ui/kernel";
+import type { Disposer, Plugin } from "@nib-ui/kernel";
 import {
   type AgentControlLink,
   type AgentControlTool,
@@ -15,7 +15,7 @@ import {
   createAgentTools,
   harnessCatalog,
 } from "../agent-tools";
-import type { AgentControlService } from "../services";
+import type { AgentControlService, AgentToolSource } from "../services";
 
 /**
  * How long one model catalog serves. Building it asks pi's runtime which
@@ -37,6 +37,7 @@ class AgentControlHost implements AgentControlService {
   private listener: Server | null = null;
   private origin: Promise<string> | null = null;
   private catalog: { builtAt: number; pending: Promise<HarnessCatalog[]> } | null = null;
+  private readonly sources = new Set<AgentToolSource>();
 
   constructor(private readonly services: AgentToolServices) {}
 
@@ -45,6 +46,11 @@ class AgentControlHost implements AgentControlService {
     this.secrets.set(sessionId, secret);
     const origin = await this.listen();
     return { url: `${origin}/mcp/${sessionId}/${secret}`, tools: await this.toolsFor(sessionId) };
+  }
+
+  addToolSource(source: AgentToolSource): Disposer {
+    this.sources.add(source);
+    return () => this.sources.delete(source);
   }
 
   stop(): void {
@@ -57,7 +63,9 @@ class AgentControlHost implements AgentControlService {
   }
 
   private async toolsFor(sessionId: string): Promise<AgentControlTool[]> {
-    return createAgentTools(this.services, sessionId, await this.currentCatalog());
+    return createAgentTools(this.services, sessionId, await this.currentCatalog(), [
+      ...this.sources,
+    ]);
   }
 
   private currentCatalog(): Promise<HarnessCatalog[]> {

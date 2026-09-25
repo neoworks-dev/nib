@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { bundledWorkflows, type InputSpec } from "@nib-ui/comfy";
-import type { ComfyParameter } from "@nib-ui/ui-contracts";
+import type { ComfyParameter, ComfyWorkflowManifest } from "@nib-ui/ui-contracts";
 import {
   buildManifest,
   exposeInput,
@@ -24,6 +24,13 @@ function input(fields: Partial<InputSpec>): InputSpec {
   };
 }
 
+/** The bundled upscale workflow, a copy a test may change. */
+function upscaleManifest(): ComfyWorkflowManifest {
+  const manifest = bundledWorkflows().find((candidate) => candidate.id === "upscale");
+  if (!manifest) throw new Error("the upscale workflow is not bundled");
+  return structuredClone(manifest);
+}
+
 /** Bytes of a text. */
 function bytes(text: string): Uint8Array {
   return new TextEncoder().encode(text);
@@ -45,7 +52,7 @@ function png(chunks: Record<string, string>): Uint8Array {
 }
 
 describe("readImport", () => {
-  const upscale = bundledWorkflows().find((manifest) => manifest.id === "upscale")!;
+  const upscale = upscaleManifest();
 
   it("tells a manifest, a UI graph and an API prompt apart", () => {
     expect(readImport(bytes(JSON.stringify(upscale))).kind).toBe("manifest");
@@ -133,7 +140,7 @@ describe("parameters from widgets", () => {
 
 describe("buildManifest", () => {
   it("drops parameters whose node was deleted", () => {
-    const upscale = bundledWorkflows().find((manifest) => manifest.id === "upscale")!;
+    const upscale = upscaleManifest();
     const workflow = structuredClone(upscale.workflow);
     delete workflow["4"];
     const manifest = buildManifest(

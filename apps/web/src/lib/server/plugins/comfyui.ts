@@ -21,6 +21,7 @@ import {
   socketUrl,
   withInputs,
 } from "../comfyui";
+import { createComfyTools } from "../comfy-agent-tools";
 import { ComfyLibrary, userWorkflowDirectory } from "../comfyui-library";
 import { applyEvent, cancelRun, failRun, isFinished, queuedRun, succeedRun } from "../comfyui-runs";
 import type { ComfyUIService, VaultService } from "../services";
@@ -455,6 +456,20 @@ export const comfyuiPlugin: Plugin = {
     });
     ctx.provide("comfyui", host);
     ctx.effect(() => () => host.dispose());
+  },
+};
+
+/** Hands every agent the ComfyUI tools, bound to its own project. */
+export const comfyAgentToolsPlugin: Plugin = {
+  name: "comfy-agent-tools",
+  inject: ["agentControl", "comfyui", "comfyWorkflows"],
+  apply(ctx) {
+    const services = { comfyui: ctx.require("comfyui"), library: ctx.require("comfyWorkflows") };
+    ctx.effect(() =>
+      ctx
+        .require("agentControl")
+        .addToolSource(({ requireCwd }) => createComfyTools(services, requireCwd)),
+    );
   },
 };
 

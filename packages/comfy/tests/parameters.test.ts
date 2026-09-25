@@ -84,22 +84,22 @@ describe("applyParameters", () => {
     );
     expect(applied.issues).toEqual([]);
     expect(applied.uploads).toEqual([{ nodeId: "1", input: "image", path: "art/chest.png" }]);
-    expect(applied.workflow["2"]!.inputs.text).toBe("frost");
-    expect(applied.workflow["3"]!.inputs.text).toBe("frost");
-    expect(applied.workflow["4"]!.inputs).toEqual({
+    expect(applied.workflow["2"]?.inputs.text).toBe("frost");
+    expect(applied.workflow["3"]?.inputs.text).toBe("frost");
+    expect(applied.workflow["4"]?.inputs).toEqual({
       seed: 7,
       denoise: 0.25,
       steps: 20,
       sampler_name: "dpmpp_2m",
     });
-    expect(applied.workflow["5"]!.inputs.tile).toBe(true);
+    expect(applied.workflow["5"]?.inputs.tile).toBe(true);
     // The library's copy is left alone.
-    expect(source.workflow["2"]!.inputs.text).toBe("");
+    expect(source.workflow["2"]?.inputs.text).toBe("");
   });
 
   it("draws a seed when none is given", () => {
     const applied = applyParameters(manifest(), { image: "a.png", prompt: "x" }, () => 0.25);
-    expect(applied.workflow["4"]!.inputs.seed).toBe(2 ** 30);
+    expect(applied.workflow["4"]?.inputs.seed).toBe(2 ** 30);
   });
 
   it("says which values do not fit", () => {

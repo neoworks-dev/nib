@@ -3,44 +3,12 @@
  * project ones by the editor or an agent, so every file is parsed before use.
  */
 
+import { manifestSchema } from "@nib-ui/protocol";
 import type { ComfyValidationIssue, ComfyWorkflowManifest } from "@nib-ui/ui-contracts";
 import { z } from "zod";
 
-/** Ids become file names, so they stay to the characters every file system takes. */
-export const WORKFLOW_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
-
-const nodeSchema = z.object({
-  class_type: z.string().min(1),
-  inputs: z.record(z.string(), z.unknown()),
-  _meta: z.object({ title: z.string().optional() }).optional(),
-});
-
-/** An API-format workflow: nodes keyed by id. */
-export const workflowSchema = z.record(z.string(), nodeSchema);
-
-const parameterSchema = z.object({
-  id: z.string().min(1),
-  label: z.string().min(1),
-  kind: z.enum(["image", "text", "number", "integer", "seed", "boolean", "choice"]),
-  description: z.string().optional(),
-  targets: z.array(z.object({ nodeId: z.string().min(1), input: z.string().min(1) })).min(1),
-  default: z.union([z.string(), z.number(), z.boolean()]).optional(),
-  min: z.number().optional(),
-  max: z.number().optional(),
-  step: z.number().optional(),
-  options: z.array(z.string()).optional(),
-  multiline: z.boolean().optional(),
-});
-
-export const manifestSchema = z.object({
-  id: z.string().regex(WORKFLOW_ID, "lowercase letters, digits and dashes"),
-  name: z.string().min(1),
-  description: z.string(),
-  category: z.string().min(1),
-  parameters: z.array(parameterSchema),
-  workflow: workflowSchema,
-  graph: z.record(z.string(), z.unknown()).optional(),
-});
+// The schemas are the agent tools' as much as the library's, so they live with the tools.
+export { manifestSchema, WORKFLOW_ID, workflowSchema } from "@nib-ui/protocol";
 
 export type ManifestParse =
   { ok: true; manifest: ComfyWorkflowManifest } | { ok: false; error: string };

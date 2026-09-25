@@ -11,6 +11,7 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 import {
   agentControlInstructions,
+  comfyInstructions,
   agentControlServerName,
   agentToolTimeoutSeconds,
   attachmentMetadata,
@@ -237,7 +238,7 @@ export function withAgentControl(opts: CreateSessionOptions): Options {
     systemPrompt: {
       type: "preset",
       preset: "claude_code",
-      append: `${vault}\n\n${agentControlInstructions}`,
+      append: `${vault}\n\n${agentControlInstructions}\n\n${comfyInstructions}`,
     },
     mcpServers: {
       ...options?.mcpServers,

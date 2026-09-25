@@ -1,6 +1,7 @@
 import type { Disposer } from "@nib-ui/kernel";
 import type {
   AgentControlLink,
+  AgentControlTool,
   AnyAgentEvent,
   SessionCommand,
   SessionSummary,
@@ -50,9 +51,20 @@ export type {
  */
 export type AgentControlProvider = (sessionId: string) => Promise<AgentControlLink>;
 
+/**
+ * Tools another plugin adds to every session's set, built per session. `requireCwd`
+ * is the calling session's project, since tools act on the vault it works in.
+ */
+export type AgentToolSource = (session: {
+  sessionId: string;
+  requireCwd: () => string;
+}) => AgentControlTool[];
+
 export interface AgentControlService {
   /** The same link on every call for a session: the secret in the url is minted once. */
   linkFor(sessionId: string): Promise<AgentControlLink>;
+  /** Hands every session these tools too, from its next tool listing on. */
+  addToolSource(source: AgentToolSource): Disposer;
 }
 
 export interface SessionHost {

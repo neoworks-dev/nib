@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { ComfyWorkflow } from "@nib-ui/ui-contracts";
 import { validateWorkflow, workflowAvailability } from "../src/validate";
-import { definitions } from "./helpers";
+import { definitions, inputsOf } from "./helpers";
 
 const defs = definitions();
 
@@ -55,7 +55,7 @@ describe("validateWorkflow", () => {
 
   it("reports a link of the wrong type with both types", () => {
     const workflow = textToImage();
-    workflow["4"]!.inputs.positive = ["1", 1];
+    inputsOf(workflow, "4").positive = ["1", 1];
     const [found] = validateWorkflow(workflow, defs);
     expect(found).toMatchObject({
       code: "type_mismatch",
@@ -68,19 +68,19 @@ describe("validateWorkflow", () => {
 
   it("reports links to missing nodes and outputs", () => {
     const workflow = textToImage();
-    workflow["5"]!.inputs.samples = ["99", 0];
-    workflow["5"]!.inputs.vae = ["1", 7];
+    inputsOf(workflow, "5").samples = ["99", 0];
+    inputsOf(workflow, "5").vae = ["1", 7];
     const codes = validateWorkflow(workflow, defs).map((found) => `${found.code}:${found.input}`);
     expect(codes).toEqual(["bad_link:samples", "bad_link:vae"]);
   });
 
   it("reports missing inputs, bad values and unknown inputs", () => {
     const workflow = textToImage();
-    delete workflow["4"]!.inputs.cfg;
-    workflow["4"]!.inputs.steps = 2.5;
-    workflow["4"]!.inputs.denoise = 3;
-    workflow["4"]!.inputs.sampler_name = "nope";
-    workflow["4"]!.inputs.colour = "red";
+    delete inputsOf(workflow, "4").cfg;
+    inputsOf(workflow, "4").steps = 2.5;
+    inputsOf(workflow, "4").denoise = 3;
+    inputsOf(workflow, "4").sampler_name = "nope";
+    inputsOf(workflow, "4").colour = "red";
     const found = validateWorkflow(workflow, defs).map((issue) => `${issue.code}:${issue.input}`);
     expect(found).toEqual([
       "invalid_value:steps",
@@ -93,7 +93,7 @@ describe("validateWorkflow", () => {
 
   it("tells a missing model apart from a bad option", () => {
     const workflow = textToImage();
-    workflow["1"]!.inputs.ckpt_name = "sd_xl_base_1.0.safetensors";
+    inputsOf(workflow, "1").ckpt_name = "sd_xl_base_1.0.safetensors";
     const [found] = validateWorkflow(workflow, defs);
     expect(found).toMatchObject({
       code: "missing_value",
@@ -121,7 +121,7 @@ describe("validateWorkflow", () => {
 describe("workflowAvailability", () => {
   it("lists missing nodes and models, but not image parameters", () => {
     const workflow = textToImage();
-    workflow["1"]!.inputs.ckpt_name = "sd_xl_base_1.0.safetensors";
+    inputsOf(workflow, "1").ckpt_name = "sd_xl_base_1.0.safetensors";
     workflow["7"] = { class_type: "LoadImage", inputs: { image: "" } };
     workflow["8"] = { class_type: "SeamlessTileX", inputs: {} };
     const availability = workflowAvailability(

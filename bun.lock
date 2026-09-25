@@ -94,6 +94,7 @@
       "name": "@nib-ui/comfy",
       "version": "0.0.0",
       "dependencies": {
+        "@nib-ui/protocol": "workspace:*",
         "@nib-ui/ui-contracts": "workspace:*",
         "zod": "^4.4.3",
       },

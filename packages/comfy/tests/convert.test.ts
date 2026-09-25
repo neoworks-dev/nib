@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import type { ComfyWorkflow } from "@nib-ui/ui-contracts";
 import { bundledWorkflows } from "../src/bundled";
-import { apiToUi, GraphFormatError, uiToApi } from "../src/convert";
+import { apiToUi, GraphFormatError, type UiNode, uiToApi } from "../src/convert";
 import { validateWorkflow } from "../src/validate";
-import { definitions, uiFixture } from "./helpers";
+import { bundled, definitions, must, uiFixture } from "./helpers";
 
 const defs = definitions();
 
@@ -38,9 +38,9 @@ describe("uiToApi", () => {
       },
       _meta: { title: "KSampler" },
     });
-    expect(workflow["2"]!.inputs).toEqual({ image: "ninja_tpose.png" });
+    expect(workflow["2"]?.inputs).toEqual({ image: "ninja_tpose.png" });
     // A trailing value the frontend saves for its 3D preview is not an input.
-    expect(workflow["10"]!.inputs).toEqual({ filename_prefix: "3d/ninja_tpose", mesh: ["9", 0] });
+    expect(workflow["10"]?.inputs).toEqual({ filename_prefix: "3d/ninja_tpose", mesh: ["9", 0] });
     // Only the input picture is missing on this server.
     expect(
       validateWorkflow(workflow, defs).map((found) => `${found.code}:${found.nodeType}`),
@@ -52,13 +52,13 @@ describe("uiToApi", () => {
     const types = Object.values(workflow).map((node) => node.class_type);
     expect(types).not.toContain("PrimitiveNode");
     expect(types).not.toContain("Note");
-    expect(workflow["10"]!.inputs).toMatchObject({
+    expect(workflow["10"]?.inputs).toMatchObject({
       steps: 25,
       end_at_step: 20,
       noise_seed: 721897303308196,
     });
-    expect(workflow["11"]!.inputs).toMatchObject({ steps: 25, start_at_step: 20, noise_seed: 0 });
-    expect(workflow["6"]!.inputs.text).toBe(
+    expect(workflow["11"]?.inputs).toMatchObject({ steps: 25, start_at_step: 20, noise_seed: 0 });
+    expect(workflow["6"]?.inputs.text).toBe(
       "evening sunset scenery blue sky nature, glass bottle with a galaxy in it",
     );
     const problems = validateWorkflow(workflow, defs).map(
@@ -70,11 +70,11 @@ describe("uiToApi", () => {
   it("keeps bypassed nodes out and passes their input through", () => {
     const graph = uiFixture("hy3d-user");
     const nodes = graph.nodes as { id: number; mode: number }[];
-    const auraFlow = nodes.find((node) => node.id === 3)!;
+    const auraFlow = must(nodes.find((node) => node.id === 3));
     auraFlow.mode = 4;
     const { workflow } = uiToApi(graph, defs);
     expect(workflow["3"]).toBeUndefined();
-    expect(workflow["7"]!.inputs.model).toEqual(["1", 0]);
+    expect(workflow["7"]?.inputs.model).toEqual(["1", 0]);
   });
 
   it("refuses subgraphs rather than dropping them silently", () => {
@@ -100,15 +100,11 @@ describe("apiToUi", () => {
   });
 
   it("saves the frontend's extra widget values and a slot for a linked widget", () => {
-    const graph = apiToUi(
-      bundledWorkflows().find((manifest) => manifest.id === "image-to-3d")!.workflow,
-      defs,
-    );
-    const sampler = graph.nodes.find((node) => node.id === 10)!;
-    expect(sampler.widgets_values).toEqual([0, "fixed", 30, 5, "euler", "normal", 1]);
-    const load = graph.nodes.find((node) => node.id === 2)!;
-    expect(load.widgets_values).toEqual(["", "image"]);
-    const backdrop = graph.nodes.find((node) => node.id === 6)!;
+    const graph = apiToUi(bundled("image-to-3d").workflow, defs);
+    const node = (id: number): UiNode => must(graph.nodes.find((candidate) => candidate.id === id));
+    expect(node(10).widgets_values).toEqual([0, "fixed", 30, 5, "euler", "normal", 1]);
+    expect(node(2).widgets_values).toEqual(["", "image"]);
+    const backdrop = node(6);
     expect(backdrop.title).toBe("White backdrop");
     expect(
       backdrop.inputs.map((slot) => `${slot.name}:${slot.widget?.name}:${slot.link !== null}`),
@@ -116,11 +112,8 @@ describe("apiToUi", () => {
   });
 
   it("lays nodes out left to right by dependency", () => {
-    const graph = apiToUi(
-      bundledWorkflows().find((manifest) => manifest.id === "upscale")!.workflow,
-      defs,
-    );
-    const x = (id: number) => graph.nodes.find((node) => node.id === id)!.pos[0];
+    const graph = apiToUi(bundled("upscale").workflow, defs);
+    const x = (id: number): number => must(graph.nodes.find((node) => node.id === id)).pos[0];
     expect(x(1)).toBe(0);
     expect(x(2)).toBe(0);
     expect(x(3)).toBeGreaterThan(x(1));

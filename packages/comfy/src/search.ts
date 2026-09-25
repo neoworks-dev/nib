@@ -137,25 +137,19 @@ function describeInput(input: InputSpec): InputDescription {
 }
 
 /**
- * The files the server offers in each model folder, read off the loaders' combo
- * inputs — the same lists the validator checks against.
+ * The model files the server offers, keyed by the loader input that takes them
+ * (`CheckpointLoaderSimple.ckpt_name`): read off the loaders' combo inputs, the
+ * same lists the validator checks against. `/object_info` does not name the
+ * folders, and the loader input is what a graph has to fill anyway.
  */
 export function installedModels(definitions: ComfyNodeDefinitions): Record<string, string[]> {
-  const byInput: Record<string, Set<string>> = {};
+  const models: Record<string, string[]> = {};
   for (const spec of allNodeSpecs(definitions)) {
     if (!spec.category.includes("loaders")) continue;
     for (const input of spec.inputs) {
       if (!input.options || !input.name.endsWith("_name")) continue;
-      const folder = input.name.replace(/_name$/, "");
-      let set = byInput[folder];
-      if (!set) {
-        set = new Set();
-        byInput[folder] = set;
-      }
-      for (const option of input.options) set.add(option);
+      models[`${spec.name}.${input.name}`] = [...input.options].sort();
     }
   }
-  const models: Record<string, string[]> = {};
-  for (const [folder, set] of Object.entries(byInput)) models[folder] = [...set].sort();
   return models;
 }

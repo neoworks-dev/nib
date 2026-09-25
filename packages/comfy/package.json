@@ -13,6 +13,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@nib-ui/protocol": "workspace:*",
     "@nib-ui/ui-contracts": "workspace:*",
     "zod": "^4.4.3"
   }

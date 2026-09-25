@@ -28,13 +28,13 @@ let trashed: string[];
 function library(): ComfyLibrary {
   return new ComfyLibrary({
     comfyui: {
-      nodeDefinitions: async () => {
-        if (!definitions) throw new Error("ComfyUI is not reachable");
-        return definitions;
+      nodeDefinitions: () => {
+        if (!definitions) return Promise.reject(new Error("ComfyUI is not reachable"));
+        return Promise.resolve(definitions);
       },
-      queue: async (input): Promise<ComfyRun> => {
+      queue: (input): Promise<ComfyRun> => {
         queued.push(input);
-        return {
+        return Promise.resolve({
           id: "run-1",
           cwd: input.cwd,
           status: "queued",
@@ -45,25 +45,31 @@ function library(): ComfyLibrary {
           progress: null,
           outputs: [],
           error: null,
-        };
+        });
       },
     },
     vault: {
       write: writeVaultFile,
       writeText: writeVaultText,
-      trash: async (_cwd, path) => {
+      trash: (_cwd, path) => {
         trashed.push(path);
-        return { id: "t", path, name: path, kind: "file", deletedAt: 0 };
+        return Promise.resolve({ id: "t", path, name: path, kind: "file", deletedAt: 0 });
       },
     },
     userDirectory,
   });
 }
 
+/** The value, or a failed test when it is missing. */
+function must<T>(value: T | null | undefined): T {
+  if (value === null || value === undefined) throw new Error("expected a value");
+  return value;
+}
+
 /** A user workflow: the bundled upscale under another id. */
 function userManifest(): ComfyWorkflowManifest {
-  const upscale = bundledWorkflows().find((manifest) => manifest.id === "upscale")!;
-  return { ...upscale, id: "my-upscale", name: "My upscale" };
+  const upscale = must(bundledWorkflows().find((manifest) => manifest.id === "upscale"));
+  return { ...structuredClone(upscale), id: "my-upscale", name: "My upscale" };
 }
 
 beforeEach(async () => {
@@ -91,10 +97,10 @@ describe("ComfyLibrary", () => {
 
   it("marks a workflow whose model is missing, and says nothing while ComfyUI is down", async () => {
     const manifest = userManifest();
-    manifest.workflow["2"]!.inputs.model_name = "RealESRGAN_x4plus.pth";
+    must(manifest.workflow["2"]).inputs.model_name = "RealESRGAN_x4plus.pth";
     await library().save({ source: "user", manifest });
-    const mine = (await library().list(null)).find((entry) => entry.manifest.id === "my-upscale")!;
-    expect(mine.availability?.missingValues.map((missing) => missing.value)).toEqual([
+    const mine = (await library().list(null)).find((entry) => entry.manifest.id === "my-upscale");
+    expect(mine?.availability?.missingValues.map((missing) => missing.value)).toEqual([
       "RealESRGAN_x4plus.pth",
     ]);
 
@@ -135,8 +141,8 @@ describe("ComfyLibrary", () => {
     });
     expect(run.id).toBe("run-1");
     expect(queued).toHaveLength(1);
-    expect(queued[0]!.uploads).toEqual([{ nodeId: "1", input: "image", path: "art/chest.png" }]);
-    expect(queued[0]!.workflow["4"]!.inputs.scale_by).toBe(1);
+    expect(queued[0]?.uploads).toEqual([{ nodeId: "1", input: "image", path: "art/chest.png" }]);
+    expect(queued[0]?.workflow["4"]?.inputs.scale_by).toBe(1);
   });
 
   it("refuses a run with bad values before anything is queued", async () => {

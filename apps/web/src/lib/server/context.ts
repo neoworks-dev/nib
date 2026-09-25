@@ -12,7 +12,7 @@ import {
 import { agentControlPlugin } from "./plugins/agent-control";
 import { assetsPlugin } from "./plugins/assets";
 import { boardsPlugin } from "./plugins/boards";
-import { comfyuiPlugin, comfyWorkflowsPlugin } from "./plugins/comfyui";
+import { comfyAgentToolsPlugin, comfyuiPlugin, comfyWorkflowsPlugin } from "./plugins/comfyui";
 import type { ComfyLibrary } from "./comfyui-library";
 import { gitPlugin } from "./plugins/git";
 import { harnessRegistryPlugin } from "./plugins/harness-registry";
@@ -70,6 +70,7 @@ export function serverContext(): Context {
   // After the vault, which finished runs write their outputs into.
   context.use(comfyuiPlugin);
   context.use(comfyWorkflowsPlugin);
+  context.use(comfyAgentToolsPlugin);
   return context;
 }
 
