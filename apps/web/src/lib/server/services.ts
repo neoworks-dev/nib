@@ -1,6 +1,7 @@
 import type { Disposer } from "@nib-ui/kernel";
 import type {
   AgentControlLink,
+  AgentControlTool,
   AnyAgentEvent,
   SessionCommand,
   SessionSummary,
@@ -17,6 +18,7 @@ import type {
 } from "@nib-ui/ui-contracts";
 import type { TrashEntry } from "@nib-ui/vault";
 import type { StoreAssetOptions, StoredAsset } from "./asset-store";
+import type { ComfyLibrary } from "./comfyui-library";
 import type { PlacementWrite } from "./board-store";
 import type { GitCommitResult, GitLogEntry, GitStatus } from "./git-cli";
 import type { LinkPreview } from "./link-preview";
@@ -49,9 +51,20 @@ export type {
  */
 export type AgentControlProvider = (sessionId: string) => Promise<AgentControlLink>;
 
+/**
+ * Tools another plugin adds to every session's set, built per session. `requireCwd`
+ * is the calling session's project, since tools act on the vault it works in.
+ */
+export type AgentToolSource = (session: {
+  sessionId: string;
+  requireCwd: () => string;
+}) => AgentControlTool[];
+
 export interface AgentControlService {
   /** The same link on every call for a session: the secret in the url is minted once. */
   linkFor(sessionId: string): Promise<AgentControlLink>;
+  /** Hands every session these tools too, from its next tool listing on. */
+  addToolSource(source: AgentToolSource): Disposer;
 }
 
 export interface SessionHost {
@@ -232,6 +245,7 @@ declare module "@nib-ui/kernel" {
     linkPreviews: LinkPreviewService;
     pinterest: PinterestService;
     comfyui: ComfyUIService;
+    comfyWorkflows: ComfyLibrary;
   }
   interface Events {
     "session/event"(sessionId: string, event: AnyAgentEvent): void;

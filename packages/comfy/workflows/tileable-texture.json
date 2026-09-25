@@ -1,0 +1,90 @@
+{
+  "id": "tileable-texture",
+  "name": "Tileable texture",
+  "description": "A seamless texture from a prompt: the model and the decoder both wrap around the edges, so the tile repeats without seams.",
+  "category": "texture",
+  "parameters": [
+    {
+      "id": "prompt",
+      "label": "Material",
+      "kind": "text",
+      "multiline": true,
+      "description": "E.g. \"mossy cobblestone, top-down, even lighting\".",
+      "targets": [{ "nodeId": "3", "input": "text" }]
+    },
+    {
+      "id": "negative",
+      "label": "Avoid",
+      "kind": "text",
+      "default": "perspective, shadows, vignette, text, watermark, blurry",
+      "targets": [{ "nodeId": "4", "input": "text" }]
+    },
+    {
+      "id": "seed",
+      "label": "Seed",
+      "kind": "seed",
+      "targets": [{ "nodeId": "6", "input": "seed" }]
+    },
+    {
+      "id": "size",
+      "label": "Size",
+      "kind": "integer",
+      "description": "Edge of the square tile in pixels.",
+      "default": 1024,
+      "min": 512,
+      "max": 1536,
+      "step": 64,
+      "targets": [
+        { "nodeId": "5", "input": "width" },
+        { "nodeId": "5", "input": "height" }
+      ]
+    }
+  ],
+  "workflow": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": { "ckpt_name": "RealVisXL_V5.0_fp16.safetensors" }
+    },
+    "2": {
+      "class_type": "SeamlessTile",
+      "inputs": { "model": ["1", 0], "tiling": "enable", "copy_model": "Make a copy" }
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "inputs": { "text": "", "clip": ["1", 1] },
+      "_meta": { "title": "Material" }
+    },
+    "4": {
+      "class_type": "CLIPTextEncode",
+      "inputs": { "text": "", "clip": ["1", 1] },
+      "_meta": { "title": "Avoid" }
+    },
+    "5": {
+      "class_type": "EmptyLatentImage",
+      "inputs": { "width": 1024, "height": 1024, "batch_size": 1 }
+    },
+    "6": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": ["2", 0],
+        "seed": 0,
+        "steps": 30,
+        "cfg": 5,
+        "sampler_name": "dpmpp_2m",
+        "scheduler": "karras",
+        "positive": ["3", 0],
+        "negative": ["4", 0],
+        "latent_image": ["5", 0],
+        "denoise": 1
+      }
+    },
+    "7": {
+      "class_type": "CircularVAEDecode",
+      "inputs": { "samples": ["6", 0], "vae": ["1", 2], "tiling": "enable" }
+    },
+    "8": {
+      "class_type": "SaveImage",
+      "inputs": { "images": ["7", 0], "filename_prefix": "texture" }
+    }
+  }
+}

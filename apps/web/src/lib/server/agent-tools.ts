@@ -27,7 +27,7 @@ import {
   stopAgentInputSchema,
 } from "@nib-ui/protocol";
 import { type Placement, placementsFor, type VaultSnapshotItem } from "@nib-ui/vault";
-import type { BoardService, SessionHost, VaultService } from "./services";
+import type { AgentToolSource, BoardService, SessionHost, VaultService } from "./services";
 
 /** `read_agent`'s default when waiting, long enough for a real task and short enough to return. */
 const defaultWaitSeconds = 600;
@@ -52,6 +52,7 @@ export function createAgentTools(
   services: AgentToolServices,
   callerId: string,
   catalog: readonly HarnessCatalog[],
+  sources: readonly AgentToolSource[] = [],
 ): AgentControlTool[] {
   const { host, harnesses, boards, vault } = services;
   const requireFamily = (sessionId: string): void => {
@@ -67,6 +68,7 @@ export function createAgentTools(
     return cwd;
   };
   const spawnSchema = spawnAgentInputSchema(catalog);
+  const extraTools = sources.flatMap((source) => source({ sessionId: callerId, requireCwd }));
 
   return [
     {
@@ -278,6 +280,7 @@ export function createAgentTools(
         return result;
       },
     },
+    ...extraTools,
   ];
 }
 
