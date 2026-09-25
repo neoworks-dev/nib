@@ -9,30 +9,69 @@
  */
 
 import type { Disposer } from "@nib-ui/kernel";
-import type { CanvasObject, Point, TransportService, VaultMoveResult } from "@nib-ui/ui-contracts";
-import type { Placement, Size, VaultDoc, VaultSnapshotItem } from "@nib-ui/vault";
+import type { MessageAttachment } from "@nib-ui/protocol";
+import type {
+  CanvasObject,
+  Point,
+  SessionsService,
+  TransportService,
+  VaultMoveResult,
+} from "@nib-ui/ui-contracts";
+import { setMetaString } from "@nib-ui/vault";
+import type { Placement, Rect, Size, TrashEntry, VaultDoc, VaultSnapshotItem } from "@nib-ui/vault";
+import { untrack } from "svelte";
+import { STICKY_DEFAULT_COLOR, type StickyColor } from "./theme";
 import type { BoardStore } from "./board.svelte";
-import { cardKindFor, extensionOf, isImagePath, isMarkdownPath, isVideoPath } from "./card-kind";
+import {
+  cardKindFor,
+  extensionOf,
+  isDiagramPath,
+  isImagePath,
+  isMarkdownPath,
+  isVideoPath,
+  sessionIdOf,
+} from "./card-kind";
 import { documentToMarkdown, parseDocument, toggleTask } from "./markdown";
-import { collapse, createStackId, dissolve, membersOf, spread, type StackMember } from "./stacks";
+import {
+  arrangeGrid,
+  boundsOf,
+  collapse,
+  createStackId,
+  dissolve,
+  membersOf,
+  pileRect,
+  release,
+  spread,
+  type StackMember,
+} from "./stacks";
 import {
   type BoardObject,
   boardView,
+  DIAGRAM_SIZE,
+  FILE_SIZE,
   FOLDER_SIZE,
   type FolderObject,
   type LinkSummary,
   linkSummary,
+  PREVIEW_WIDTH,
   previewObjects,
+  pushAside,
   SHEET_SIZE,
   STICKY_SIZE,
+  TRANSCRIPT_SIZE,
   VISUAL_SIZE,
   WEBCLIP_SIZE,
 } from "./board-view";
 
 /** World units between a topic card and the block of its contents. */
-const PREVIEW_GAP = 24;
-/** How wide a previewed block of contents is allowed to get. */
-const PREVIEW_WIDTH = 720;
+const PREVIEW_OFFSET = 24;
+
+/**
+ * What a topic made out of a selection is called. It is a directory name the user
+ * renames on disk, so it says what it is rather than guessing at what the cards
+ * have in common.
+ */
+const NEW_TOPIC_NAME = "New topic";
 
 /** What the editor can usefully show. Everything else the browser is better at. */
 const TEXT_EXTENSIONS = new Set([
@@ -61,8 +100,27 @@ const TEXT_EXTENSIONS = new Set([
   "log",
 ]);
 
+/**
+ * What a scrape of a page came back with: the picture the card draws, and what
+ * the page calls itself. The title is the card's, not the file's — a webclip's
+ * file holds a url and nothing else, so the page is the only thing that can name it.
+ */
+export interface PageCapture {
+  /** Where the capture's bytes are, in the asset store. */
+  image: string;
+  title: string;
+  /** The host, drawn under the title; empty for a url that would not parse. */
+  domain: string;
+}
+
 export class VaultStore {
   transport = $state<TransportService | null>(null);
+  /**
+   * Set by the app, for lineage: a transcript of an agent another agent spawned
+   * is folded into its spawner's card — read through its tabs — rather than
+   * drawn as a chat of its own.
+   */
+  sessions = $state<SessionsService | null>(null);
   /** The vault as the server last reported it. Null until the first load resolves. */
   doc = $state<VaultDoc | null>(null);
 
@@ -77,9 +135,11 @@ export class VaultStore {
   error = $state<string | null>(null);
 
   /** Page captures this window has, by the url they were taken of. */
-  private captures = $state<Record<string, string>>({});
+  private captures = $state<Record<string, PageCapture>>({});
   /** The pile that is spread open, if any. Only one is open at a time. */
   private opened = $state<string | null>(null);
+  /** Where the open pile sat before it was spread, which the board parts around. */
+  private openedFrom: Rect | null = null;
 
   /**
    * Set by the app: reading a note is the editor's business. It answers false when
@@ -87,19 +147,83 @@ export class VaultStore {
    */
   openNote: ((cwd: string, path: string) => boolean) | null = null;
 
+  /**
+   * Set by the app: these paths are no longer in the vault. Whatever was showing
+   * one has to stop — a pane open on a note that has been deleted is a window onto
+   * nothing, and its unsaved buffer would write the file back if it were flushed.
+   *
+   * Reported off the scan rather than from the delete itself, so a file an agent
+   * removed with `rm` closes its pane too.
+   */
+  onPathsGone: ((paths: readonly string[]) => void) | null = null;
+
+  /** What is in the recycling bin, newest first; read when the bin is opened. */
+  trash = $state<TrashEntry[]>([]);
+
+  /**
+   * How many times each path has been away. It goes into the url a card loads
+   * from, which is the only way a *new* file at an old path is fetched: Pixi caches
+   * a texture by the url it was asked for, so re-uploading `photo.png` after
+   * deleting one drew the deleted picture. The count is per window and not
+   * persisted — a reload has no cache to bust.
+   */
+  private versions = new Map<string, number>();
+  /** Paths the last scan reported, for telling what has gone since. */
+  private known: ReadonlySet<string> = new Set();
+
   /** This board's own cards, positioned by the placements map. */
   private cards: BoardObject[] = [];
   /** The previewed topic's contents, laid out by the app and never persisted. */
   private contents: BoardObject[] = [];
+  /**
+   * How far sideways each card is moved while a folder is open, by id. `cards`
+   * keeps their real positions; the push is applied on the way out and taken
+   * off a drag on the way in, so nothing of it reaches the placements.
+   */
+  private pushed: ReadonlyMap<string, number> = new Map();
+  /**
+   * Paths a drag borrowed a placement for when it took them out of a preview,
+   * by the path they had when it began. Cleared as each drag settles.
+   */
+  private readonly detached = new Set<string>();
   /** The filesystem watch for the open project, so a model's write shows up. */
   private stream: Disposer | null = null;
   /** The project `stream` is watching, so re-opening the same one is a no-op. */
   private watched: string | null = null;
 
+  /**
+   * The sessions whose transcript belongs on another card. Sorted and joined so
+   * it only changes when the set does: the summaries are re-read on a timer,
+   * and redrawing the board on every tick would be most of what the board did.
+   */
+  private readonly spawnedKey = $derived(
+    (this.sessions?.summaries ?? [])
+      .filter((summary) => summary.parentSessionId !== null)
+      .map((summary) => summary.id)
+      .sort()
+      .join("\n"),
+  );
+
   constructor(private readonly board: BoardStore) {
     board.onVaultObjectPatch = (id, patch) => this.patchCard(id, patch);
-    board.onVaultObjectsRemoved = (ids) => this.unlink(ids);
+    board.onVaultObjectsRemoved = (ids) => this.removeCards(ids);
     board.onBoardSynced = () => this.derive();
+    // A spawned agent's transcript lands in the vault before the session list
+    // says who spawned it, so the fold has to follow the list, not the scan.
+    $effect.root(() => {
+      $effect(() => {
+        void this.spawnedKey;
+        untrack(() => this.derive());
+      });
+    });
+  }
+
+  /** True for the transcript of an agent another agent spawned. */
+  private folded(item: VaultSnapshotItem): boolean {
+    if (cardKindFor(item) !== "transcript") return false;
+    const sessionId = sessionIdOf(item.path);
+    const summary = this.sessions?.summaries.find((entry) => entry.id === sessionId);
+    return summary?.parentSessionId != null;
   }
 
   get cwd(): string {
@@ -166,6 +290,11 @@ export class VaultStore {
     this.error = null;
     this.cards = [];
     this.contents = [];
+    // Another project's paths are not paths that have gone: what is open on them
+    // belongs to a board this window is no longer showing.
+    this.known = new Set();
+    this.versions.clear();
+    this.trash = [];
     this.publish();
   }
 
@@ -185,6 +314,7 @@ export class VaultStore {
       if (this.board.cwd !== cwd) return;
       this.doc = doc;
       this.error = null;
+      this.noteVanished(doc);
       this.derive();
     } catch (cause) {
       this.error = cause instanceof Error ? cause.message : String(cause);
@@ -260,11 +390,11 @@ export class VaultStore {
   }
 
   /**
-   * Folds a selection into a pile at the centre of what it covered, with the card
-   * nearest the cursor on top. Two is the fewest that can be a pile: one card in
-   * a stack is just a card.
+   * Folds a selection into a pile at the centre of what it covered, largest card
+   * at the back. Two is the fewest that can be a pile: one card in a stack is
+   * just a card.
    */
-  collapseStack(ids: readonly string[], cursor: Point): string | null {
+  collapseStack(ids: readonly string[]): string | null {
     const slice = this.slice();
     const members = ids
       .map((path) => ({ path, placement: slice[path] }))
@@ -272,7 +402,7 @@ export class VaultStore {
     if (members.length < 2) return null;
 
     const stack = createStackId();
-    const folded = collapse(members, stack, cursor);
+    const folded = collapse(members, stack);
     if (!folded) return null;
 
     this.opened = null;
@@ -284,17 +414,27 @@ export class VaultStore {
 
   /** A click on a pile: its cards fan out around it and the rest of the board dims. */
   openStack(stack: string): void {
-    const rect = this.board.doc.stacks[stack];
+    const slice = this.slice();
+    const members = membersOf(slice, stack);
+    // Where the cards are now, not where the pile was stored: a drag moves
+    // placements and leaves the stored rectangle behind, and spreading around that
+    // one threw the pile back to wherever it was last folded.
+    const rect = pileRect(members);
     if (!rect) return;
 
-    const slice = this.slice();
     this.opened = stack;
+    this.openedFrom = rect;
     this.preview = null;
-    this.writeSlice({ ...slice, ...spread(membersOf(slice, stack), rect) });
+    this.writeSlice({ ...slice, ...spread(members, rect) });
+    this.board.setStacks({ ...this.board.doc.stacks, [stack]: rect });
     this.derive();
   }
 
-  /** Clicking away from a spread pile puts the cards back into the cascade. */
+  /**
+   * Clicking away from a spread pile puts the cards back into the cascade, at the
+   * rectangle the pile already had rather than at the middle of the block they
+   * were spread into.
+   */
   private repile(stack: string): void {
     const rect = this.board.doc.stacks[stack];
     const slice = this.slice();
@@ -304,7 +444,10 @@ export class VaultStore {
       return;
     }
 
-    const folded = collapse(members, stack, { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 });
+    const folded = collapse(members, stack, {
+      x: rect.x + rect.w / 2,
+      y: rect.y + rect.h / 2,
+    });
     if (folded) {
       this.writeSlice({ ...slice, ...folded.placements });
       this.board.setStacks({ ...this.board.doc.stacks, [stack]: folded.rect });
@@ -312,9 +455,110 @@ export class VaultStore {
     this.derive();
   }
 
-  /** Takes a pile apart. The cards stay where they are; only the grouping goes. */
+  /**
+   * A drag has begun on these cards. Whatever they were laid out as part of is
+   * put away before they move: an opened folder closes and a spread pile folds
+   * back, so the drag crosses a board showing where the cards can land rather
+   * than one still covered by the block they came out of.
+   *
+   * A card dragged out of a preview is given a placement on this board first. It
+   * is a card on the table from that moment — its file is still in the topic, and
+   * a board shows what is placed on it wherever the file lives — so the drag has
+   * something to carry once the block it was part of is gone. Dropping it is
+   * what moves the file; letting go decides where.
+   */
+  beginDrag(ids: readonly string[]): void {
+    const opened = this.opened;
+    if (opened !== null) {
+      const members = new Set(membersOf(this.slice(), opened).map((member) => member.path));
+      if (ids.some((id) => members.has(id))) {
+        this.releaseFromStacks(ids);
+        // A pile the release already took apart is gone; one still standing is
+        // folded back up now that a card has left it.
+        if (this.opened !== null) {
+          const stack = this.opened;
+          this.opened = null;
+          this.repile(stack);
+        }
+        return;
+      }
+    }
+
+    if (this.preview === null) return;
+    const leaving = this.contents.filter((object) => ids.includes(object.id));
+    if (leaving.length === 0) return;
+
+    const slice = this.slice();
+    for (const object of leaving) {
+      slice[object.id] = { x: object.x, y: object.y, w: object.w, h: object.h, z: 1 };
+      this.detached.add(object.id);
+    }
+    this.preview = null;
+    this.writeSlice(slice);
+    this.derive();
+  }
+
+  /**
+   * The drag those cards were picked up for is over. One that came out of a
+   * preview and did not move — dropped back inside its own topic, or refused —
+   * gives its placement up again and goes back into the folder.
+   *
+   * Without this the borrowed placement outlives the gesture, and a topic's
+   * contents end up scattered across its parent's board as cards nobody put
+   * there: a drag that changed nothing would have changed where two boards say
+   * that item lives.
+   */
+  settleDrag(ids: readonly string[]): void {
+    const slice = this.slice();
+    let changed = false;
+    for (const id of ids) {
+      if (!this.detached.delete(id)) continue;
+      // A card that did move is at a new path, and `moveInto` has already taken
+      // the old placement with it.
+      if (directoryOf(id) === this.view || slice[id] === undefined) continue;
+      delete slice[id];
+      changed = true;
+    }
+    if (!changed) return;
+    this.writeSlice(slice);
+    this.derive();
+  }
+
+  /**
+   * Cards let go after a drag. One dragged clear of its pile has left it, and a
+   * pile that loses all but one card is taken apart with it.
+   */
+  releaseFromStacks(ids: readonly string[]): void {
+    const slice = this.slice();
+    const released = release(slice, this.board.doc.stacks, ids);
+    if (this.opened !== null && released.stacks[this.opened] === undefined) this.opened = null;
+    this.writeSlice(released.placements);
+    this.board.setStacks(released.stacks);
+    this.derive();
+  }
+
+  /** Lays the cards out as a grid, starting where the top left of them was. */
+  arrangeGrid(ids: readonly string[]): void {
+    const slice = this.slice();
+    const members = ids
+      .map((path) => ({ path, placement: slice[path] }))
+      .filter((entry): entry is StackMember => entry.placement !== undefined);
+    if (members.length < 2) return;
+    this.writeSlice({ ...slice, ...arrangeGrid(members) });
+    this.derive();
+  }
+
+  /**
+   * Takes a pile apart. A pile that is spread open is already apart, and its
+   * cards stay where they are; a folded one is fanned out first, or the cards
+   * would be left sitting on each other with nothing to say they were a pile.
+   */
   dissolveStack(stack: string): void {
-    const taken = dissolve(this.slice(), this.board.doc.stacks, stack);
+    let slice = this.slice();
+    const members = membersOf(slice, stack);
+    const rect = pileRect(members);
+    if (this.opened !== stack && rect) slice = { ...slice, ...spread(members, rect) };
+    const taken = dissolve(slice, this.board.doc.stacks, stack);
     if (this.opened === stack) this.opened = null;
     this.writeSlice(taken.placements);
     this.board.setStacks(taken.stacks);
@@ -359,6 +603,30 @@ export class VaultStore {
 
       document.blocks[line] = toggleTask(block);
       await this.writeText(path, documentToMarkdown(document));
+    } catch (cause) {
+      this.error = describe(cause);
+    }
+  }
+
+  /**
+   * Paints a note. The colour is the note's own — it goes in its frontmatter, so
+   * it travels with the file and can be written by hand or by a model — and the
+   * file is read back before it is written for the same reason ticking a task
+   * reads it back: the card carries a clipped body, and a write built from that
+   * would truncate the note.
+   */
+  async setColor(path: string, color: StickyColor): Promise<void> {
+    const url = this.fileUrl(path);
+    if (url === null) return;
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) return;
+      const source = await response.text();
+      // The default is what a note with no `color:` already reads as, so asking
+      // for it takes the key back out rather than writing it in.
+      const wanted = color === STICKY_DEFAULT_COLOR ? null : color;
+      await this.writeText(path, setMetaString(source, "color", wanted));
     } catch (cause) {
       this.error = describe(cause);
     }
@@ -435,11 +703,54 @@ export class VaultStore {
     window.open(`/api/vault/file?${params.toString()}`, "_blank", "noopener");
   }
 
-  /** The url a card loads its own bytes from. Empty until a project is open. */
+  /**
+   * The url a card loads its own bytes from. Empty until a project is open.
+   *
+   * Carries the path's version once it has had one, which the server ignores and
+   * every cache in front of it does not: a file written at a path that was deleted
+   * is a different file, and without this it is fetched as the old one.
+   */
   fileUrl(path: string): string | null {
     const cwd = this.board.cwd;
     if (cwd.length === 0) return null;
-    return `/api/vault/file?${new URLSearchParams({ cwd, path }).toString()}`;
+    const params = new URLSearchParams({ cwd, path });
+    const version = this.versions.get(path);
+    if (version !== undefined) params.set("v", String(version));
+    return `/api/vault/file?${params.toString()}`;
+  }
+
+  /**
+   * What the scan no longer holds. Two things follow a path out of the vault: the
+   * app is told, so whatever was showing it closes, and the path's version is
+   * bumped so a file written there later is fetched rather than remembered.
+   *
+   * A directory is reported along with everything that was under it, because the
+   * items under it left the snapshot too.
+   */
+  private noteVanished(doc: VaultDoc): void {
+    const current = new Set(doc.items.map((item) => item.path));
+    const gone = [...this.known].filter((path) => !current.has(path));
+    this.known = current;
+    if (gone.length === 0) return;
+
+    for (const path of gone) this.versions.set(path, (this.versions.get(path) ?? 0) + 1);
+    this.onPathsGone?.(gone);
+  }
+
+  /**
+   * A vault file as an attachment: copied into the asset store on the server,
+   * which answers with the id a prompt names it by. Asked again for every
+   * launch rather than cached, since the file may have changed underneath and
+   * the store is addressed by content anyway.
+   */
+  async attachmentsFor(path: string, name: string): Promise<MessageAttachment[]> {
+    const cwd = this.board.cwd;
+    if (cwd.length === 0) return [];
+    const query = new URLSearchParams({ cwd, path }).toString();
+    const response = await fetch(`/api/vault/asset?${query}`, { method: "POST" });
+    if (!response.ok) throw new Error(await response.text());
+    const stored = (await response.json()) as { assetId: string; contentType: string };
+    return [{ assetId: stored.assetId, mime: stored.contentType, name }];
   }
 
   /**
@@ -448,7 +759,7 @@ export class VaultStore {
    * capture belongs to a url, not to a placement, and the cache behind it is the
    * server's `link-previews/` directory.
    */
-  captureUrl(url: string): string | null {
+  capture(url: string): PageCapture | null {
     return this.captures[url] ?? null;
   }
 
@@ -500,13 +811,23 @@ export class VaultStore {
       });
       if (!response.ok) return;
 
-      const preview = (await response.json()) as { imageAssetId?: string };
+      const preview = (await response.json()) as {
+        imageAssetId?: string;
+        title?: string;
+        domain?: string;
+      };
       // No picture on the page: the card keeps waiting rather than claiming a
       // capture that does not exist.
       if (!preview.imageAssetId) return;
       this.captures = {
         ...this.captures,
-        [url]: `/api/assets/${encodeURIComponent(preview.imageAssetId)}`,
+        [url]: {
+          image: `/api/assets/${encodeURIComponent(preview.imageAssetId)}`,
+          // A page that named itself is what the card is called; one that did not
+          // falls to its url, which is what the file itself holds anyway.
+          title: preview.title && preview.title.length > 0 ? preview.title : url,
+          domain: preview.domain ?? "",
+        },
       };
     } catch {
       // A site that would not answer leaves the card in its loading state, which
@@ -521,8 +842,13 @@ export class VaultStore {
     }
   }
 
-  /** Whether taking this object off the board would mean anything. */
+  /**
+   * Whether taking this object off the board would mean anything. An item in this
+   * board's own directory is here because it is in the directory, so there is no
+   * link to break: the only removal it has is deleting the file.
+   */
   canUnlink(id: string): boolean {
+    if (directoryOf(id) === this.view) return false;
     return this.slice()[id] !== undefined;
   }
 
@@ -540,12 +866,82 @@ export class VaultStore {
    * undo step, because the history scope the drag opened is still held here.
    */
   async moveInto(ids: string[], toId: string | null): Promise<void> {
-    const transport = this.transport;
-    const cwd = this.board.cwd;
-    if (!transport || cwd.length === 0) return;
-
     const destination = this.destinationFor(toId);
     if (destination === null) return;
+    await this.moveTo(ids, destination);
+  }
+
+  /**
+   * Several cards into a topic of their own: a directory beside them in this
+   * board's folder, with their files moved into it. The topic's card takes the
+   * middle of what the selection covered, so the gesture reads as those cards
+   * becoming a folder rather than as them leaving the board.
+   */
+  async groupIntoTopic(ids: string[]): Promise<string | null> {
+    const transport = this.transport;
+    const cwd = this.board.cwd;
+    if (!transport || cwd.length === 0 || ids.length === 0) return null;
+
+    const slice = this.slice();
+    const covered = boundsOf(
+      ids
+        .map((id) => slice[id])
+        .filter((placement): placement is Placement => placement !== undefined),
+    );
+    const name = this.freeTopicName();
+    const topic = this.view.length === 0 ? name : `${this.view}/${name}`;
+
+    const moved = await this.moveTo(ids, topic, {
+      // The directory the move created is only there because of this gesture, so
+      // undoing it takes the empty topic with it — the alternative is a folder the
+      // user never asked for left on the board after a ctrl+z.
+      revert: async () => {
+        await transport.deleteVaultEntry(cwd, topic);
+      },
+    });
+    if (!moved) return null;
+
+    if (covered) {
+      this.writeSlice({
+        ...this.slice(),
+        [topic]: {
+          x: Math.round(covered.x + covered.w / 2 - FOLDER_SIZE.w / 2),
+          y: Math.round(covered.y + covered.h / 2 - FOLDER_SIZE.h / 2),
+          ...FOLDER_SIZE,
+          z: 1,
+        },
+      });
+      this.derive();
+    }
+    return topic;
+  }
+
+  /**
+   * A name nothing in this board's directory holds. `mv` into an existing topic is
+   * a merge, so a second grouping must not land in the first one's folder.
+   */
+  private freeTopicName(): string {
+    const taken = new Set(
+      (this.doc?.items ?? [])
+        .filter((item) => item.dir === this.view)
+        .map((item) => item.name.toLowerCase()),
+    );
+    if (!taken.has(NEW_TOPIC_NAME.toLowerCase())) return NEW_TOPIC_NAME;
+    for (let suffix = 2; ; suffix += 1) {
+      const name = `${NEW_TOPIC_NAME} ${suffix}`;
+      if (!taken.has(name.toLowerCase())) return name;
+    }
+  }
+
+  /** Answers whether anything moved, so a caller can place what it created. */
+  private async moveTo(
+    ids: string[],
+    destination: string,
+    hooks: { revert?: () => Promise<void> } = {},
+  ): Promise<boolean> {
+    const transport = this.transport;
+    const cwd = this.board.cwd;
+    if (!transport || cwd.length === 0) return false;
 
     const moving = ids
       .map((id) => this.objectFor(id))
@@ -555,7 +951,7 @@ export class VaultStore {
       .filter(
         (object) => destination !== object.path && !destination.startsWith(`${object.path}/`),
       );
-    if (moving.length === 0) return;
+    if (moving.length === 0) return false;
 
     const results: VaultMoveResult[] = [];
     for (const object of moving) {
@@ -565,7 +961,18 @@ export class VaultStore {
         this.error = describe(cause);
       }
     }
-    if (results.length === 0) return;
+    if (results.length === 0) return false;
+
+    // Where each card sat before the drop, for the reversal to put back. The board
+    // restores these in its own snapshot too, but it does that while the files are
+    // still at their new paths, and a placement for a path the vault does not hold
+    // is pruned as stale — so the card would come home to a flowed slot.
+    const before = this.slice();
+    const vacated: Record<string, Placement> = {};
+    for (const result of results) {
+      const placement = before[result.from];
+      if (placement) vacated[result.from] = placement;
+    }
 
     this.board.attachAction({
       revert: async () => {
@@ -576,7 +983,13 @@ export class VaultStore {
             rewrite: result.rewritten,
           });
         }
+        await hooks.revert?.();
         await this.refresh();
+        if (Object.keys(vacated).length === 0) return;
+        // Written after the scan has the files home again, which is the only order
+        // the positions survive in, and derived because the cards come from them.
+        this.writeSlice({ ...this.slice(), ...vacated });
+        this.derive();
       },
       reapply: async () => {
         for (const result of results) {
@@ -587,15 +1000,25 @@ export class VaultStore {
     });
 
     // The placement follows the path. An item that landed in this board's own
-    // directory keeps the position it was dropped at; one that left has none here.
+    // directory keeps the position it was dropped at — a card dragged out of a
+    // folder's preview has no placement yet, so it is placed where the drag let
+    // go of it rather than flowed in with the rest. One that left has none here.
     const slice = this.slice();
+    const dragged = new Map(moving.map((object) => [object.path, object]));
     for (const result of results) {
       const existing = slice[result.from];
       delete slice[result.from];
-      if (destination === this.view && existing) slice[result.to] = existing;
+      if (destination !== this.view) continue;
+      if (existing) {
+        slice[result.to] = existing;
+        continue;
+      }
+      const object = dragged.get(result.from);
+      if (object) slice[result.to] = { x: object.x, y: object.y, w: object.w, h: object.h, z: 1 };
     }
     this.writeSlice(slice);
     await this.refresh();
+    return true;
   }
 
   /**
@@ -631,25 +1054,124 @@ export class VaultStore {
 
   /**
    * Deleting the file itself, which is what a card in this board's own directory
-   * has instead of an unlink. Not undoable: the bytes are gone, and pretending
-   * otherwise would be worse than saying so.
+   * has instead of an unlink.
+   *
+   * The entry goes to the recycling bin rather than being unlinked, so the gesture
+   * is undoable — ctrl+z puts the file back and the card with it — and still
+   * recoverable from the bin after the stack is gone. Nothing is asked first: a
+   * confirm box is a worse guarantee than a reversal, and it made deleting a card
+   * a two-step gesture for something that is one.
    */
   async deleteEntry(path: string): Promise<void> {
+    await this.deleteEntries([path]);
+  }
+
+  /**
+   * Deletes several at once as **one** undo step: pressing Delete on three
+   * selected cards is one gesture, so putting them back is one ctrl+z rather
+   * than three.
+   */
+  async deleteEntries(paths: readonly string[]): Promise<void> {
+    const transport = this.transport;
+    const cwd = this.board.cwd;
+    if (!transport || cwd.length === 0 || paths.length === 0) return;
+
+    const slice = this.slice();
+    const binned: { entry: TrashEntry; placement: Placement | undefined }[] = [];
+    for (const path of paths) {
+      try {
+        const entry = await transport.trashVaultEntry(cwd, path);
+        binned.push({ entry, placement: slice[path] });
+        delete slice[path];
+      } catch (cause) {
+        this.error = describe(cause);
+      }
+    }
+    if (binned.length === 0) return;
+
+    // Where the cards come back is this action's own business. The board does
+    // restore the placements in its snapshot, but it restores them while the files
+    // are still in the bin — and a placement for a path the vault does not hold is
+    // pruned as stale by the next derive, after which the card returns at a fresh
+    // flowed slot instead of where it was deleted from.
+    //
+    // So the positions are written *after* the scan that has the files back, which
+    // is the only order they survive in: an item the scan knows about, with a
+    // stored placement, is one every later derive leaves where it is.
+    this.board.attachAction({
+      revert: async () => {
+        const places: Record<string, Placement> = {};
+        for (const item of [...binned].reverse()) {
+          // The name may have been taken while the entry sat in the bin, in which
+          // case the file is back under a new one and the placement follows it.
+          const restored = await transport.restoreTrashEntry(cwd, item.entry.id);
+          if (item.placement) places[restored.path] = item.placement;
+        }
+        await this.refresh();
+        if (Object.keys(places).length === 0) return;
+        this.writeSlice({ ...this.slice(), ...places });
+        // The cards are derived from the placements, so writing them is only half
+        // of putting them back.
+        this.derive();
+      },
+      reapply: async () => {
+        for (const item of binned) {
+          item.entry = await transport.trashVaultEntry(cwd, item.entry.path);
+        }
+        await this.refresh();
+      },
+    });
+
+    this.writeSlice(slice);
+    await this.refresh();
+  }
+
+  /** Re-reads the bin. The pane that lists it asks for this when it opens. */
+  async loadTrash(): Promise<void> {
     const transport = this.transport;
     const cwd = this.board.cwd;
     if (!transport || cwd.length === 0) return;
 
     try {
-      await transport.deleteVaultEntry(cwd, path);
+      this.trash = await transport.listTrash(cwd);
+    } catch (cause) {
+      this.error = describe(cause);
+    }
+  }
+
+  /**
+   * Puts a binned entry back. Not an undo step of its own: the undo stack is a
+   * stack of gestures, and restoring something from last week out of the bin is
+   * not a reversal of whatever the last gesture was.
+   */
+  async restoreFromTrash(id: string): Promise<void> {
+    const transport = this.transport;
+    const cwd = this.board.cwd;
+    if (!transport || cwd.length === 0) return;
+
+    try {
+      await transport.restoreTrashEntry(cwd, id);
     } catch (cause) {
       this.error = describe(cause);
       return;
     }
-
-    const slice = this.slice();
-    delete slice[path];
-    this.writeSlice(slice);
+    await this.loadTrash();
     await this.refresh();
+  }
+
+  /** Throws bytes away for good: one entry, or the whole bin. */
+  async purgeTrash(id?: string): Promise<void> {
+    const transport = this.transport;
+    const cwd = this.board.cwd;
+    if (!transport || cwd.length === 0) return;
+
+    try {
+      await transport.purgeTrash(cwd, id);
+    } catch (cause) {
+      this.error = describe(cause);
+      return;
+    }
+    await this.loadTrash();
   }
 
   /**
@@ -704,6 +1226,10 @@ export class VaultStore {
 
     const card = this.cards.find((object) => object.id === id);
     if (!card) return this.dragPreviewCard(id, geometry);
+    // The pointer moved the card where it is drawn, which for a pushed card is
+    // beside where it is.
+    const push = this.pushed.get(id);
+    if (push !== undefined && geometry.x !== undefined) geometry.x -= push;
 
     // Cards are plain values, not board state, so moving one is a mutation of the
     // derived list plus a placement write — no copy of the file is involved.
@@ -736,24 +1262,26 @@ export class VaultStore {
   }
 
   /**
-   * Taking a vault card off the board unlinks it: the placement goes, the file
-   * stays. An item in this board's own directory has no placement to drop — it is
-   * here because it is in the directory — so removing it means nothing, and the
-   * caller is expected not to offer it.
+   * Taking a vault card off the board. What that means depends on why the card is
+   * here: one placed from elsewhere is unlinked, and its file is left alone.
+   *
+   * An item in this board's own directory is here because it is in the directory,
+   * so dropping its placement takes it nowhere — the next scan puts it back, at a
+   * fresh flowed position, which is the card wandering off rather than going. The
+   * only removal that means anything for those is deleting the file, which files it
+   * in the recycling bin and is undone by ctrl+z like any other gesture.
    */
-  private unlink(ids: string[]): void {
+  private removeCards(ids: string[]): void {
     const slice = this.slice();
-    let changed = false;
+    const owned = ids.filter((id) => directoryOf(id) === this.view);
+    const placed = ids.filter((id) => !owned.includes(id) && slice[id] !== undefined);
 
-    for (const id of ids) {
-      if (slice[id] === undefined) continue;
-      delete slice[id];
-      changed = true;
+    if (placed.length > 0) {
+      for (const id of placed) delete slice[id];
+      this.writeSlice(slice);
+      this.derive();
     }
-    if (!changed) return;
-
-    this.writeSlice(slice);
-    this.derive();
+    void this.deleteEntries(owned);
   }
 
   /** Recomputes both lists from the vault and the stored placements. */
@@ -772,6 +1300,7 @@ export class VaultStore {
     // dead keys for boards that hold nothing.
     const viewed = boardView({
       vault: doc,
+      omit: (item) => this.folded(item),
       placements: this.slice(),
       board: this.view,
       size: sizeForItem,
@@ -796,16 +1325,42 @@ export class VaultStore {
     const doc = this.doc;
     const path = this.preview;
     this.contents = [];
+    this.pushed = new Map();
 
     if (doc && path !== null) {
       const card = this.cards.find((object) => object.kind === "folder" && object.path === path);
       if (card && card.kind === "folder") {
+        // The folder's card empties: what it held is now on the table beside it.
+        this.cards = this.cards.map((object) =>
+          object === card ? { ...card, opened: true } : object,
+        );
         this.contents = previewObjects(doc, path, {
-          origin: { x: card.x + card.w + PREVIEW_GAP, y: card.y },
+          origin: { x: card.x + card.w + PREVIEW_OFFSET, y: card.y },
           maxWidth: PREVIEW_WIDTH,
           size: sizeForItem,
+          // Every card in the block comes out of its own sheet inside the
+          // folder, so opening a topic reads as the folder spilling rather than
+          // as a second board appearing beside it.
+          from: { x: card.x, y: card.y, w: card.w, h: card.h },
         });
+        // The board parts around the folder and its contents, so opening one
+        // reads as zooming in on them rather than as a block landing on top of
+        // its neighbours.
+        this.pushed = pushAside(
+          this.cards,
+          card,
+          this.contents,
+          new Set([card.id, ...this.contents.map((object) => object.id)]),
+          PREVIEW_OFFSET,
+        );
       }
+    }
+    if (this.opened !== null && this.openedFrom !== null) {
+      // The same parting around a spread pile, measured from where the pile sat
+      // folded: its members have already moved out to where they are.
+      const members = new Set(membersOf(this.slice(), this.opened).map((member) => member.path));
+      const block = this.cards.filter((card) => members.has(card.id));
+      this.pushed = pushAside(this.cards, this.openedFrom, block, members, PREVIEW_OFFSET);
     }
     // What is being looked at stays lit and everything else drops to the dim:
     // a previewed folder with its contents beside it, or a pile spread open.
@@ -828,9 +1383,29 @@ export class VaultStore {
     return new Set(membersOf(this.slice(), opened).map((member) => member.path));
   }
 
-  /** What this board draws: its own cards, plus a previewed topic's contents. */
+  /**
+   * What this board draws: a previewed topic's contents, then its own cards.
+   * Board order is z-order, so the contents go first: a card coming out of a
+   * folder starts inside it, behind its front panel, and has to slide out from
+   * under it. Drawn over the folder they read as landing on top of it instead.
+   * Nothing else can overlap them — the board parts around the block.
+   */
   private publish(): void {
-    this.board.vault = [...this.cards, ...this.contents];
+    const cards = this.cards.map((card) => {
+      const push = this.pushed.get(card.id);
+      return push === undefined ? card : { ...card, x: card.x + push };
+    });
+    this.board.vault = [...this.contents, ...cards];
+  }
+
+  /**
+   * Where a `[[link]]` written in `from` lands, or null for a name nothing in the
+   * vault answers to. The resolution is the scan's, not this window's: the same
+   * answer the links panel and the backlinks are built from.
+   */
+  linkTarget(from: string, target: string): string | null {
+    const link = this.doc?.links.find((entry) => entry.from === from && entry.target === target);
+    return link?.to ?? null;
   }
 
   /** What one item points at, what points back, and what nearly does (PLAN §4). */
@@ -866,8 +1441,9 @@ export class VaultStore {
  */
 function sizeForPath(path: string): Size {
   if (isImagePath(path) || isVideoPath(path)) return VISUAL_SIZE;
+  if (isDiagramPath(path)) return DIAGRAM_SIZE;
   if (isMarkdownPath(path)) return STICKY_SIZE;
-  return SHEET_SIZE;
+  return FILE_SIZE;
 }
 
 function sizeForItem(item: VaultSnapshotItem): Size {
@@ -880,8 +1456,14 @@ function sizeForItem(item: VaultSnapshotItem): Size {
       return VISUAL_SIZE;
     case "webclip":
       return WEBCLIP_SIZE;
+    case "diagram":
+      return DIAGRAM_SIZE;
     case "sticky":
       return STICKY_SIZE;
+    case "file":
+      return FILE_SIZE;
+    case "transcript":
+      return TRANSCRIPT_SIZE;
   }
 }
 

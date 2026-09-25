@@ -155,6 +155,16 @@ export function isEdge(object: CanvasObject): object is EdgeObject {
   return object.kind === "edge";
 }
 
+/** An object with a corner of its own, which is what makes a slot taken. */
+function isPlaced(object: CanvasObject): object is CanvasObject & { x: number; y: number } {
+  return (
+    typeof object.x === "number" &&
+    Number.isFinite(object.x) &&
+    typeof object.y === "number" &&
+    Number.isFinite(object.y)
+  );
+}
+
 /** Defensive: the board is hand-editable, and an older build wrote fewer fields. */
 export function parseWorkstream(raw: unknown): WorkstreamObject | null {
   if (!raw || typeof raw !== "object") return null;
@@ -345,13 +355,15 @@ export function workstreamAt(
 
 /**
  * Where a new card goes when nothing said. Boards are placed by hand now, so
- * this only has to avoid dropping one exactly on top of another.
+ * this only has to avoid dropping one exactly on top of another — and a board
+ * holds the vault's cards as well as its own, so anything with a position of its
+ * own counts, not just a workstream.
  */
 export function freeSlot(
   objects: CanvasObject[],
   near: { x: number; y: number },
 ): { x: number; y: number } {
-  const taken = objects.filter(isWorkstream);
+  const taken = objects.filter(isPlaced);
   let { x, y } = near;
   let guard = 0;
 

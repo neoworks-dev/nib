@@ -13,6 +13,12 @@ export interface MediaObject extends CanvasObject {
   h?: number;
   /** The dropped file's name. Only a pdf shows it — the others are the picture. */
   name?: string;
+  /**
+   * Where the picture came from, when it came from somewhere with a page of its
+   * own — a pin, a post. The board draws the stored bytes either way; this is
+   * what a task is told the picture is.
+   */
+  sourceUrl?: string;
 }
 
 export const MEDIA_MIN_SIZE = 48;
@@ -95,6 +101,7 @@ export function parseMedia(raw: unknown): MediaObject | null {
     ...(typeof candidate.w === "number" && { w: Math.max(MEDIA_MIN_SIZE, candidate.w) }),
     ...(typeof candidate.h === "number" && { h: Math.max(MEDIA_MIN_SIZE, candidate.h) }),
     ...(typeof candidate.name === "string" && { name: candidate.name }),
+    ...(typeof candidate.sourceUrl === "string" && { sourceUrl: candidate.sourceUrl }),
   };
 }
 

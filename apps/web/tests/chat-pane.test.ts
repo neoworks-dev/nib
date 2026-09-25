@@ -43,13 +43,14 @@ describe("chat pane params", () => {
 });
 
 describe("opening a card", () => {
-  test("two workstreams are two chat panes, side by side", () => {
+  test("two workstreams are two chat panes, one above the other in the same dock", () => {
     const first = openChat({ id: "w1", sessionId: "s1" });
     const second = openChat({ id: "w2", sessionId: "s2" });
 
     expect(second).not.toBe(first);
     expect(panes.instances(chatPaneId)).toHaveLength(2);
-    expect(panes.frames).toHaveLength(2);
+    expect(panes.docks).toHaveLength(1);
+    expect(panes.dock("right")?.root).toMatchObject({ kind: "split", axis: "column" });
   });
 
   test("opening the same card again reaches the pane it already has", () => {

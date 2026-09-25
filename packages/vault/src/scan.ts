@@ -6,10 +6,19 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import type { Dirent } from "node:fs";
 import { join } from "node:path";
+import { TRASH_DIRECTORY } from "./trash";
 import { buildVaultIndex, type VaultEntry, type VaultIndex, type VaultSource } from "./tree";
 
-/** Not content: a nested repository or an installed dependency is not a topic. */
-export const DEFAULT_SKIPPED_DIRECTORIES: readonly string[] = [".git", "node_modules"];
+/**
+ * Not content: a nested repository or an installed dependency is not a topic, and
+ * neither is the recycling bin — a deleted note that came back as a card called
+ * `.trash` would undo the delete by drawing it.
+ */
+export const DEFAULT_SKIPPED_DIRECTORIES: readonly string[] = [
+  ".git",
+  "node_modules",
+  TRASH_DIRECTORY,
+];
 
 /** Matches the file route's own cap, so the scan cannot read what a panel cannot open. */
 export const DEFAULT_MAX_FILE_BYTES = 1_048_576;
@@ -19,7 +28,12 @@ export interface ScanOptions {
   maxFileBytes?: number;
 }
 
-const MARKDOWN = [".md", ".markdown"];
+/**
+ * The extensions the scan reads the contents of. Markdown is the vault's own
+ * format; a `.mmd` is read for the same reason a note is, since the card that
+ * draws one draws the file itself rather than a name and an icon.
+ */
+const READ_EXTENSIONS = [".md", ".markdown", ".mmd", ".mermaid"];
 
 export async function readVault(
   vaultRoot: string,
@@ -81,7 +95,7 @@ async function readBody(
   name: string,
   maxBytes: number,
 ): Promise<string | null> {
-  if (!isMarkdown(name)) return null;
+  if (!isReadable(name)) return null;
   try {
     const info = await stat(absolutePath);
     if (info.size > maxBytes) return null;
@@ -91,6 +105,6 @@ async function readBody(
   }
 }
 
-function isMarkdown(name: string): boolean {
-  return MARKDOWN.some((extension) => name.endsWith(extension));
+function isReadable(name: string): boolean {
+  return READ_EXTENSIONS.some((extension) => name.endsWith(extension));
 }

@@ -17,7 +17,13 @@ export abstract class ObjectRenderer<
 
   protected spawnScale = 1;
   private spawnDone = true;
-  private exiting = false;
+  protected exiting = false;
+  /**
+   * Bumped whenever an exit starts or is called off, so the step of an exit that
+   * has been taken over stops writing to a container someone else now owns.
+   */
+  protected exitGeneration = 0;
+  private exitEventMode: Container["eventMode"] = "static";
   private readonly tickers = new Set<() => void>();
 
   abstract sync(data: TData, selection: string[]): void;
@@ -67,15 +73,15 @@ export abstract class ObjectRenderer<
   }
 
   exit(done: () => void): void {
-    if (this.exiting) return;
-    this.exiting = true;
-    this.container.eventMode = "none";
+    if (!this.beginExit()) return;
 
+    const generation = this.exitGeneration;
     const start = performance.now();
     const alpha = this.container.alpha;
     const scaleX = this.container.scale.x;
     const scaleY = this.container.scale.y;
     this.animate((now) => {
+      if (this.exitGeneration !== generation) return true;
       const t = Math.min(1, (now - start) / EXIT_MS);
       const shrink = 1 - 0.3 * easeInCubic(t);
       this.container.scale.set(scaleX * shrink, scaleY * shrink);
@@ -84,6 +90,39 @@ export abstract class ObjectRenderer<
       done();
       return true;
     });
+  }
+
+  /**
+   * Claims the container for an exit, or answers false where one is already
+   * running. A kind that animates its own way out starts here, so the input, the
+   * flag and the generation are handled in one place.
+   */
+  protected beginExit(): boolean {
+    if (this.exiting) return false;
+    this.exiting = true;
+    this.exitGeneration += 1;
+    this.exitEventMode = this.container.eventMode;
+    this.container.eventMode = "none";
+    return true;
+  }
+
+  /**
+   * The object came back before its exit finished — a folder re-opened while its
+   * contents were still on their way into it. The exit stops where it stands and
+   * the object is live again; what it looks like on the way back is the kind's.
+   */
+  cancelExit(): void {
+    if (!this.exiting) return;
+    this.exiting = false;
+    this.exitGeneration += 1;
+    this.container.eventMode = this.exitEventMode;
+    this.restoreAfterExit();
+  }
+
+  /** What a revived object looks like: whole, unless the kind eases back itself. */
+  protected restoreAfterExit(): void {
+    this.container.alpha = 1;
+    this.container.scale.set(this.spawnScale);
   }
 
   destroy(): void {

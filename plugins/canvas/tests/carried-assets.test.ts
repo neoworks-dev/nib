@@ -159,6 +159,57 @@ describe("starting a workstream from an object", () => {
   });
 });
 
+describe("a question dropped off a card", () => {
+  test("lands where it was dropped, linked to the card, and starts on the spot", async () => {
+    const id = await canvasState.startFromAsset(["media:1"], "make a 3D model of this", {
+      x: 600,
+      y: 300,
+    });
+    if (id === null) throw new Error("no card was started");
+
+    const card = canvasState.workstreams.find((object) => object.id === id);
+    expect(card).toMatchObject({ x: 600, y: 300 });
+    expect(edges()).toMatchObject([{ fromId: "media:1", toId: id, label: "context" }]);
+    expect(sessions.sent).toEqual([
+      {
+        sessionId: "s1",
+        text: "make a 3D model of this",
+        attachments: [{ assetId: "abc.png", mime: "image/png", name: "shot.png" }],
+      },
+    ]);
+  });
+
+  test("a file that has to be made into an asset first is made at launch", async () => {
+    canvasState.board.addObject({ kind: "visual", id: "visual:1", x: 0, y: 0, path: "cat.png" });
+    let made = 0;
+    canvasState.registry.registerContextProvider({
+      contextFor: (object) => {
+        if (object.kind !== "visual") return null;
+        return {
+          label: "cat.png",
+          resolveAttachments: () => {
+            made += 1;
+            return Promise.resolve([{ assetId: "cat.png", mime: "image/png", name: "cat.png" }]);
+          },
+        };
+      },
+    });
+
+    await canvasState.startFromAsset(["visual:1"], "what is this?", { x: 0, y: 0 });
+
+    expect(made).toBe(1);
+    expect(sessions.sent[0]?.attachments).toEqual([
+      { assetId: "cat.png", mime: "image/png", name: "cat.png" },
+    ]);
+    expect(edges().every((edge) => edge.carried)).toBe(true);
+  });
+
+  test("an empty question asks nothing and leaves no card", async () => {
+    expect(await canvasState.startFromAsset(["media:1"], "   ", { x: 0, y: 0 })).toBeNull();
+    expect(canvasState.objects.filter(isWorkstream)).toHaveLength(0);
+  });
+});
+
 describe("the files a workstream carries", () => {
   test("the first prompt takes them with it", async () => {
     const id = canvasState.assetCard(["media:1"])!;

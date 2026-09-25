@@ -5,6 +5,7 @@ import {
   dropEdge,
   insertAtEdge,
   insertBeside,
+  layoutTree,
   leafNode,
   leafPath,
   listLeaves,
@@ -232,5 +233,82 @@ describe("addressing", () => {
       row([leafNode("a"), leafNode("c")], [0.5, 0.5]),
     );
     expect(retainLeaves(tree, () => false)).toBeNull();
+  });
+});
+
+describe("layoutTree", () => {
+  test("a lone leaf fills the dock with no splitter and no gutter", () => {
+    const layout = layoutTree(leafNode("a"));
+
+    expect(layout.leaves).toEqual([
+      {
+        instanceId: "a",
+        box: { x: 0, y: 0, width: 1, height: 1 },
+        gutters: { left: false, right: false, top: false, bottom: false },
+      },
+    ]);
+    expect(layout.splitters).toEqual([]);
+  });
+
+  test("nested splits place every leaf in fractions of the dock", () => {
+    const tree = row(
+      [leafNode("a"), column([leafNode("b"), leafNode("c")], [0.25, 0.75])],
+      [0.4, 0.6],
+    );
+    const layout = layoutTree(tree);
+
+    expect(layout.leaves.map((leaf) => leaf.instanceId)).toEqual(["a", "b", "c"]);
+    expect(layout.leaves[0]?.box).toEqual({ x: 0, y: 0, width: 0.4, height: 1 });
+    expect(layout.leaves[1]?.box).toEqual({ x: 0.4, y: 0, width: 0.6, height: 0.25 });
+    expect(layout.leaves[2]?.box).toEqual({ x: 0.4, y: 0.25, width: 0.6, height: 0.75 });
+  });
+
+  test("a leaf gives up a gutter only on the sides a splitter runs along", () => {
+    const tree = row(
+      [leafNode("a"), column([leafNode("b"), leafNode("c")], [0.5, 0.5])],
+      [0.5, 0.5],
+    );
+    const gutters = Object.fromEntries(
+      layoutTree(tree).leaves.map((leaf) => [leaf.instanceId, leaf.gutters]),
+    );
+
+    expect(gutters["a"]).toEqual({ left: false, right: true, top: false, bottom: false });
+    expect(gutters["b"]).toEqual({ left: true, right: false, top: false, bottom: true });
+    expect(gutters["c"]).toEqual({ left: true, right: false, top: true, bottom: false });
+  });
+
+  test("a splitter lies on the boundary and names the split it resizes", () => {
+    const tree = row(
+      [leafNode("a"), column([leafNode("b"), leafNode("c")], [0.25, 0.75])],
+      [0.4, 0.6],
+    );
+    const { splitters } = layoutTree(tree);
+
+    expect(splitters).toHaveLength(2);
+    expect(splitters[0]).toMatchObject({
+      path: [],
+      index: 0,
+      axis: "row",
+      extent: 1,
+      box: { x: 0.4, y: 0, width: 0, height: 1 },
+    });
+    expect(splitters[1]).toMatchObject({
+      path: [1],
+      index: 0,
+      axis: "column",
+      extent: 1,
+      box: { x: 0.4, y: 0.25, width: 0.6, height: 0 },
+    });
+    expect(new Set(splitters.map((splitter) => splitter.key)).size).toBe(2);
+  });
+
+  test("a leaf keeps its identity when a sibling arrives or it moves", () => {
+    const joined = insertAtEdge(leafNode("a"), "b", "bottom");
+    const beside = layoutTree(insertBeside(joined, "c", "a", "right"));
+
+    expect(layoutTree(leafNode("a")).leaves.map((leaf) => leaf.instanceId)).toEqual(["a"]);
+    expect(layoutTree(joined).leaves.map((leaf) => leaf.instanceId)).toEqual(["a", "b"]);
+    expect(beside.leaves.map((leaf) => leaf.instanceId)).toEqual(["a", "c", "b"]);
+    expect(beside.leaves[0]?.box).toEqual({ x: 0, y: 0, width: 0.5, height: 0.5 });
   });
 });

@@ -43,6 +43,12 @@ export interface CodexStreamState {
   /** Id this mount registered under; `session.created` has to name it, not the vocabulary. */
   readonly harnessId: string;
   readonly threadId: string | null;
+  /**
+   * What `turn-N` and `user-N` are prefixed with. Both counts restart with
+   * every attach, so a thread resumed onto a log that already holds `turn-1`
+   * needs a prefix of its own or its turns collide with the ones written before.
+   */
+  readonly messagePrefix: string;
   readonly messageId: string | null;
   readonly turns: number;
   readonly userMessages: number;
@@ -65,9 +71,11 @@ export function createCodexStreamState(
   cwd: string,
   threadId: string | null = null,
   harnessId: string = codexHarnessId,
+  messagePrefix = "",
 ): CodexStreamState {
   return {
     cwd,
+    messagePrefix,
     harnessId,
     threadId,
     messageId: null,
@@ -85,7 +93,7 @@ export function mapUserText(
   text: string,
   attachments?: MessageAttachment[],
 ): CodexMapResult {
-  const messageId = `user-${state.userMessages + 1}`;
+  const messageId = `${state.messagePrefix}user-${state.userMessages + 1}`;
   const blockId = `${messageId}:0`;
   return {
     state: { ...state, userMessages: state.userMessages + 1 },
@@ -134,7 +142,7 @@ export function mapCodexEvent(state: CodexStreamState, event: unknown): CodexMap
     }
 
     case "turn.started": {
-      const messageId = `turn-${state.turns + 1}`;
+      const messageId = `${state.messagePrefix}turn-${state.turns + 1}`;
       return {
         state: { ...state, turns: state.turns + 1, messageId },
         events: [
@@ -382,7 +390,7 @@ function ensureMessage(state: CodexStreamState): {
   messageId: string;
 } {
   if (state.messageId) return { state, events: [], messageId: state.messageId };
-  const messageId = `turn-${state.turns + 1}`;
+  const messageId = `${state.messagePrefix}turn-${state.turns + 1}`;
   return {
     state: { ...state, turns: state.turns + 1, messageId },
     events: [{ type: "message.started", data: { messageId, role: "assistant" } }],

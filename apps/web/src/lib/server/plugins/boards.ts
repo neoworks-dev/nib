@@ -1,6 +1,13 @@
 import type { Disposer, Plugin } from "@nib-ui/kernel";
-import type { BoardDoc, BoardSummary, CanvasObject } from "@nib-ui/ui-contracts";
-import { boardSummary, listBoardFiles, readBoardFile, writeBoardFile } from "../board-store";
+import type { BoardDoc, BoardSummary, BoardWrite, CanvasObject } from "@nib-ui/ui-contracts";
+import {
+  applyPlacements,
+  boardSummary,
+  listBoardFiles,
+  type PlacementWrite,
+  readBoardFile,
+  writeBoardFile,
+} from "../board-store";
 import { boardsDirectory } from "../data-dir";
 import type { BoardService } from "../services";
 
@@ -21,8 +28,24 @@ class BoardStore implements BoardService {
     return (await listBoardFiles(this.directory)).map(boardSummary);
   }
 
-  write(board: BoardDoc): Promise<BoardDoc> {
+  write(board: BoardWrite): Promise<BoardDoc> {
     return this.chain(board.cwd, () => writeBoardFile(this.directory, board));
+  }
+
+  /**
+   * Moves cards without a window being open on the board. One chain link and one
+   * revision for the whole arrangement, so every open window redraws it at once
+   * rather than watching the cards move one by one.
+   */
+  place(cwd: string, writes: readonly PlacementWrite[]): Promise<BoardDoc> {
+    return this.chain(cwd, async () => {
+      const board = await readBoardFile(this.directory, cwd);
+      return writeBoardFile(this.directory, {
+        ...board,
+        rev: board.rev + 1,
+        placements: applyPlacements(board.placements, writes),
+      });
+    });
   }
 
   /**

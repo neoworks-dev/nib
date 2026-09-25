@@ -72,4 +72,10 @@ describe("parseMedia", () => {
   test("a size below the minimum is raised, not honoured", () => {
     expect(parseMedia({ ...stored, w: 4, h: 4 })).toMatchObject({ w: 48, h: 48 });
   });
+
+  test("keeps the page a saved picture came from", () => {
+    const url = "https://www.pinterest.com/pin/12345/";
+    expect(parseMedia({ ...stored, sourceUrl: url })).toMatchObject({ sourceUrl: url });
+    expect(parseMedia({ ...stored, sourceUrl: 7 })).not.toHaveProperty("sourceUrl");
+  });
 });

@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { BlockView } from "@nib-ui/protocol";
-import { describeCall, describeStep, readFilePath } from "../src/tool-summary";
+import {
+  describeCall,
+  describeStep,
+  parseMcpToolName,
+  readFilePath,
+  toolDisplayName,
+} from "../src/tool-summary";
 
 function toolUse(toolName: string, input: unknown): BlockView {
   return {
@@ -117,6 +123,63 @@ describe("describeCall", () => {
       noun: "call",
       detail: "",
     });
+  });
+
+  test("an unknown tool still says what it was handed", () => {
+    expect(describeCall(toolUse("SomeMcpTool", { count: 2, query: "widgets" })).detail).toBe(
+      "widgets",
+    );
+  });
+
+  test("an MCP call files under its server and names its own tool", () => {
+    expect(describeCall(toolUse("mcp__acme__fetch_invoice", { invoiceId: "inv-9" }))).toMatchObject(
+      {
+        label: "Acme",
+        noun: "call",
+        verb: "Fetch invoice",
+        detail: "inv-9",
+      },
+    );
+  });
+
+  test("the agent tools read the same whether a harness ran them over MCP or in process", () => {
+    const overMcp = describeCall(
+      toolUse("mcp__nib__send_to_agent", { sessionId: "a1", text: "go" }),
+    );
+    const inProcess = describeCall(toolUse("send_to_agent", { sessionId: "a1", text: "go" }));
+    expect(overMcp).toMatchObject({ label: "Agents", noun: "message", verb: "Sent", detail: "go" });
+    expect(inProcess).toEqual(overMcp);
+  });
+
+  test("every agent tool belongs to the same run", () => {
+    const labels = [
+      "mcp__nib__spawn_agent",
+      "mcp__nib__read_agent",
+      "mcp__nib__stop_agent",
+      "mcp__nib__list_agents",
+      "mcp__nib__list_harnesses",
+      "Task",
+    ].map((toolName) => describeCall(toolUse(toolName, { sessionId: "a1" })).label);
+    expect(labels).toEqual(["Agents", "Agents", "Agents", "Agents", "Agents", "Agents"]);
+  });
+});
+
+describe("parseMcpToolName", () => {
+  test("splits a server off its tool, and leaves a built-in alone", () => {
+    expect(parseMcpToolName("mcp__nib__send_to_agent")).toEqual({
+      server: "nib",
+      tool: "send_to_agent",
+    });
+    expect(parseMcpToolName("Bash")).toBeNull();
+    expect(parseMcpToolName("mcp__nib")).toBeNull();
+  });
+});
+
+describe("toolDisplayName", () => {
+  test("an MCP tool loses its transport; anything else keeps its name", () => {
+    expect(toolDisplayName("mcp__nib__send_to_agent")).toBe("Send to agent");
+    expect(toolDisplayName("mcp__acme__readFile")).toBe("Read file");
+    expect(toolDisplayName("Bash")).toBe("Bash");
   });
 });
 

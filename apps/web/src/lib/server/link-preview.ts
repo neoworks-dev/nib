@@ -279,6 +279,17 @@ async function guardedFetch(
 }
 
 /**
+ * One remote picture, read under the same redirect and address guards a preview
+ * is. What stores the bytes decides where they go; this only fetches them.
+ */
+export async function fetchRemoteImage(url: URL, options: FetchOptions = {}): Promise<Uint8Array> {
+  const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+  const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+  const image = await guardedFetch(url, MAX_IMAGE_BYTES, "image/*", { ...options, signal });
+  return image.bytes;
+}
+
+/**
  * Scrapes a url and copies its preview image into the asset store, so a board
  * never hotlinks back to the previewed origin.
  */

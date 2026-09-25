@@ -58,9 +58,10 @@ export interface ReconcileResult {
   /** Paths that took over a position from a vanished path carrying the same id. */
   carried: string[];
   /**
-   * The piles that still hold something. A stack whose every member is gone is
-   * gone with them: it was only ever the arrangement of those items, so keeping
-   * an empty one would leave a pile of nothing that cannot be clicked or undone.
+   * The piles that still hold something, each with the rectangle it sits on. A
+   * stack whose every member is gone is gone with them: it was only ever the
+   * arrangement of those items, so keeping an empty one would leave a pile of
+   * nothing that cannot be clicked or undone.
    */
   stacks: StackMap;
 }
@@ -78,7 +79,11 @@ export interface ReconcileOptions {
   /** The size a newly placed object starts at, before anyone resizes it. */
   size: Size;
   slot?: SlotChooser;
-  /** The piles this board had. Absent is the same as none. */
+  /**
+   * Where the piles this board had were sitting. Only their rectangles: which
+   * items are in a pile is on the placements, so a missing entry costs the pile
+   * nothing but the exact spot it was folded at.
+   */
   stacks?: StackMap;
 }
 const DEFAULT_GAP = 24;
@@ -89,6 +94,11 @@ const PLACEMENT_ATTEMPTS = 512;
  * Brings one board's positions in line with what is actually there: an item with no
  * position gets one, a position for a path that is gone is dropped, and a path whose
  * item carries an id that a vanished path also carried takes that position over.
+ *
+ * Stored positions are claimed before any new one is chosen, in two passes rather
+ * than one. A single pass hands a slot to an unplaced item by looking only at what
+ * it has seen so far, so an item further down the list that already owns that exact
+ * spot ends up underneath it — a card that cannot be clicked and text drawn twice.
  *
  * The one piece of policy here is which slot a new object gets — `options.slot`.
  * Until the layout question is settled the default flows new objects into rows,
@@ -106,17 +116,21 @@ export function reconcileBoard(
   const carried: string[] = [];
   const taken = new Set<string>();
   const byId = indexById(stored);
+  const unplaced: PlacementEntry[] = [];
 
   for (const entry of entries) {
     const inherited = inherit(entry, stored, taken, byId);
-
-    if (inherited) {
-      placements[entry.path] = inherited.placement;
-      occupied.push(inherited.placement);
-      if (inherited.carried) carried.push(entry.path);
+    if (!inherited || displaced(inherited.placement, occupied)) {
+      unplaced.push(entry);
       continue;
     }
 
+    placements[entry.path] = inherited.placement;
+    occupied.push(inherited.placement);
+    if (inherited.carried) carried.push(entry.path);
+  }
+
+  for (const entry of unplaced) {
     const size = entry.size ?? options.size;
     const spot = slot(occupied, size);
     const placed: Placement = { ...spot, ...size, z: highestZ(placements) + 1 };
@@ -125,40 +139,52 @@ export function reconcileBoard(
     added.push(entry.path);
   }
 
-  const stacks = survivingStacks(placements, options.stacks);
-  // A member pointing at a pile that is not there falls out of it rather than
-  // into a broken one: the position it already has is where it stays. Copied
-  // rather than edited, because an inherited placement is the caller's object.
-  for (const [path, placement] of Object.entries(placements)) {
-    if (placement.stack === undefined || stacks[placement.stack] !== undefined) continue;
-    const { stack: _gone, ...rest } = placement;
-    placements[path] = rest;
-  }
-
-  return { placements, added, removed: missingPaths(entries, stored), carried, stacks };
+  return {
+    placements,
+    added,
+    removed: missingPaths(entries, stored),
+    carried,
+    stacks: stacksFrom(placements, options.stacks),
+  };
 }
 
 /**
- * The piles that still have a member. An item whose stack has gone — because
- * everything else in it was deleted, or because the document named a stack that
- * was never there — keeps its position and simply stops being in a pile.
+ * Where each pile sits. A pile **is** its members: the `stack` on a placement is
+ * the membership, and the rectangle is only where the cascade was last put. So a
+ * stored rectangle is kept, and one the document does not have is read back off
+ * the top card rather than the pile being taken apart.
+ *
+ * The two used to have to agree, and a stack map that came back empty — from an
+ * older document, a hand edit, or a board read before its map arrived — dissolved
+ * every pile on the board and left the cards sitting in a cascade that no longer
+ * answered a click. The rectangle is the one part of a stack that can be
+ * recomputed, so it is.
+ *
+ * A pile whose every member is gone is gone with them: nothing is left to read a
+ * rectangle off, and an empty pile cannot be clicked or undone.
  */
-function survivingStacks(
-  placements: Record<string, Placement>,
-  stacks: StackMap | undefined,
+function stacksFrom(
+  placements: Readonly<Record<string, Placement>>,
+  stored: StackMap | undefined,
 ): StackMap {
-  if (stacks === undefined) return {};
-
-  const occupied = new Set<string>();
+  const top = new Map<string, Placement>();
   for (const placement of Object.values(placements)) {
-    if (placement.stack !== undefined) occupied.add(placement.stack);
+    const stack = placement.stack;
+    if (stack === undefined) continue;
+    const highest = top.get(stack);
+    if (highest === undefined || placement.z > highest.z) top.set(stack, placement);
   }
 
-  const surviving: StackMap = {};
-  for (const [id, rect] of Object.entries(stacks)) {
-    if (occupied.has(id)) surviving[id] = rect;
+  const stacks: StackMap = {};
+  for (const [id, placement] of top) {
+    const kept = stored?.[id];
+    if (kept) {
+      stacks[id] = kept;
+      continue;
+    }
+    stacks[id] = { x: placement.x, y: placement.y, w: placement.w, h: placement.h };
   }
-  return surviving;
+  return stacks;
 }
 
 /** The board's slice of the vault-wide map, or an empty one. */
@@ -252,26 +278,99 @@ export function flowSlot(options: FlowOptions = {}): SlotChooser {
   const gap = options.gap ?? DEFAULT_GAP;
 
   return (occupied, size) => {
-    let x = 0;
     let y = 0;
-    let rowHeight = 0;
 
-    for (let attempt = 0; attempt < PLACEMENT_ATTEMPTS; attempt += 1) {
-      if (x > 0 && x + size.w > maxWidth) {
-        x = 0;
-        y += rowHeight + gap;
-        rowHeight = 0;
+    for (let row = 0; row < PLACEMENT_ATTEMPTS; row += 1) {
+      let x = 0;
+
+      for (let step = 0; step < PLACEMENT_ATTEMPTS; step += 1) {
+        // Past the right edge with something already on this row: try the next.
+        if (x > 0 && x + size.w > maxWidth) break;
+
+        const candidate: Rect = { x, y, ...size };
+        const blocker = occupied.find((other) => overlaps(candidate, other));
+        if (!blocker) return { x, y };
+
+        // Step clear of what is in the way, not by this card's own width. A card
+        // narrower than the one blocking it lands back inside that card, is
+        // rejected, and the scan walks off the right edge — which is how a 340
+        // wide picture pushed the next card 424 units below it with the space
+        // beside it left empty.
+        x = blocker.x + blocker.w + gap;
       }
-      if (size.h > rowHeight) rowHeight = size.h;
 
-      const candidate: Rect = { x, y, ...size };
-      if (!occupied.some((other) => overlaps(candidate, other))) return { x, y };
-      x += size.w + gap;
+      const next = nextRowTop(occupied, y, gap);
+      if (next === null) break;
+      y = next;
     }
 
     // Nothing free in the flow: go below everything rather than on top of it.
     return { x: 0, y: lowestBottom(occupied) + gap };
   };
+}
+
+/**
+ * Objects packed against what is already there rather than flowed into rows: each one drops
+ * straight down from the top at whichever x leaves it highest, so a short card lets the next one
+ * rise beside it instead of holding a row open to its tallest member.
+ *
+ * This is what a wall of mixed sizes has to do to read as an arrangement. Rows advance by their
+ * tallest card, which is fine for a grid of one size and leaves a band of empty table under every
+ * short card in a vault that holds pictures, pages and one-line notes at once.
+ *
+ * The candidate positions are the left and right edges of what is placed, plus the left margin:
+ * a card that cannot line up with an edge of something has nothing to line up with, and the two
+ * edges are where every gap in the wall begins.
+ */
+export function packSlot(options: FlowOptions = {}): SlotChooser {
+  const maxWidth = options.maxWidth ?? DEFAULT_FLOW_WIDTH;
+  const gap = options.gap ?? DEFAULT_GAP;
+
+  return (occupied, size) => {
+    const candidates = new Set<number>([0]);
+    for (const rect of occupied) {
+      candidates.add(rect.x);
+      candidates.add(rect.x + rect.w + gap);
+    }
+
+    let best: { x: number; y: number } | null = null;
+    for (const x of candidates) {
+      if (x > 0 && x + size.w > maxWidth) continue;
+      const y = restingTop({ x, y: 0, ...size }, occupied, gap);
+      if (best !== null && (y > best.y || (y === best.y && x >= best.x))) continue;
+      best = { x, y };
+    }
+    if (best !== null) return best;
+
+    // Nothing fits across: below everything rather than on top of it.
+    return { x: 0, y: lowestBottom(occupied) + gap };
+  };
+}
+
+/** How far a card at this x falls before it lands on something already placed. */
+function restingTop(candidate: Rect, occupied: readonly Rect[], gap: number): number {
+  let top = 0;
+  for (const rect of occupied) {
+    if (candidate.x >= rect.x + rect.w || candidate.x + candidate.w <= rect.x) continue;
+    top = Math.max(top, rect.y + rect.h + gap);
+  }
+  return top;
+}
+
+/**
+ * Where the row under `y` starts: the nearest bottom edge below it. Descending by
+ * the tallest card in the row instead would step past shorter ones and leave the
+ * space under them unreachable, which is most of what makes a wall of mixed sizes
+ * read as a grid rather than as a column.
+ */
+function nextRowTop(occupied: readonly Rect[], y: number, gap: number): number | null {
+  let next: number | null = null;
+  for (const rect of occupied) {
+    const bottom = rect.y + rect.h + gap;
+    if (bottom <= y) continue;
+    if (next === null || bottom < next) next = bottom;
+  }
+  return next;
 }
 
 function lowestBottom(occupied: readonly Rect[]): number {
@@ -281,6 +380,27 @@ function lowestBottom(occupied: readonly Rect[]): number {
     if (edge > bottom) bottom = edge;
   }
   return bottom;
+}
+
+/**
+ * Whether a stored position has to be given up. A position identical to one
+ * already claimed is not an arrangement anyone made — two cards cannot be
+ * dragged onto the exact same rectangle, and the lower one could never be
+ * reached again — so it is re-slotted rather than kept.
+ *
+ * A pile is the exception, and the only one: a cascade stops stepping past
+ * `CASCADE_LIMIT` layers, so the cards at the bottom of a deep pile sit on
+ * exactly the same rectangle **on purpose**. Re-slotting one of those would
+ * throw a card out of the stack the user built and scatter it across the board.
+ */
+function displaced(placement: Placement, occupied: readonly Rect[]): boolean {
+  if (placement.stack !== undefined) return false;
+  return occupied.some((other) => coincident(other, placement));
+}
+
+/** The same rectangle, not merely an overlapping one. */
+function coincident(left: Rect, right: Rect): boolean {
+  return left.x === right.x && left.y === right.y && left.w === right.w && left.h === right.h;
 }
 
 export function overlaps(left: Rect, right: Rect): boolean {

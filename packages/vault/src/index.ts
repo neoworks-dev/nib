@@ -1,4 +1,4 @@
-export { metaString, parseFrontmatter, type Frontmatter } from "./frontmatter";
+export { metaString, parseFrontmatter, setMetaString, type Frontmatter } from "./frontmatter";
 export { vaultInstructions, VAULT_DIRECTORY, VAULT_GUIDE, VAULT_GUIDE_FILE } from "./instructions";
 export {
   extractLinks,
@@ -12,6 +12,7 @@ export {
   boardOf,
   flowSlot,
   overlaps,
+  packSlot,
   parsePlacements,
   parseStacks,
   placementsFor,
@@ -35,6 +36,14 @@ export {
   type VaultSnapshot,
   type VaultSnapshotItem,
 } from "./snapshot";
+export {
+  isTrashPath,
+  sortTrash,
+  TRASH_DIRECTORY,
+  TRASH_META_FILE,
+  type TrashEntry,
+  trashEntryId,
+} from "./trash";
 export {
   buildVaultIndex,
   entryName,

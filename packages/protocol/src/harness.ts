@@ -1,4 +1,5 @@
 import type { Disposer } from "@nib-ui/kernel";
+import type { AgentControlLink } from "./agent-control";
 import type { HarnessCapabilities, HarnessDescriptor } from "./capabilities";
 import type { EmittedEvent, MessageAttachment, ModelInfo, PermissionBehavior } from "./events";
 
@@ -38,6 +39,13 @@ export interface HarnessSession {
 export interface CreateSessionOptions {
   cwd: string;
   options?: Record<string, unknown>;
+  /**
+   * How this session's agent reaches the agent-control tools. An adapter that
+   * can take tools over MCP points its harness at `link.url`; one that only takes
+   * in-process tools wraps `link.tools` instead. Absent when the host has no
+   * agent-control service, in which case the agent works alone.
+   */
+  agentControl?: AgentControlLink;
 }
 
 export interface HarnessAdapter {
@@ -48,6 +56,12 @@ export interface HarnessAdapter {
   defaultPermissionMode: string;
   models: ModelInfo[];
   defaultModel?: string;
+  /**
+   * The models the harness will accept right now, for an agent choosing one
+   * without a session open. Absent when the harness can only answer from a
+   * running process, in which case `models` and any live session stand in.
+   */
+  listModels?(): Promise<ModelInfo[]>;
   createSession(opts: CreateSessionOptions, emit: EmitEvent): Promise<HarnessSession>;
   resumeSession?(
     nativeSessionId: string,

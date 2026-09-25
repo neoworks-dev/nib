@@ -1,7 +1,7 @@
 import type { Plugin } from "@nib-ui/kernel";
 import { boardTheme, TextTextureCache } from "@nib-ui/plugin-canvas";
 import { assetUrl } from "@nib-ui/plugin-canvas-media";
-import type { Point } from "@nib-ui/ui-contracts";
+import type { BrowserService, Point } from "@nib-ui/ui-contracts";
 import { bookmarkKind } from "./BookmarkRenderer";
 import {
   BOOKMARK_WIDTH,
@@ -20,6 +20,24 @@ function createId(): string {
   return `bookmark:${Date.now().toString(36)}:${counter.toString(36)}`;
 }
 
+/**
+ * Optional coupling: a bookmark opens in the app's browser pane while one is
+ * loaded, and in the system browser otherwise. Clicking the card is the only way
+ * the pane is reached, so this is what puts it on screen.
+ */
+let browser: BrowserService | null = null;
+
+const browserLinkPlugin: Plugin = {
+  name: "canvas-links:browser",
+  inject: ["browser"],
+  apply(ctx) {
+    browser = ctx.require("browser");
+    ctx.effect(() => () => {
+      browser = null;
+    });
+  },
+};
+
 export const canvasLinksPlugin: Plugin = {
   name: "canvas-links",
   inject: ["canvas"],
@@ -27,13 +45,21 @@ export const canvasLinksPlugin: Plugin = {
     const canvas = ctx.require("canvas");
     const textures = new TextTextureCache(64);
 
+    ctx.use(browserLinkPlugin);
+
     ctx.effect(() =>
       canvas.registerKind(
         bookmarkKind({
           textures,
           theme: boardTheme,
           assetUrl,
-          openUrl: (url) => void globalThis.open(url, "_blank", "noopener,noreferrer"),
+          openUrl: (url) => {
+            if (browser) {
+              browser.open(url);
+              return;
+            }
+            globalThis.open(url, "_blank", "noopener,noreferrer");
+          },
         }),
       ),
     );

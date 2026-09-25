@@ -65,3 +65,100 @@ function parseLink(inner: string): RawLink | null {
   const alias = aliasPart?.trim() ?? "";
   return { target, alias: alias.length > 0 ? alias : null };
 }
+
+/** A new target for a link, or `null` to leave it exactly as it was written. */
+export type LinkRename = (target: string) => string | null;
+
+/**
+ * Rewrites link targets in place, leaving the alias, the heading and every
+ * character outside a `[[…]]` untouched. Code is skipped for the same reason
+ * `stripCode` exists: the vault's own guide shows the syntax, and documentation is
+ * not a reference.
+ */
+export function rewriteLinks(body: string, rename: LinkRename): string {
+  const lines: string[] = [];
+  let fenced = false;
+
+  for (const line of body.split("\n")) {
+    if (FENCE.test(line)) {
+      fenced = !fenced;
+      lines.push(line);
+      continue;
+    }
+    if (fenced) {
+      lines.push(line);
+      continue;
+    }
+    lines.push(
+      line
+        .split(CODE_SPAN)
+        .map((part) => (part.startsWith("`") ? part : replaceTargets(part, rename)))
+        .join(""),
+    );
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * What a move does to a path-qualified link. A **bare-name** link is never
+ * rewritten — the name did not change, which is the entire point of linking by
+ * name (PLAN §4) — so only a reference that spells out the old directory moves.
+ *
+ * `from` and `to` are vault-relative paths of the entry itself, extension and all.
+ * A directory carries its contents: `[[old/deep/note]]` follows `old` to `new`.
+ */
+export function movedLinkTarget(from: string, to: string): LinkRename {
+  const fromPath = normalizeTarget(from);
+  const toPath = normalizeTarget(to);
+  const fromStem = withoutExtension(fromPath);
+  const toStem = withoutExtension(toPath);
+
+  return (target: string): string | null => {
+    const reference = normalizeTarget(target);
+    // A reference with no directory in it is a name, and the name did not change.
+    // This is the whole reason a move is survivable at all (PLAN §4).
+    if (!reference.includes("/")) return null;
+    if (reference === fromStem) return toStem;
+    if (reference === fromPath) return toPath;
+    if (reference.startsWith(`${fromPath}/`)) return `${toPath}${reference.slice(fromPath.length)}`;
+    return null;
+  };
+}
+
+const CODE_SPAN = /(`[^`]*`)/g;
+
+function replaceTargets(text: string, rename: LinkRename): string {
+  return text.replace(LINK, (whole: string, inner: string) => {
+    // `[[target#heading|alias]]`: the target is the head, and everything from the
+    // first `#` or `|` onward is carried through untouched. Slicing at the index
+    // rather than branching keeps an absent part an empty slice of its own.
+    const bar = inner.indexOf("|");
+    const barAt = bar === -1 ? inner.length : bar;
+    const targetPart = inner.slice(0, barAt);
+    const suffix = inner.slice(barAt);
+
+    const hash = targetPart.indexOf("#");
+    const hashAt = hash === -1 ? targetPart.length : hash;
+    const head = targetPart.slice(0, hashAt);
+    const anchor = targetPart.slice(hashAt);
+
+    const next = rename(head.trim());
+    if (next === null) return whole;
+    return `[[${next}${anchor}${suffix}]]`;
+  });
+}
+
+function normalizeTarget(target: string): string {
+  let key = target.trim().replace(/^\.\//, "");
+  if (key.endsWith("/")) key = key.slice(0, -1);
+  return key;
+}
+
+function withoutExtension(path: string): string {
+  const slash = path.lastIndexOf("/");
+  const base = slash === -1 ? path : path.slice(slash + 1);
+  const dot = base.lastIndexOf(".");
+  if (dot <= 0) return path;
+  return path.slice(0, path.length - (base.length - dot));
+}

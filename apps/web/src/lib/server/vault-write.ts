@@ -57,10 +57,10 @@ export async function moveVaultEntry(
   options: VaultMoveOptions = {},
 ): Promise<VaultMoveResult> {
   const root = vaultRoot(cwd);
-  const source = cleanPath(from);
+  const source = cleanVaultPath(from);
   if (source.length === 0) throw new VaultWriteError("nothing to move", 400);
 
-  const directory = cleanPath(toDirectory);
+  const directory = cleanVaultPath(toDirectory);
   const name = baseName(source);
   const target = directory.length === 0 ? name : `${directory}/${name}`;
   if (target === source) return { from: source, to: source, rewritten: [] };
@@ -103,12 +103,12 @@ export async function writeVaultFile(
   bytes: Uint8Array,
 ): Promise<VaultWriteResult> {
   const root = vaultRoot(cwd);
-  const target = cleanPath(directory);
+  const target = cleanVaultPath(directory);
   const absolute = confineToVault(root, target);
   if (absolute === null) throw new VaultWriteError("path is outside the vault", 400);
 
   await mkdir(absolute, { recursive: true });
-  const chosen = await freeName(absolute, safeName(name));
+  const chosen = await freeVaultName(absolute, safeName(name));
   await writeFile(join(absolute, chosen), bytes);
 
   return { path: target.length === 0 ? chosen : `${target}/${chosen}` };
@@ -127,7 +127,7 @@ export async function writeVaultFile(
  * previous body rather than half of the new one.
  */
 export async function writeVaultText(cwd: string, path: string, text: string): Promise<void> {
-  const target = cleanPath(path);
+  const target = cleanVaultPath(path);
   if (target.length === 0) throw new VaultWriteError("nothing to write", 400);
 
   const absolute = confineToVault(vaultRoot(cwd), target);
@@ -152,7 +152,7 @@ export async function writeVaultText(cwd: string, path: string, text: string): P
  * its contents with it.
  */
 export async function deleteVaultEntry(cwd: string, path: string): Promise<void> {
-  const target = cleanPath(path);
+  const target = cleanVaultPath(path);
   if (target.length === 0) throw new VaultWriteError("nothing to delete", 400);
 
   const absolute = confineToVault(vaultRoot(cwd), target);
@@ -244,7 +244,12 @@ function safeName(name: string): string {
   return cleaned.length > 0 ? cleaned : "untitled";
 }
 
-async function freeName(directory: string, name: string): Promise<string> {
+/**
+ * The requested name, or the first suffixed one that is not taken. Shared with the
+ * bin: restoring a deleted entry lands beside whatever took its place rather than
+ * over it.
+ */
+export async function freeVaultName(directory: string, name: string): Promise<string> {
   // A dot at position 0 is a leading dot, which `safeName` already stripped, so
   // this splits a name that really does carry an extension and nothing else.
   const dot = name.lastIndexOf(".");
@@ -271,7 +276,7 @@ async function statOrNull(absolute: string): Promise<Awaited<ReturnType<typeof s
 }
 
 /** Vault paths are POSIX and relative; anything absolute or climbing is refused. */
-function cleanPath(path: string): string {
+export function cleanVaultPath(path: string): string {
   const normalized = posix.normalize(path.trim().replace(/\\/g, "/"));
   if (normalized === "." || normalized === "/") return "";
   const stripped = normalized.replace(/^\/+/, "").replace(/\/+$/, "");

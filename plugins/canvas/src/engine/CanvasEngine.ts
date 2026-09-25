@@ -10,10 +10,11 @@ import type {
   Point,
   Rect,
 } from "@nib-ui/ui-contracts";
-import { Application, Container } from "pixi.js";
+import { Application, Container, Graphics } from "pixi.js";
 import type { EngineHost } from "./types";
 import { clampZoom, screenToWorld, worldToScreen, zoomAt } from "./utils/camera";
 import { pointInRect, rectsIntersect } from "./utils/geometry";
+import { configureAssetRoot } from "./utils/texture";
 import { TextTextureCache } from "./utils/textTexture";
 import { DIMMED_ALPHA } from "../theme";
 
@@ -39,6 +40,8 @@ const defaultTheme: EngineTheme = { background: 0xe9eaee };
 interface RendererEntry {
   kind: string;
   renderer: CanvasObjectRenderer;
+  /** Whether `sync` has run, which is when the container's position means anything. */
+  synced: boolean;
 }
 
 /**
@@ -56,6 +59,8 @@ export class CanvasEngine implements CanvasEngineApi {
   readonly textures = new TextTextureCache();
 
   private readonly renderers = new Map<string, RendererEntry>();
+  /** Renderers animating out, still drawn and still reclaimable by their own id. */
+  private readonly exiting = new Map<string, RendererEntry>();
   private attachedTool: CanvasTool | null = null;
   private readonly pointers = new Map<number, Point>();
   private pinch: { distance: number; zoom: number; world: Point } | null = null;
@@ -66,6 +71,16 @@ export class CanvasEngine implements CanvasEngineApi {
   private disposers: Disposer[] = [];
   /** Where the pointer last was, in world units, for gestures with no event of their own. */
   private lastPointer: Point = { x: 0, y: 0 };
+  /**
+   * The table's own colour laid over everything that does not have the focus,
+   * rather than an alpha on each card. A translucent card is translucent all the
+   * way through: its panel stops hiding what is behind it, so a dimmed folder
+   * showed the papers inside it through its own front, and every card showed
+   * whatever it was sitting on top of.
+   */
+  private readonly scrim = new Graphics();
+  /** How far the board is dimmed: 0 at full strength, 1 at the scrim's own. */
+  private dim = 0;
 
   constructor(
     private readonly host: EngineHost,
@@ -79,6 +94,7 @@ export class CanvasEngine implements CanvasEngineApi {
   }
 
   async init(element: HTMLElement): Promise<void> {
+    configureAssetRoot();
     this.app = new Application();
     await this.app.init({
       resizeTo: element,
@@ -97,6 +113,9 @@ export class CanvasEngine implements CanvasEngineApi {
     this.world.sortableChildren = true;
     this.objectLayer = new Container();
     this.objectLayer.sortableChildren = true;
+    this.scrim.eventMode = "none";
+    this.scrim.visible = false;
+    this.objectLayer.addChild(this.scrim);
     this.overlay = new Container();
     this.overlay.zIndex = 10_000;
     this.overlay.eventMode = "none";
@@ -113,7 +132,9 @@ export class CanvasEngine implements CanvasEngineApi {
     this.attachedTool = null;
     for (const dispose of this.disposers.splice(0)) dispose();
     for (const entry of this.renderers.values()) entry.renderer.destroy?.();
+    for (const entry of this.exiting.values()) entry.renderer.destroy?.();
     this.renderers.clear();
+    this.exiting.clear();
     this.textures.clear();
     this.app?.ticker.remove(this.tick);
     this.app?.destroy(true, { children: true });
@@ -170,6 +191,14 @@ export class CanvasEngine implements CanvasEngineApi {
 
   dropOnto(ids: string[], toId: string | null, at: Point): void {
     this.host.dropOnto(ids, toId, at);
+  }
+
+  beginDrag(ids: string[]): void {
+    this.host.beginDrag(ids);
+  }
+
+  spawnFrom(id: string, at: Point): void {
+    this.host.spawnFrom(id, at);
   }
 
   setTool(toolId: string): void {
@@ -272,12 +301,23 @@ export class CanvasEngine implements CanvasEngineApi {
       if (live.has(id) && this.host.kindFor(entry.kind)) continue;
       this.renderers.delete(id);
       const renderer = entry.renderer;
-      const remove = () => {
-        renderer.container.parent?.removeChild(renderer.container);
-        renderer.destroy?.();
-      };
-      if (renderer.exit) renderer.exit(remove);
-      else remove();
+      if (!renderer.exit) {
+        this.discard(entry);
+        continue;
+      }
+      // Under everything still on the board, because it is on its way off: a card
+      // going back into a folder goes under the folder's front panel, and the
+      // lift it had while it was open is not its any more.
+      renderer.container.zIndex = -1;
+      // Kept rather than forgotten while it animates out, so an object that comes
+      // back before it has gone is the same object: a folder closed and re-opened
+      // mid-flight takes its cards back rather than drawing a second set of them.
+      this.exiting.set(id, entry);
+      renderer.exit(() => {
+        if (this.exiting.get(id) !== entry) return;
+        this.exiting.delete(id);
+        this.discard(entry);
+      });
     }
 
     const selection = this.selection;
@@ -291,42 +331,85 @@ export class CanvasEngine implements CanvasEngineApi {
 
       let entry = this.renderers.get(object.id);
       if (!entry) {
-        entry = { kind: object.kind, renderer: kind.createRenderer(this) };
+        entry = this.revive(object.id, object.kind);
+        if (!entry) {
+          entry = { kind: object.kind, renderer: kind.createRenderer(this), synced: false };
+          this.objectLayer.addChild(entry.renderer.container);
+          entry.renderer.spawn?.();
+        }
         this.renderers.set(object.id, entry);
-        this.objectLayer.addChild(entry.renderer.container);
-        entry.renderer.spawn?.();
       }
       // Board order is z-order, so a dragged card can be brought to the front.
-      entry.renderer.container.zIndex = index;
+      // What has the focus is lifted over the scrim, which is what dims the rest.
+      const lifted = focus !== null && focus.has(object.id);
+      entry.renderer.container.zIndex = lifted ? objects.length + 1 + index : index;
 
       // `sync` runs per object per frame, so a board with a hundred cards pays for
       // all of them whether or not any are on screen. An object that declares its
       // own rectangle and sits outside the camera is hidden and skipped; anything
       // without one — an edge, which is wherever its endpoints are — is not, and
       // neither is anything selected, whose chrome has to keep following the zoom.
+      // A card is where it is drawn as well as where it is going: one easing
+      // towards a place off screen has to keep moving until it is out of view,
+      // not vanish the moment its target is.
       const box = worldBox(object);
+      const container = entry.renderer.container;
+      const drawn =
+        box !== null && entry.synced ? { ...box, x: container.x, y: container.y } : null;
       const offscreen =
-        box !== null && !rectsIntersect(box, view) && !selection.includes(object.id);
-      entry.renderer.container.visible = !offscreen;
+        box !== null &&
+        !rectsIntersect(box, view) &&
+        !(drawn !== null && rectsIntersect(drawn, view)) &&
+        !selection.includes(object.id);
+      container.visible = !offscreen;
       if (offscreen) return;
       entry.renderer.sync(parsed, selection);
-      this.applyFocus(entry.renderer.container, object.id, focus);
+      entry.synced = true;
     });
+    this.syncScrim(focus !== null, objects.length);
   }
 
   /**
-   * Eases a card towards full strength or towards the dim. Focus is an alpha
-   * change and nothing else: every card stays exactly where it was, which is why
-   * clicking a folder reads as looking closer rather than as navigating.
+   * An object that is back before it finished leaving, taken off the exit and
+   * handed back whole. A renderer of the wrong kind cannot be reused, and cannot
+   * be left on the way out either — the id is about to belong to another one — so
+   * it goes at once.
    */
-  private applyFocus(container: Container, id: string, focus: ReadonlySet<string> | null): void {
-    const target = focus === null || focus.has(id) ? 1 : DIMMED_ALPHA;
-    const current = container.alpha;
-    if (Math.abs(target - current) < 0.005) {
-      container.alpha = target;
-      return;
+  private revive(id: string, kind: string): RendererEntry | undefined {
+    const entry = this.exiting.get(id);
+    if (!entry) return undefined;
+    this.exiting.delete(id);
+    if (entry.kind !== kind) {
+      this.discard(entry);
+      return undefined;
     }
-    container.alpha = current + (target - current) * DIM_EASE;
+    entry.renderer.cancelExit?.();
+    return entry;
+  }
+
+  private discard(entry: RendererEntry): void {
+    entry.renderer.container.parent?.removeChild(entry.renderer.container);
+    entry.renderer.destroy?.();
+  }
+
+  /**
+   * Eases the table's colour over everything that does not have the focus. One
+   * sheet under the focused cards rather than an alpha on each of the others:
+   * every card stays exactly where it was, which is why clicking a folder reads
+   * as looking closer rather than as navigating, and nothing goes see-through.
+   */
+  private syncScrim(focused: boolean, count: number): void {
+    const target = focused ? 1 - DIMMED_ALPHA : 0;
+    if (Math.abs(target - this.dim) < 0.005) this.dim = target;
+    else this.dim += (target - this.dim) * DIM_EASE;
+
+    this.scrim.visible = this.dim > 0;
+    if (!this.scrim.visible) return;
+
+    const view = this.visibleWorldRect();
+    this.scrim.zIndex = count;
+    this.scrim.alpha = this.dim;
+    this.scrim.clear().rect(view.x, view.y, view.width, view.height).fill(this.theme().background);
   }
 
   /**

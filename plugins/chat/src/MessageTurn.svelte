@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { BlockView, MessageView, SessionView } from "@nib-ui/protocol";
+  import { messageText, parseAgentNotification } from "@nib-ui/protocol";
   import { SlotHost } from "@nib-ui/ui-contracts/svelte";
+  import AgentNotificationCard from "./AgentNotificationCard.svelte";
   import BlockHost from "./BlockHost.svelte";
   import ToolGroup from "./ToolGroup.svelte";
   import { groupTurnBlocks } from "./tool-groups";
@@ -11,6 +13,9 @@
   // A user turn carrying only tool results is bookkeeping, not a prompt: its
   // blocks fold into the calls above them, so the card would frame nothing.
   const isPrompt = $derived(isUser && message.blocks.some(isProse));
+  // A spawned agent's report enters the harness as a user turn, since nothing
+  // else can; nobody typed it, so it is drawn as the report it is.
+  const notification = $derived(isPrompt ? parseAgentNotification(messageText(message)) : null);
   const items = $derived(groupTurnBlocks(message.blocks));
 
   function isProse(block: BlockView): boolean {
@@ -18,7 +23,9 @@
   }
 </script>
 
-{#if isPrompt}
+{#if notification}
+  <AgentNotificationCard {notification} {session} />
+{:else if isPrompt}
   <article
     data-message={message.id}
     class="flex flex-col gap-2 rounded-xl border border-line-faint bg-raised px-4 py-3"

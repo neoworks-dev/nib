@@ -71,6 +71,8 @@ export interface SessionView {
   cwd: string | null;
   title: string | null;
   nativeSessionId: string | null;
+  /** The session whose agent spawned this one; null for a session the user started. */
+  parentSessionId: string | null;
   capabilities: HarnessCapabilities | null;
   /** Active permission mode, as last reported by the harness. */
   permissionMode: string | null;
@@ -102,6 +104,74 @@ export interface OrphanBlock {
   inputJson: string;
   content: BlockContent | null;
   completed: boolean;
+}
+
+/** One turn of the tail, as a card draws it: who said it and what they said. */
+export interface DigestMessage {
+  role: MessageRole;
+  text: string;
+}
+
+/**
+ * How much of the end of a chat a digest carries. Bounded on purpose: every
+ * session's digest is on screen at once on a board of cards, so the tail is as
+ * much as a card can draw and not a transcript in miniature.
+ */
+const RECENT_LIMIT = 8;
+const RECENT_CHARS = 320;
+
+/**
+ * What a chat was asked, where it has got to, and the end of what was said in
+ * between. For anything that stands for the whole of one without opening it — a
+ * card on the board, a row in a list — and nothing more: a digest is a glance,
+ * so it carries no tool calls, no usage and no full history.
+ */
+export interface SessionDigest {
+  /** The opening prompt, which is what the chat is about. */
+  prompt: string | null;
+  /** The newest thing the harness said, which is where it has got to. */
+  reply: string | null;
+  /**
+   * The last few turns with prose in them, oldest first, each clipped. The
+   * opening prompt is left out: it is the chat's name rather than part of its
+   * recent history, and a card that drew both would say it twice.
+   */
+  recent: DigestMessage[];
+}
+
+export function sessionDigest(session: SessionView): SessionDigest {
+  let prompt: string | null = null;
+  let reply: string | null = null;
+  const spoken: DigestMessage[] = [];
+
+  for (const message of session.messages) {
+    const text = messageText(message);
+    if (text.length === 0) continue;
+    // A user message carrying only tool results is bookkeeping inside a turn, so
+    // the opening prompt is the first one with prose in it.
+    if (message.role === "user" && prompt === null) {
+      prompt = text;
+      continue;
+    }
+    if (message.role === "assistant") reply = text;
+    spoken.push({ role: message.role, text: clipText(text, RECENT_CHARS) });
+  }
+
+  return { prompt, reply, recent: spoken.slice(-RECENT_LIMIT) };
+}
+
+function clipText(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit).trimEnd()}…`;
+}
+
+/** Everything the message said, with its tool calls and results left out. */
+export function messageText(message: MessageView): string {
+  return message.blocks
+    .filter((block) => block.kind === "text")
+    .map((block) => (block.content?.kind === "text" ? block.content.text : block.text))
+    .join("\n")
+    .trim();
 }
 
 /** Completed input when the block finished, otherwise the partial JSON parsed best-effort. */
@@ -174,6 +244,7 @@ export function createSessionView(sessionId: string): SessionView {
     cwd: null,
     title: null,
     nativeSessionId: null,
+    parentSessionId: null,
     capabilities: null,
     permissionMode: null,
     effort: null,

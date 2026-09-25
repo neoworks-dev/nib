@@ -111,18 +111,26 @@ describe("activateObject", () => {
     expect(fallback).toEqual([]);
   });
 
-  test("a single click on such an object only selects it — neither side opens it", () => {
-    const opened: string[] = [];
+  test("both gestures reach the kind that owns the object", () => {
+    const seen: string[] = [];
+    const withGesture = kind({ activate: (_object, gesture) => seen.push(gesture) });
+
+    activateObject(withGesture, model, null, "click");
+    activateObject(withGesture, model, null, "doubleClick");
+
+    expect(seen).toEqual(["click", "doubleClick"]);
+  });
+
+  test("a kind that answers clicks keeps the board's handler out of it", () => {
     const fallback: string[] = [];
 
     activateObject(
-      kind({ activate: (object) => opened.push(object.id) }),
+      kind({ activate: () => undefined }),
       model,
       (object) => fallback.push(object.id),
       "click",
     );
 
-    expect(opened).toEqual([]);
     expect(fallback).toEqual([]);
   });
 

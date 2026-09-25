@@ -31,6 +31,17 @@ export interface OpenMenu {
 }
 
 /**
+ * A question being asked of a card at a point on the table: the popup a plus
+ * button dragged off a card opens where it was dropped. The point is world
+ * space, so the popup stays with the table when the board pans under it.
+ */
+export interface OpenPrompt {
+  /** The card the question is about; the board's own input is the docked composer. */
+  sourceId: string;
+  at: Point;
+}
+
+/**
  * The `canvas` service. It holds what plugins contribute and what a window is
  * looking at, and outlives any mounted engine — closing the board pane must not
  * cost a plugin its registrations.
@@ -40,6 +51,7 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
   selection = $state<string[]>([]);
   activeTool = $state("select");
   menu = $state<OpenMenu | null>(null);
+  prompt = $state<OpenPrompt | null>(null);
   engine = $state<CanvasEngine | null>(null);
 
   /** Set by the plugin: what opening an object means is not the engine's business. */
@@ -61,6 +73,8 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
   focusSource: (() => ReadonlySet<string> | null) | null = null;
   /** Cards released over a card, or over empty board space: a `mv`, or nothing. */
   onDropOnto: ((ids: string[], toId: string | null, at: Point) => void) | null = null;
+  /** A drag of these cards has begun: whatever they were laid out as part of is put away. */
+  onBeginDrag: ((ids: string[]) => void) | null = null;
   /** Set by the plugin: entering a project is a board load plus everything that hangs off it. */
   onOpenBoard: ((cwd: string) => Promise<void>) | null = null;
   /** Set by the plugin: opening a workstream is a pane operation the registry knows nothing about. */
@@ -250,13 +264,30 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
     if (ids.length > 0) this.onDropOnto?.(ids, toId, at);
   }
 
+  beginDrag(ids: string[]): void {
+    if (ids.length > 0) this.onBeginDrag?.(ids);
+  }
+
   contextMenu(target: CanvasObject | null, at: Point, screen: Point): void {
+    // The menu acts on the selection, so a card outside it becomes the selection
+    // first: right-clicking one card and having the actions apply to three others
+    // is how the old selection bars could be aimed at the wrong thing.
+    if (target && !this.selection.includes(target.id)) this.select([target.id]);
+
     const items = byOrder(this.menuProviders).flatMap((provider) => provider.items(target, at));
     this.menu = items.length > 0 ? { items, x: screen.x, y: screen.y } : null;
   }
 
   closeMenu(): void {
     this.menu = null;
+  }
+
+  spawnFrom(id: string, at: Point): void {
+    this.prompt = { sourceId: id, at };
+  }
+
+  closePrompt(): void {
+    this.prompt = null;
   }
 
   /** Ordered, first claim wins; a disposed handler is simply no longer in the set. */
@@ -278,6 +309,7 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
     this.layerSet.clear();
     this.selection = [];
     this.menu = null;
+    this.prompt = null;
     this.camera = { x: 0, y: 0, zoom: 1 };
     this.activeTool = "select";
     this.engine = null;
@@ -287,6 +319,7 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
     this.onInterceptActivate = null;
     this.onClearFocus = null;
     this.onDropOnto = null;
+    this.onBeginDrag = null;
   }
 }
 

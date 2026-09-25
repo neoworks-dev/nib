@@ -5,7 +5,7 @@ import {
   type SessionCommand,
   safeParseAgentEvent,
 } from "@nib-ui/protocol";
-import type { VaultDoc } from "@nib-ui/vault";
+import type { TrashEntry, VaultDoc } from "@nib-ui/vault";
 import type {
   BoardDoc,
   BoardSummary,
@@ -179,6 +179,26 @@ class SseTransport implements TransportService {
   async deleteVaultEntry(cwd: string, path: string): Promise<void> {
     const params = new URLSearchParams({ cwd, path });
     await requestJson(`/api/vault/file?${params.toString()}`, { method: "DELETE" });
+  }
+
+  trashVaultEntry(cwd: string, path: string): Promise<TrashEntry> {
+    const params = new URLSearchParams({ cwd, path });
+    return requestJson(`/api/vault/trash?${params.toString()}`, { method: "POST" });
+  }
+
+  restoreTrashEntry(cwd: string, id: string): Promise<{ path: string }> {
+    const params = new URLSearchParams({ cwd, id });
+    return requestJson(`/api/vault/trash?${params.toString()}`, { method: "PUT" });
+  }
+
+  listTrash(cwd: string): Promise<TrashEntry[]> {
+    return requestJson(`/api/vault/trash?cwd=${encodeURIComponent(cwd)}`);
+  }
+
+  async purgeTrash(cwd: string, id?: string): Promise<void> {
+    const params = new URLSearchParams({ cwd });
+    if (id !== undefined) params.set("id", id);
+    await requestJson(`/api/vault/trash?${params.toString()}`, { method: "DELETE" });
   }
 
   subscribeVault(cwd: string, onChange: () => void) {

@@ -3,6 +3,7 @@ import {
   boardOf,
   flowSlot,
   overlaps,
+  packSlot,
   parsePlacements,
   parseStacks,
   placementsFor,
@@ -16,6 +17,13 @@ const size = { w: 200, h: 120 };
 
 function entry(path: string, id: string | null = null): PlacementEntry {
   return { path, id };
+}
+
+/** A placement that has to be there, so a test can read it without asserting. */
+function placed(placements: Record<string, Placement>, path: string): Rect {
+  const placement = placements[path];
+  if (!placement) throw new Error(`no placement for ${path}`);
+  return placement;
 }
 
 function at(x: number, y: number, z = 1, id?: string): Placement {
@@ -42,6 +50,62 @@ describe("reconcileBoard", () => {
         expect(overlaps(left, right)).toBe(false);
       }
     }
+  });
+
+  it("does not put a new object on a spot a later entry already owns", () => {
+    // `b.md` is stored but comes after `a.md`, which has no position yet. Slotting
+    // in one pass hands `a.md` the origin without knowing `b.md` is already there,
+    // and the two end up on the same rectangle.
+    const result = reconcileBoard([entry("a.md"), entry("b.md")], { "b.md": at(0, 0) }, { size });
+    expect(result.placements["b.md"]).toEqual({ x: 0, y: 0, w: 200, h: 120, z: 1 });
+    expect(overlaps(placed(result.placements, "a.md"), placed(result.placements, "b.md"))).toBe(
+      false,
+    );
+  });
+
+  it("re-slots a stored position that duplicates one already claimed", () => {
+    // Two cards on the exact same rectangle is what the one-pass bug wrote out:
+    // nobody can drag a card onto another's precise spot, and the lower one could
+    // never be reached to move it off again.
+    const stored = { "a.md": at(80, 80), "b.md": at(80, 80) };
+    const result = reconcileBoard([entry("a.md"), entry("b.md")], stored, { size });
+    expect(result.placements["a.md"]).toEqual({ x: 80, y: 80, w: 200, h: 120, z: 1 });
+    expect(result.added).toEqual(["b.md"]);
+    expect(overlaps(placed(result.placements, "a.md"), placed(result.placements, "b.md"))).toBe(
+      false,
+    );
+  });
+
+  it("leaves a pile's coincident members alone", () => {
+    // A cascade stops stepping past its limit, so the cards at the bottom of a
+    // deep pile sit on exactly the same rectangle on purpose. Re-slotting one
+    // throws it out of the stack the user built and drops it across the board.
+    const piled = (x: number, y: number): Placement => ({
+      x,
+      y,
+      w: 200,
+      h: 120,
+      z: 1,
+      stack: "s1",
+    });
+    const stored = { "a.md": piled(80, 80), "b.md": piled(80, 80) };
+    const result = reconcileBoard([entry("a.md"), entry("b.md")], stored, {
+      size,
+      stacks: { s1: { x: 80, y: 80, w: 200, h: 120 } },
+    });
+
+    expect(result.added).toEqual([]);
+    expect(result.placements["b.md"]).toEqual(piled(80, 80));
+    expect(Object.keys(result.stacks)).toEqual(["s1"]);
+  });
+
+  it("leaves cards that merely overlap where they are", () => {
+    // Overlap is a real arrangement — a card can be dragged half over another —
+    // so only an exact duplicate counts as the bug's residue.
+    const stored = { "a.md": at(0, 0), "b.md": at(20, 20) };
+    const result = reconcileBoard([entry("a.md"), entry("b.md")], stored, { size });
+    expect(result.added).toEqual([]);
+    expect(result.placements["b.md"]).toEqual({ x: 20, y: 20, w: 200, h: 120, z: 1 });
   });
 
   it("keeps a stored position and gives it no new one", () => {
@@ -164,26 +228,48 @@ describe("stacks", () => {
     expect(result.stacks).toEqual({});
   });
 
-  it("takes an item out of a pile the document does not have", () => {
+  it("rebuilds a pile whose rectangle the document lost", () => {
+    // Membership is on the placements, so an empty stack map is a missing
+    // rectangle and not a dissolved pile: dissolving here left every card of a
+    // stack sitting in its cascade with nothing that answered a click.
     const result = reconcileBoard(
-      [entry("a.md")],
-      { "a.md": piled(30, 40, "ghost") },
+      [entry("a.md"), entry("b.md")],
+      { "a.md": { ...piled(30, 40, "s1"), z: 2 }, "b.md": piled(23, 33, "s1") },
       { size, stacks: {} },
     );
 
-    // The position stays; only the membership goes.
-    expect(result.placements["a.md"]).toEqual({ x: 30, y: 40, w: 200, h: 120, z: 1 });
-    expect(result.stacks).toEqual({});
+    expect(result.placements["a.md"]?.stack).toBe("s1");
+    expect(result.placements["b.md"]?.stack).toBe("s1");
+    // The pile sits where its top card does, which is what folding one put there.
+    expect(result.stacks).toEqual({ s1: { x: 30, y: 40, w: 200, h: 120 } });
+  });
+
+  it("reads a pile back when the caller passes no map at all", () => {
+    const result = reconcileBoard([entry("a.md")], { "a.md": piled(30, 40, "s1") }, { size });
+
+    expect(result.stacks).toEqual({ s1: { x: 30, y: 40, w: 200, h: 120 } });
+  });
+
+  it("prefers the stored rectangle to the one its top card is on", () => {
+    // The pile stays put while cards are dragged out of it, so where it was
+    // folded outlives any one member's position.
+    const result = reconcileBoard(
+      [entry("a.md")],
+      { "a.md": piled(30, 40, "s1") },
+      { size, stacks: { s1: { x: 0, y: 0, w: 200, h: 120 } } },
+    );
+
+    expect(result.stacks).toEqual({ s1: { x: 0, y: 0, w: 200, h: 120 } });
   });
 
   it("does not edit the map it was handed", () => {
-    const stored = { "a.md": piled(30, 40, "ghost") };
+    const stored = { "a.md": piled(30, 40, "s1") };
     reconcileBoard([entry("a.md")], stored, { size, stacks: {} });
 
-    expect(stored["a.md"].stack).toBe("ghost");
+    expect(stored["a.md"].stack).toBe("s1");
   });
 
-  it("reports no piles when the caller passes none", () => {
+  it("reports no piles for a board that has none", () => {
     expect(reconcileBoard([entry("a.md")], {}, { size }).stacks).toEqual({});
   });
 });
@@ -260,6 +346,45 @@ describe("flowSlot", () => {
       occupied.push(rect);
     }
     expect(occupied).toHaveLength(sizes.length);
+  });
+
+  it("sits a narrow card beside a wider one rather than below it", () => {
+    // The regression: stepping by the incoming card's width lands it back inside
+    // the wider card, the scan walks off the right edge, and the row wraps with
+    // the space beside the picture left empty. This is a folder preview holding a
+    // picture and a sheet — the layout from the screenshot that showed the hole.
+    const slot = flowSlot({ maxWidth: 720, gap: 24 });
+    const picture: Rect = { x: 0, y: 0, w: 340, h: 230 };
+    expect(slot([picture], { w: 300, h: 400 })).toEqual({ x: 364, y: 0 });
+  });
+
+  it("tucks a card under a short neighbour instead of below the tallest", () => {
+    // Descending by the tallest card in the row would step past the picture's
+    // bottom edge and leave the space under it unreachable.
+    const slot = flowSlot({ maxWidth: 720, gap: 24 });
+    const picture: Rect = { x: 0, y: 0, w: 340, h: 230 };
+    const sheet: Rect = { x: 364, y: 0, w: 300, h: 400 };
+    expect(slot([picture, sheet], { w: 300, h: 400 })).toEqual({ x: 0, y: 254 });
+  });
+
+  it("leaves no card further down than it has to be", () => {
+    // Every card packed into a block should land inside the bounding box the
+    // block would have if it were packed by hand — no 400-unit holes.
+    const slot = flowSlot({ maxWidth: 720, gap: 24 });
+    const sizes = [
+      { w: 340, h: 230 },
+      { w: 300, h: 400 },
+      { w: 300, h: 400 },
+      { w: 288, h: 168 },
+    ];
+    const occupied: Rect[] = [];
+    for (const size of sizes) {
+      const spot = slot(occupied, size);
+      occupied.push({ ...spot, ...size });
+    }
+
+    const bottom = Math.max(...occupied.map((rect) => rect.y + rect.h));
+    expect(bottom).toBeLessThanOrEqual(700);
   });
 
   it("never returns a spot that overlaps an existing object", () => {
@@ -339,5 +464,45 @@ describe("parsePlacements", () => {
     expect(parsePlacements({ "": "nope" })).toEqual({});
     expect(parsePlacements({ "": {} })).toEqual({});
     expect(parsePlacements({ "": { "a.md": { z: 1 } } })).toEqual({});
+  });
+});
+
+describe("packSlot", () => {
+  it("puts the first card at the origin and the next beside it", () => {
+    const slot = packSlot({ maxWidth: 1000, gap: 24 });
+    expect(slot([], { w: 200, h: 120 })).toEqual({ x: 0, y: 0 });
+    expect(slot([{ x: 0, y: 0, w: 200, h: 120 }], { w: 200, h: 120 })).toEqual({ x: 224, y: 0 });
+  });
+
+  it("drops a card onto the shortest thing it can reach rather than onto a row", () => {
+    const slot = packSlot({ maxWidth: 720, gap: 24 });
+    const picture: Rect = { x: 0, y: 0, w: 340, h: 230 };
+    const sheet: Rect = { x: 364, y: 0, w: 300, h: 400 };
+    // Under the picture, which is 170 shorter than the sheet beside it.
+    expect(slot([picture, sheet], { w: 300, h: 300 })).toEqual({ x: 0, y: 254 });
+  });
+
+  it("never overlaps, whatever the sizes", () => {
+    const slot = packSlot({ maxWidth: 400, gap: 10 });
+    const sizes = [
+      { w: 120, h: 80 },
+      { w: 300, h: 200 },
+      { w: 90, h: 400 },
+      { w: 200, h: 120 },
+      { w: 60, h: 60 },
+    ];
+    const occupied: Rect[] = [];
+    for (const size of sizes) {
+      const rect: Rect = { ...slot(occupied, size), ...size };
+      for (const other of occupied) expect(overlaps(rect, other)).toBe(false);
+      occupied.push(rect);
+    }
+    expect(occupied).toHaveLength(sizes.length);
+  });
+
+  it("puts a card too wide for the block below everything", () => {
+    const slot = packSlot({ maxWidth: 300, gap: 24 });
+    const placed: Rect = { x: 0, y: 0, w: 300, h: 100 };
+    expect(slot([placed], { w: 400, h: 100 })).toEqual({ x: 0, y: 124 });
   });
 });

@@ -1,120 +1,73 @@
 <script lang="ts">
   /**
    * A sticky, edited on the card rather than in a dialog. It is a DOM overlay laid
-   * exactly over the card's bounds and styled to match it — bold sans title,
-   * monospace body, the same padding — so the card appears to become editable
-   * rather than to be replaced by something else.
+   * exactly over the card's bounds and styled to match it — the same paper colour,
+   * the same padding, the same angle on the table — so the card appears to become
+   * editable rather than to be replaced by something else.
    *
    * Inline editing on the Pixi card itself would mean a text engine with a caret,
    * selection and an IME inside the renderer. The overlay is the same pixels for
    * a fraction of that.
    */
+  import MarkdownEditor from "./MarkdownEditor.svelte";
   import { canvasState } from "./state.svelte";
-  import { CARD_TYPE } from "./theme";
+  import { CARD_TYPE, STICKY_COLORS, stickyColor } from "./theme";
 
   const editor = canvasState.editor;
-  const sticky = $derived(editor.sticky);
+  const placed = $derived(editor.sticky);
+  const sticky = $derived(editor.stickyNote());
+  const path = $derived(placed?.path ?? "");
 
-  /** The line to put the caret in once it is rendered, or null. */
-  let caretAt = $state<number | null>(null);
-
-  /** A new sticky opens with the caret in its title, which is the first line. */
-  $effect(() => {
-    if (sticky?.blocks && caretAt === null) caretAt = 0;
+  /** The card's own paper, so the overlay is the note rather than a panel over it. */
+  const paper = $derived.by(() => {
+    const card = canvasState.objects.find((object) => object.id === path);
+    const declared = typeof card?.["color"] === "string" ? card["color"] : null;
+    return STICKY_COLORS[stickyColor(declared)].css;
   });
+  const tilt = $derived(((placed?.tilt ?? 0) * 180) / Math.PI);
 
   function onKeydown(event: KeyboardEvent): void {
     if (event.key !== "Escape" || !sticky) return;
     event.preventDefault();
-    editor.requestClose();
-  }
-
-  function onLineKeydown(event: KeyboardEvent, index: number): void {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      caretAt = editor.splitAt(index);
-      return;
-    }
-    const target = event.currentTarget as HTMLElement;
-    if (event.key === "Backspace" && target.textContent?.length === 0) {
-      event.preventDefault();
-      caretAt = editor.removeAt(index);
-    }
-  }
-
-  function focusLine(element: HTMLElement, index: number): { destroy(): void } {
-    $effect(() => {
-      if (caretAt !== index) return;
-      caretAt = null;
-      element.focus();
-      const range = document.createRange();
-      range.selectNodeContents(element);
-      range.collapse(false);
-      const selection = globalThis.getSelection();
-      selection?.removeAllRanges();
-      selection?.addRange(range);
-    });
-    return { destroy() {} };
+    void editor.closeSticky();
   }
 </script>
 
 <svelte:window onkeydown={onKeydown} />
 
-{#if sticky}
+{#if sticky && placed}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="absolute inset-0 z-modal" onclick={() => editor.requestClose()}>
+  <div class="absolute inset-0 z-modal" onclick={() => void editor.closeSticky()}>
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <!--
+      Laid out in the card's own world units and then scaled by the camera, so
+      the type on the overlay is the type on the card at any zoom. Scaling and
+      turning happen about the middle, which is the point the card is placed by.
+    -->
     <div
-      class="absolute overflow-hidden rounded-xl bg-[#f4f5f7] shadow-2xl"
-      style:left="{sticky.origin.x}px"
-      style:top="{sticky.origin.y}px"
-      style:width="{sticky.origin.width}px"
-      style:height="{sticky.origin.height}px"
+      class="absolute origin-center overflow-hidden rounded-xl text-neutral-950 shadow-2xl"
+      style:left="{placed.centre.x - placed.size.w / 2}px"
+      style:top="{placed.centre.y - placed.size.h / 2}px"
+      style:width="{placed.size.w}px"
+      style:min-height="{placed.size.h}px"
       style:padding="{CARD_TYPE.padding}px"
+      style:background={paper}
+      style:transform="scale({placed.zoom}) rotate({tilt}deg)"
       onclick={(event) => event.stopPropagation()}
     >
       {#if sticky.error}
         <p class="text-sm text-red">{sticky.error}</p>
-      {:else if sticky.blocks === null}
-        <p class="text-sm text-neutral-400">Reading…</p>
+      {:else if sticky.text === null}
+        <p class="text-sm text-neutral-500">Reading…</p>
       {:else}
-        {#each sticky.blocks as block, index (index)}
-          <div class="relative">
-            {#if block.style === "task"}
-              <button
-                type="button"
-                aria-label="Toggle this task"
-                class="absolute top-1.5 left-0 size-3 rounded-sm border border-neutral-400"
-                class:bg-black={block.done}
-                class:border-black={block.done}
-                onclick={() => editor.toggle(index)}
-              ></button>
-            {/if}
-
-            <div
-              contenteditable="plaintext-only"
-              role="textbox"
-              tabindex="0"
-              use:focusLine={index}
-              class="outline-none"
-              class:pl-[21px]={block.style === "task" || block.style === "list"}
-              class:font-bold={index === 0}
-              class:text-black={index === 0}
-              class:text-neutral-600={index !== 0}
-              class:font-mono={index !== 0}
-              class:line-through={block.done}
-              style:font-size="{index === 0 ? CARD_TYPE.titleSize : CARD_TYPE.bodySize}px"
-              style:line-height={index === 0 ? "1.25" : "1.6"}
-              onkeydown={(event) => onLineKeydown(event, index)}
-              oninput={(event) =>
-                editor.setText(index, (event.currentTarget as HTMLElement).textContent ?? "")}
-            >
-              {block.text}
-            </div>
-          </div>
-        {/each}
+        <MarkdownEditor
+          text={sticky.text}
+          onChange={(text) => editor.setText(path, text)}
+          theme="sticky"
+          autofocus
+        />
       {/if}
     </div>
   </div>

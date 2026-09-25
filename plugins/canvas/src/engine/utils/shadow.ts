@@ -97,6 +97,7 @@ export function applyShadow(
   height: number,
   radius: number,
   spec: ShadowSpec,
+  origin: { x: number; y: number } = { x: 0, y: 0 },
 ): void {
   const { texture, margin } = shadowTextures.get(radius, spec);
   const slice = margin + radius;
@@ -106,6 +107,6 @@ export function applyShadow(
   sprite.rightWidth = slice;
   sprite.topHeight = slice;
   sprite.bottomHeight = slice;
-  sprite.position.set(-margin, -margin);
+  sprite.position.set(origin.x - margin, origin.y - margin);
   sprite.setSize(width + margin * 2, height + margin * 2);
 }

@@ -17,9 +17,7 @@ export async function uploadAsset(file: Blob): Promise<AssetRef> {
   return (await response.json()) as AssetRef;
 }
 
-export function assetUrl(assetId: string): string {
-  return `/api/assets/${encodeURIComponent(assetId)}`;
-}
+export { assetUrl } from "@nib-ui/ui-contracts";
 
 export interface WorkspaceAsset {
   assetId: string;

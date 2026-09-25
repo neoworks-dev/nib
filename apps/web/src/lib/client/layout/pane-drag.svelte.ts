@@ -1,23 +1,19 @@
 import type { PaneEdge } from "@nib-ui/ui-contracts";
-import type { SnapZone } from "./windows";
 
 /**
- * The title bar drag in progress, shared so the frame under the pointer can draw
- * the hint while another frame's header owns the gesture. Exactly one edge is
- * ever set: which one is decided by the region of the frame the pointer is over.
- *
- * `snap` is the other half of the same gesture — a window dragged against the
- * area's own edge — and the host draws it, because what it previews is a place
- * in the area rather than anything inside a frame.
+ * The title bar drag in progress, shared so the pane under the pointer can draw
+ * the hint while another pane's header owns the gesture. Exactly one of the two
+ * hints is ever set: a drop onto a pane splits that pane, and a drop anywhere
+ * else docks against the edge of the area the pointer is nearest.
  */
 export const paneDrag = $state<{
   instanceId: string | null;
-  hint: { frameId: string; edge: PaneEdge } | null;
-  snap: SnapZone | null;
-}>({ instanceId: null, hint: null, snap: null });
+  hint: { instanceId: string; edge: PaneEdge } | null;
+  edgeHint: PaneEdge | null;
+}>({ instanceId: null, hint: null, edgeHint: null });
 
 export function clearPaneDrag(): void {
   paneDrag.instanceId = null;
   paneDrag.hint = null;
-  paneDrag.snap = null;
+  paneDrag.edgeHint = null;
 }

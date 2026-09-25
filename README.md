@@ -59,7 +59,7 @@ renderer/slot/command/session service interfaces plus the `@nib-ui/kernel` modul
 
 | Service      | Contributed by                                                                                | Used for                                                                               |
 | ------------ | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `harnesses`  | server adapters (`claude-code`)                                                               | `createSession`/`resumeSession` per harness                                            |
+| `harnesses`  | server adapters (`claude-code`, `codex`, `pi`)                                                | `createSession`/`resumeSession` per harness                                            |
 | `workspace`  | `workspace` (server)                                                                          | cwd autocomplete + `@` file search over the cwd                                        |
 | `git`        | `git` (server)                                                                                | status, diff, stage, commit for the session cwd                                        |
 | `renderers`  | `core-renderers`, `renderer-diff`, `renderer-terminal`, `task-progress`                       | block rendering by `(kind, toolName)`, plus interactive permission cards by `toolName` |
@@ -73,11 +73,42 @@ renderer/slot/command/session service interfaces plus the `@nib-ui/kernel` modul
 Every registration goes through `ctx.effect(() => disposer)`, so disposing a plugin removes its
 renderers, slot entries, listeners and commands. `Toggle plugin: <name>` in the palette exercises it.
 
-## Projects and workstreams
+## The vault
 
-A project is a directory, and its board is the project: one board per `cwd`, holding the
-workstreams on it. A workstream is a goal with at most one harness session behind it, so a
-directory with no session yet is still a project you can open and write goals on.
+A project is a directory, and `<project>/.nib` is its memory. Everything in there is a real
+file: a **topic** is a directory, a **note** is a markdown file, and nothing else carries
+meaning — no manifest, no reserved names, no `index.md`. `[[name]]` links by name rather than
+by path, so reorganizing the tree does not break a reference. The rules are written once, in
+`packages/vault/src/instructions.ts`, and reach a model twice: appended to the Claude Code
+system prompt, and seeded into `.nib/AGENTS.md` when the vault is created, so a human or another
+tool that wanders in finds them with no nib involvement.
+
+A board is **one directory's canvas**. Its cards are that directory's own entries plus whatever
+was placed on it from elsewhere; double-clicking a topic replaces the canvas with that topic's
+board. Dragging a card onto a topic is a real `mv`, and the path-qualified links to it are
+rewritten in the same undo step. The edges between cards are derived from `[[…]]` and cannot be
+drawn by hand — a link is text in a file.
+
+Only _where_ things sit is the app's: `$XDG_DATA_HOME/nib-ui/boards/<sha256(cwd)>.json` holds a
+placements map and the pane layout, and deleting it loses arrangement, never content. A
+filesystem watch on `.nib` pushes "it changed" over SSE, so a file the model writes mid-session
+appears without a reload.
+
+```text
+GET    /api/vault?cwd=…&mentions=1        the scan: items, links, backlinks, unlinked mentions
+GET    /api/vault/file?cwd=…&path=…       one file's bytes, confined to the vault
+PUT    /api/vault/file?cwd=…&dir=…&name=… write bytes into a topic directory
+DELETE /api/vault/file?cwd=…&path=…       delete an entry
+POST   /api/vault/move                    mv + link rewrite, reported for an exact undo
+GET    /api/vault/events?cwd=…            SSE: the vault changed
+```
+
+## Workstreams
+
+A workstream is a goal with at most one harness session behind it, so a directory with no
+session yet is still a project you can open and write goals on. Its transcript is written to
+`<project>/.nib/<sessionId>.jsonl`, which puts the chat inside the harness's own working
+directory: the model can `Grep` its own history.
 
 There is no start screen and no task list. The app opens on the board it was last in, and the
 left rail — contributed by the `sidebar` plugin into the `app.sidebar` slot — lists the projects

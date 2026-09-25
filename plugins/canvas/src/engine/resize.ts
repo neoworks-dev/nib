@@ -28,8 +28,13 @@ const FADE = 90;
 export interface ResizableRenderer {
   /** The handle under a world point, or null when the point is not on one. */
   handleAt(worldX: number, worldY: number): ResizeHandle | null;
-  /** Draws the handle under the pointer as hot; called while merely hovering. */
-  hoverHandle(handle: ResizeHandle | null): void;
+  /**
+   * The handle under the pointer, and whether the pointer is over the object at
+   * all. Called while merely hovering: the bars are drawn only for an object the
+   * pointer is actually on, so a board with several things selected is not a
+   * board covered in grips.
+   */
+  hoverHandle(handle: ResizeHandle | null, overObject?: boolean): void;
   beginResize(): void;
   applyResize(handle: ResizeHandle, deltaX: number, deltaY: number, preserveAspect: boolean): void;
   /** Commits the dragged size to the board. */
@@ -108,12 +113,16 @@ export function resizedRect(
 export function edgeHandlePoints(
   width: number,
   height: number,
+  inset = 0,
 ): { handle: ResizeHandle; x: number; y: number }[] {
+  // Never past the middle: on a card dragged down to the minimum the four bars
+  // would otherwise cross over and swap sides.
+  const gap = Math.min(inset, width / 3, height / 3);
   return [
-    { handle: "n", x: width / 2, y: 0 },
-    { handle: "e", x: width, y: height / 2 },
-    { handle: "s", x: width / 2, y: height },
-    { handle: "w", x: 0, y: height / 2 },
+    { handle: "n", x: width / 2, y: gap },
+    { handle: "e", x: width - gap, y: height / 2 },
+    { handle: "s", x: width / 2, y: height - gap },
+    { handle: "w", x: gap, y: height / 2 },
   ];
 }
 
@@ -129,14 +138,16 @@ export function edgeHandleAt(
   width: number,
   height: number,
   zoom: number,
-  length: number,
+  paint: Pick<EdgeHandlePaint, "length" | "thickness" | "inset">,
   reach: number,
 ): ResizeHandle | null {
-  const scale = Math.max(0.2, zoom);
-  const half = length / scale / 2;
-  const grab = reach / scale;
+  const metrics = edgeHandleMetrics(width, height, zoom, paint);
+  const half = metrics.length / 2;
+  // The grab box never outgrows the bar's own half-length, or the four targets
+  // meet in the middle of a small card and the nearest one always wins.
+  const grab = Math.min(reach / Math.max(0.2, zoom), half);
 
-  for (const point of edgeHandlePoints(width, height)) {
+  for (const point of edgeHandlePoints(width, height, metrics.inset)) {
     const horizontal = point.handle === "n" || point.handle === "s";
     const withinBar = horizontal
       ? Math.abs(localX - point.x) <= half
@@ -153,6 +164,44 @@ export interface EdgeHandlePaint {
   color: number;
   length: number;
   thickness: number;
+  /**
+   * Screen pixels the bar sits in from the edge. A bar centred on the edge hangs
+   * half of itself over the outside of the card, which reads as chrome bolted on
+   * rather than as a grip on the thing itself.
+   */
+  inset?: number;
+}
+
+export interface EdgeHandleMetrics {
+  length: number;
+  thickness: number;
+  inset: number;
+}
+
+/**
+ * The bars in world units. Sizes are screen pixels divided by the zoom so a
+ * handle is the same thing to aim at however far out the board is — but only up
+ * to a point: zoomed out far enough, a 22px bar is worth more world units than
+ * the card is wide, and the chrome swallows the thing it belongs to. Past that
+ * the bars shrink with the card instead.
+ *
+ * Drawing and hit testing both come through here, so what is painted and what
+ * can be grabbed cannot drift apart.
+ */
+export function edgeHandleMetrics(
+  width: number,
+  height: number,
+  zoom: number,
+  paint: Pick<EdgeHandlePaint, "length" | "thickness" | "inset">,
+): EdgeHandleMetrics {
+  const scale = Math.max(0.2, zoom);
+  const shortest = Math.max(1, Math.min(width, height));
+  const length = Math.min(paint.length / scale, shortest * 0.35);
+  return {
+    length,
+    thickness: Math.min(paint.thickness / scale, length / 3),
+    inset: Math.min((paint.inset ?? 0) / scale, shortest * 0.12),
+  };
 }
 
 /**
@@ -172,11 +221,9 @@ export function drawEdgeHandles(
   graphics.clear();
   if (!visible) return;
 
-  const scale = Math.max(0.2, zoom);
-  const length = paint.length / scale;
-  const thickness = paint.thickness / scale;
+  const { length, thickness, inset } = edgeHandleMetrics(width, height, zoom, paint);
 
-  for (const point of edgeHandlePoints(width, height)) {
+  for (const point of edgeHandlePoints(width, height, inset)) {
     const horizontal = point.handle === "n" || point.handle === "s";
     const barWidth = horizontal ? length : thickness;
     const barHeight = horizontal ? thickness : length;
@@ -187,7 +234,8 @@ export function drawEdgeHandles(
       barHeight,
       thickness / 2,
     );
-    graphics.fill({ color: paint.color, alpha: point.handle === hotHandle ? 1 : 0.75 });
+    // Faint until aimed at. A grip is an affordance, not a thing to look at.
+    graphics.fill({ color: paint.color, alpha: point.handle === hotHandle ? 0.9 : 0.4 });
   }
 }
 
@@ -270,4 +318,20 @@ export function isPressable(
   renderer: CanvasObjectRenderer | undefined,
 ): renderer is CanvasObjectRenderer & PressableRenderer {
   return typeof (renderer as Partial<PressableRenderer> | undefined)?.pressAt === "function";
+}
+
+/**
+ * Chrome inside a card that lights up under the pointer — the folder's arrow.
+ * The point is object-local business and null says the pointer has left the card
+ * altogether; the answer is whether it is on something pressable, which is what
+ * turns the cursor into a hand.
+ */
+export interface HoverableRenderer {
+  hoverAt(point: Point | null): boolean;
+}
+
+export function isHoverable(
+  renderer: CanvasObjectRenderer | undefined,
+): renderer is CanvasObjectRenderer & HoverableRenderer {
+  return typeof (renderer as Partial<HoverableRenderer> | undefined)?.hoverAt === "function";
 }

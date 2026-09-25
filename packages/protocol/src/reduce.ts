@@ -84,6 +84,7 @@ function applySessionCreated(
     cwd: data.cwd,
     title: data.title ?? state.title,
     nativeSessionId: data.nativeSessionId ?? state.nativeSessionId,
+    parentSessionId: data.parentSessionId ?? state.parentSessionId,
     capabilities: data.capabilities,
   };
 }
@@ -104,6 +105,13 @@ function applySessionMeta(state: SessionView, data: EventDataMap["session.meta"]
 
 function applyBlockStarted(state: SessionView, data: EventDataMap["block.started"]): SessionView {
   const withMessage = ensureMessage(state, data.messageId, "assistant");
+  // A log written by two attaches that numbered their messages alike announces
+  // the same block twice; the second is the same block, not a sibling with the
+  // same id that a keyed renderer would refuse.
+  const known = withMessage.messages.some((message) =>
+    message.blocks.some((block) => block.id === data.blockId),
+  );
+  if (known) return withMessage;
   const buffered = withMessage.orphanBlocks[data.blockId] ?? emptyOrphan;
   const block: BlockView = {
     id: data.blockId,

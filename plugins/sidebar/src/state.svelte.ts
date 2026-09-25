@@ -7,16 +7,6 @@ import type {
 } from "@nib-ui/ui-contracts";
 import { type ProjectRow, projectRows, type WorkstreamRow } from "./projects";
 
-const collapsedKey = "nib-ui.sidebar.collapsed";
-
-function loadCollapsed(): boolean {
-  try {
-    return localStorage.getItem(collapsedKey) === "true";
-  } catch {
-    return false;
-  }
-}
-
 /**
  * The project list's own state. The board index is server-side and covers every
  * directory, so it is fetched rather than derived: only the board of the project
@@ -28,15 +18,18 @@ class SidebarState {
   canvas = $state<CanvasRegistry | null>(null);
 
   boards = $state<BoardSummary[]>([]);
-  collapsed = $state(false);
   error = $state<string | null>(null);
 
+  /**
+   * Only the tasks a user started. An agent another agent spawned is part of
+   * that task rather than a task of its own, and it is reached through the tabs
+   * of the chat that started it.
+   */
   get projects(): ProjectRow[] {
-    return projectRows(
-      this.boards,
-      this.sessions?.summaries ?? [],
-      this.sessions?.recentDirectories ?? [],
+    const started = (this.sessions?.summaries ?? []).filter(
+      (summary) => summary.parentSessionId === null,
     );
+    return projectRows(this.boards, started, this.sessions?.recentDirectories ?? []);
   }
 
   /** Directory whose board is on screen, so the list can mark where the user is. */
@@ -102,15 +95,6 @@ class SidebarState {
     if (preferences?.lastProject) await this.open(preferences.lastProject);
   }
 
-  setCollapsed(collapsed: boolean): void {
-    this.collapsed = collapsed;
-    try {
-      localStorage.setItem(collapsedKey, String(collapsed));
-    } catch {
-      // A blocked storage quota costs the preference, not the toggle.
-    }
-  }
-
   attach(services: {
     transport: TransportService;
     sessions: SessionsService;
@@ -119,7 +103,6 @@ class SidebarState {
     this.transport = services.transport;
     this.sessions = services.sessions;
     this.canvas = services.canvas;
-    this.collapsed = loadCollapsed();
   }
 
   detach(): void {

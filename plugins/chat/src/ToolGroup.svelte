@@ -1,13 +1,14 @@
 <script lang="ts">
   import type { IconComponent } from "@neoworks-dev/ui";
   import type { SessionView } from "@nib-ui/protocol";
-  import { describeCall } from "@nib-ui/ui-contracts";
+  import { describeCall, parseMcpToolName } from "@nib-ui/ui-contracts";
   import CaretDownIcon from "phosphor-svelte/lib/CaretDownIcon";
   import CaretUpIcon from "phosphor-svelte/lib/CaretUpIcon";
   import GlobeIcon from "phosphor-svelte/lib/GlobeIcon";
   import ListChecksIcon from "phosphor-svelte/lib/ListChecksIcon";
   import MagnifyingGlassIcon from "phosphor-svelte/lib/MagnifyingGlassIcon";
   import PencilSimpleIcon from "phosphor-svelte/lib/PencilSimpleIcon";
+  import PlugsConnectedIcon from "phosphor-svelte/lib/PlugsConnectedIcon";
   import RobotIcon from "phosphor-svelte/lib/RobotIcon";
   import TerminalWindowIcon from "phosphor-svelte/lib/TerminalWindowIcon";
   import WrenchIcon from "phosphor-svelte/lib/WrenchIcon";
@@ -22,7 +23,7 @@
     Explore: MagnifyingGlassIcon,
     Edit: PencilSimpleIcon,
     Plan: ListChecksIcon,
-    Agent: RobotIcon,
+    Agents: RobotIcon,
     Web: GlobeIcon,
   };
 
@@ -32,7 +33,14 @@
   let collapsed = $state(false);
   let openBlockId = $state<string | null>(null);
 
-  const Icon = $derived(icons[group.label] ?? WrenchIcon);
+  const Icon = $derived.by(() => {
+    const known = icons[group.label];
+    if (known) return known;
+    // A run the vocabulary has no verb for still says where it came from: an MCP
+    // server is a connection, anything else is a plain tool.
+    if (parseMcpToolName(group.blocks[0]?.toolName ?? "")) return PlugsConnectedIcon;
+    return WrenchIcon;
+  });
   const running = $derived(group.blocks.some((block) => !block.completed));
 </script>
 

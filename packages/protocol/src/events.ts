@@ -80,6 +80,8 @@ export const eventDataSchemas = {
     title: z.string().optional(),
     nativeSessionId: z.string().optional(),
     capabilities: harnessCapabilitiesSchema,
+    /** Set when another session's agent spawned this one through the agent-control tools. */
+    parentSessionId: z.string().optional(),
   }),
   /** Session-scoped metadata that arrives after creation or changes mid-session. */
   "session.meta": z.object({

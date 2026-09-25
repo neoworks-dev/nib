@@ -1,5 +1,5 @@
 import type { AttachmentsService, PaneAttachment, PaneEdge, PaneKind } from "@nib-ui/ui-contracts";
-import { listLeaves } from "../layout/frames";
+import { listLeaves } from "../layout/tree";
 import type { ReactivePaneRegistry } from "./panes.svelte";
 
 /**
@@ -11,9 +11,9 @@ export class PaneAttachments implements AttachmentsService {
   constructor(private readonly panes: ReactivePaneRegistry) {}
 
   siblings(instanceId: string): PaneAttachment[] {
-    const frame = this.panes.frameOf(instanceId);
-    if (!frame) return [];
-    return listLeaves(frame.root)
+    const dock = this.panes.dockOf(instanceId);
+    if (!dock) return [];
+    return listLeaves(dock.root)
       .filter((leaf) => leaf !== instanceId)
       .map((leaf) => this.panes.attachment(leaf))
       .filter((attachment): attachment is PaneAttachment => attachment !== undefined);

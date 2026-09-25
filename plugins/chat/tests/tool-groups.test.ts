@@ -70,6 +70,25 @@ describe("groupTurnBlocks", () => {
     const items = groupTurnBlocks([prose("t1"), toolUse("b1", "Bash", { command: "ls" })]);
     expect(items.map((item) => item.kind)).toEqual(["block", "group"]);
   });
+
+  test("agent-control calls run under one header whichever harness spelled them", () => {
+    const [group, ...rest] = groups([
+      toolUse("b1", "mcp__nib__send_to_agent", { sessionId: "a1", text: "go" }),
+      toolUse("b2", "send_to_agent", { sessionId: "a2", text: "you too" }),
+    ]);
+    expect(rest).toHaveLength(0);
+    expect(group?.label).toBe("Agents");
+    expect(groupCount(group!)).toBe("2 messages");
+  });
+
+  test("leaves a spawned agent standing in the turn, under either tool name", () => {
+    const items = groupTurnBlocks([
+      toolUse("b1", "spawn_agent", { harness: "codex", prompt: "port the API" }),
+      toolUse("b2", "mcp__nib__spawn_agent", { harness: "pi", prompt: "review it" }),
+      toolUse("b3", "mcp__nib__read_agent", { sessionId: "agent-1", wait: true }),
+    ]);
+    expect(items.map((item) => item.kind)).toEqual(["block", "block", "group"]);
+  });
 });
 
 describe("groupCount", () => {

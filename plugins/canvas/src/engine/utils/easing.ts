@@ -11,3 +11,12 @@ export function easeOutCubic(t: number): number {
 export function easeInCubic(t: number): number {
   return t * t * t;
 }
+
+/**
+ * The swoosh: almost all of the distance is covered in the first third and the
+ * rest is a glide into place. What a card coming out of a folder does — it is
+ * pulled out, and then it settles.
+ */
+export function easeOutExpo(t: number): number {
+  return t >= 1 ? 1 : 1 - 2 ** (-10 * t);
+}

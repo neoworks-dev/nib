@@ -9,10 +9,11 @@ import type {
   PermissionBehavior,
   PermissionRequestView,
   SessionCommand,
+  SessionDigest,
   SessionView,
 } from "@nib-ui/protocol";
 import type { Component } from "svelte";
-import type { VaultDoc } from "@nib-ui/vault";
+import type { TrashEntry, VaultDoc } from "@nib-ui/vault";
 import type { BoardDoc, BoardSummary, BoardWrite, CanvasRegistry } from "./canvas";
 import type { DesktopAgentService } from "./desktop-agent";
 import type { AttachmentsService, PaneRegistry } from "./panes";
@@ -34,6 +35,10 @@ export interface SessionSummary {
   live: boolean;
   resumable: boolean;
   nativeSessionId: string | null;
+  /** The session whose agent spawned this one; null for a session the user started. */
+  parentSessionId: string | null;
+  /** What the chat was asked and where it has got to, for anything that stands for it. */
+  digest: SessionDigest;
 }
 
 export interface DirectoryEntry {
@@ -121,6 +126,17 @@ export interface TransportService {
   writeVaultText(cwd: string, path: string, text: string): Promise<void>;
   /** Deletes an item from the vault. Unlinking a card from a board is not this. */
   deleteVaultEntry(cwd: string, path: string): Promise<void>;
+  /**
+   * Moves an item into the recycling bin. This is what Delete on a card does: a
+   * gesture that reaches the filesystem has to be reversible, so the entry is
+   * filed rather than unlinked and the undo stack can put it back (PLAN §13).
+   */
+  trashVaultEntry(cwd: string, path: string): Promise<TrashEntry>;
+  /** Puts a binned entry back, answering with where it actually landed. */
+  restoreTrashEntry(cwd: string, id: string): Promise<{ path: string }>;
+  listTrash(cwd: string): Promise<TrashEntry[]>;
+  /** Throws bytes away for good: one entry, or the whole bin when no id is given. */
+  purgeTrash(cwd: string, id?: string): Promise<void>;
   /** The vault changed on disk. A file the model wrote arrives through here. */
   subscribeVault(cwd: string, onChange: () => void): Disposer;
 }
@@ -229,6 +245,7 @@ export interface RendererRegistry {
   resolvePermission(toolName: string): Component<PermissionRendererProps> | null;
 }
 
+export * from "./agent-tabs";
 export * from "./canvas";
 export * from "./desktop";
 export * from "./desktop-agent";
@@ -240,15 +257,20 @@ export * from "./tool-summary";
 
 export const slotNames = [
   /**
-   * The left rail. The shell reserves the space and draws nothing in it, so the
-   * project list and everything else in there is contributed rather than built in.
+   * The floating toolbar in the top-left corner of the board. The shell draws the
+   * bar and nothing in it, so the project switcher and everything else there is
+   * contributed rather than built in.
    */
-  "app.sidebar",
-  "session.header",
+  "app.toolbar",
+  /**
+   * The chat pane's title row: actions on the conversation it shows, and what it
+   * has cost so far. Everything session-scoped that used to sit in the toolbar
+   * belongs here, beside the conversation it describes.
+   */
+  "chat.actions",
   "composer.actions",
   "message.actions",
   "message.footer",
-  "statusbar",
   "settings.section",
 ] as const;
 
@@ -300,13 +322,60 @@ export interface FileViewerService {
    * addressed through one.
    */
   openVaultFile(cwd: string, path: string, options?: FileViewerOpenOptions): void | Promise<void>;
+  /**
+   * Any file of a project, named by the directory it sits in rather than by a
+   * session in it: a project is browsable with no conversation open. The tab is
+   * filed under the project-relative path, which is the path a session would
+   * name too, so `close` takes it as it is.
+   */
+  openProjectFile(cwd: string, path: string, options?: FileViewerOpenOptions): void | Promise<void>;
   close(path: string): void;
+  /**
+   * Closes a vault note by its vault-relative path. Separate from `close` because
+   * a vault tab is labelled by where it is in the project rather than by the path
+   * a session would name, and the caller holding the path should not have to know
+   * which of the two the viewer filed it under.
+   */
+  closeVaultFile(path: string): void;
+}
+
+/** One row in the palette that is not a command: a note, a file, a board. */
+export interface SearchResult {
+  id: string;
+  title: string;
+  /** Where it is, shown dim beside the title. */
+  detail?: string;
+  open(): void | Promise<void>;
+}
+
+/**
+ * Something the palette searches besides its own commands. Synchronous on
+ * purpose: a provider answers from what the client already holds, so a keystroke
+ * costs a filter and results never arrive for a query the user has moved past.
+ */
+export interface SearchProvider {
+  /** Heading the rows appear under. */
+  group: string;
+  order?: number;
+  search(query: string): SearchResult[];
+}
+
+/**
+ * Contributed by the web-browser plugin, so a card that stands for a page can
+ * open it in the app without importing the browser itself. Clicking such a card
+ * is the only way the pane is reached: it is not in the toolbar.
+ */
+export interface BrowserService {
+  open(url: string): void;
 }
 
 export interface CommandRegistry {
   register(command: CommandRegistration): Disposer;
   list(): CommandRegistration[];
   run(id: string): void | Promise<void>;
+  /** What the palette searches besides commands; contributed by plugins. */
+  registerSearch(provider: SearchProvider): Disposer;
+  search(query: string): { group: string; results: SearchResult[] }[];
   readonly paletteOpen: boolean;
   togglePalette(open?: boolean): void;
 }
@@ -321,6 +390,7 @@ declare module "@nib-ui/kernel" {
     panes: PaneRegistry;
     attachments: AttachmentsService;
     fileViewer: FileViewerService;
+    browser: BrowserService;
     canvas: CanvasRegistry;
     desktopAgent: DesktopAgentService;
   }

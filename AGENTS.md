@@ -47,6 +47,45 @@ If `@neoworks-dev/ui` is unresolved:
 
 ---
 
+## Repository Map
+
+Bun workspaces monorepo. Three roots: `apps/web` (SvelteKit app, also packaged for Electron via `apps/desktop`), `packages/*` (shared libraries), `plugins/*` (features loaded into the kernel at runtime). Lint plugins live in `tools/`. Tests sit in each workspace's own `tests/` directory and all run from `bun test` at the root.
+
+### Packages
+
+- `@nib-ui/kernel` — the plugin kernel: `Plugin`, `Context`, revertible `ctx.effect`, `inject`/`provide`. See the `extension-system` skill before writing one.
+- `@nib-ui/ui-contracts` — the service interfaces plugins talk through (`PaneRegistry`, `TransportService`, `SessionsService`, `CanvasObject`, `CanvasMenuItem`).
+- `@nib-ui/protocol` — harness/session wire types and event reduction.
+- `@nib-ui/vault` — the markdown vault as data: `scan`/`tree` (index and snapshot), `placements`, `frontmatter`, `links`, `trash`. Pure, no IO.
+
+### The vault is the truth
+
+A project's vault — a directory of markdown, images and transcripts — is what the board draws. The board document holds **only** placements (`x/y/w/h/z`, optional `stack`) plus authored objects; a card stands for a file, so creating, moving or deleting one is a filesystem operation and the scan is what puts it on screen.
+
+- Server writes: `apps/web/src/lib/server/vault-write.ts` (`moveVaultEntry` — `mv`, creates the destination directory, rewrites `[[links]]`; `writeVaultFile`; `writeVaultText`; `deleteVaultEntry`), `vault-trash.ts` (the recycling bin behind Delete), `board-store.ts` (board documents).
+- Client transport: `apps/web/src/lib/client/plugins/transport.ts` — one method per API route; plugins never call `fetch` for vault work.
+
+### The canvas plugin (`plugins/canvas`)
+
+The board itself: a Pixi surface, its cards, and everything the right button offers.
+
+- `state.svelte.ts` — `canvasState`, the one store the app and the menu reach into. Holds `board`, `vault`, `registry`, `editor` and the selection-level gestures (`collapseSelection`, `arrangeSelection`).
+- `vault.svelte.ts` — `VaultStore`: which directory the board shows, what it holds, previews, piles, and every write that reaches the vault. The only writer of placements.
+- `board-view.ts` — the snapshot-to-cards derivation, the per-kind card sizes (`FOLDER_SIZE`, `STICKY_SIZE`, …) and the folder-preview layout.
+- `stacks.ts` — pile and grid geometry: `collapse`, `spread`, `arrangeGrid`, `dissolve`, `release`. Pure.
+- `menu.ts` — the whole right-click menu, built pure from state plus callbacks, so what a selection offers is testable without a renderer.
+- `theme.ts` — every drawn constant, including `CARD_GAP` (the one gutter a drag snaps to and the grid arranges by).
+- `index.ts` — the plugin: registers panes, card kinds, the context menu, commands, and hands the menu its phosphor icons.
+- `engine/` — the Pixi layer: camera, tools, snapping, hit testing. `objects/` — one renderer per card kind.
+
+### Gotchas
+
+- `plugins/canvas/src/state.svelte.ts` holds a literal `\0` inside a key template. `grep`/`rg` treat the file as binary and print **nothing** for a match; pass `-a` (`rg -na …`) when searching it.
+- `bun run lint` is not green on this tree — several plugins carry pre-existing errors. Compare the output against the files you touched rather than the exit code.
+- `plugins/trajectory-inspector/src/filter.ts` has two pre-existing errors, so `bun run typecheck` and `bun run check:svelte` both exit non-zero on a clean tree.
+
+---
+
 ## Code Quality & Architecture
 
 Prioritize cohesion, standard TypeScript idioms, and end-to-end readability over arbitrary line-count rules or micro-abstractions.

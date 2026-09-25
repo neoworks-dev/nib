@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Button } from "@neoworks-dev/ui";
   import type { MessageAttachment, SessionView } from "@nib-ui/protocol";
+  import type { SessionSummary } from "@nib-ui/ui-contracts";
   import QuotesIcon from "phosphor-svelte/lib/QuotesIcon";
   import XIcon from "phosphor-svelte/lib/XIcon";
   import { createAnnotation, type StagedAnnotation } from "./annotations";
@@ -17,6 +18,9 @@
     onAnnotationAdd,
     onAnnotationRemove,
     onAttachmentsSent,
+    agents,
+    onSelectAgent,
+    onSwitchAgent,
   }: {
     /** The task this surface talks to — not necessarily the active one. */
     session: SessionView;
@@ -33,6 +37,11 @@
     onAnnotationAdd?: (annotation: StagedAnnotation) => void;
     onAnnotationRemove?: (annotationId: string) => void;
     onAttachmentsSent?: () => void;
+    /** The session's family, drawn as tabs on the composer; one member is enough to draw none. */
+    agents?: SessionSummary[];
+    onSelectAgent?: (sessionId: string) => void;
+    /** Steps to the agent before or after this one; the composer keys it. */
+    onSwitchAgent?: (direction: -1 | 1) => void;
   } = $props();
 
   interface SelectionOffer {
@@ -295,6 +304,9 @@
     {annotations}
     {attachments}
     {onAttachmentsSent}
+    {agents}
+    {onSelectAgent}
+    {onSwitchAgent}
     onAnnotationsSent={clearAnnotations}
   />
 </div>

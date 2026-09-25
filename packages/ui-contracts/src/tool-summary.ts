@@ -1,4 +1,9 @@
-import { type BlockView, blockToolInput } from "@nib-ui/protocol";
+import {
+  agentControlServerName,
+  agentToolNames,
+  type BlockView,
+  blockToolInput,
+} from "@nib-ui/protocol";
 
 /**
  * How one tool call reads in the transcript. `label` and `noun` name the run it
@@ -18,8 +23,32 @@ export interface StepDescriptor {
   subject: string;
 }
 
+/** `mcp__nib__send_to_agent` → server `nib`, tool `send_to_agent`; null for a built-in tool. */
+export function parseMcpToolName(toolName: string): { server: string; tool: string } | null {
+  const parts = toolName.split("__");
+  if (parts.length < 3 || parts[0] !== "mcp") return null;
+  const [, server, ...tool] = parts;
+  if (!server || tool.length === 0) return null;
+  return { server, tool: tool.join("__") };
+}
+
+/**
+ * The name a card puts on a call. An MCP tool arrives wearing its transport —
+ * `mcp__nib__send_to_agent` — which says where it came from rather than what it
+ * did; everything else is already named for a reader.
+ */
+export function toolDisplayName(toolName: string): string {
+  const mcp = parseMcpToolName(toolName);
+  return mcp ? sentenceCase(mcp.tool) : toolName;
+}
+
 export function describeCall(block: BlockView): StepDescriptor {
-  const toolName = block.toolName ?? "tool";
+  const called = block.toolName ?? "tool";
+  const mcp = parseMcpToolName(called);
+  // pi runs the agent-control tools in-process under their bare names while the
+  // other harnesses reach them over MCP. One spelling here, so a run of them
+  // reads the same whichever harness logged it.
+  const toolName = mcp?.server === agentControlServerName ? mcp.tool : called;
   const raw = blockToolInput(block);
   // While the call streams, the input is still unparseable JSON — the row reads
   // the value out of the fragment so the command appears as it is written.
@@ -55,14 +84,62 @@ export function describeCall(block: BlockView): StepDescriptor {
         subject: "the plan",
       };
     case "Task":
-      return step("Agent", "task", "Delegated", field("description"), oneLine);
+      return step("Agents", "task", "Delegated", field("description"), oneLine);
+    case agentToolNames.spawn:
+      return step("Agents", "agent", "Started", field("prompt"), oneLine);
+    case agentToolNames.send:
+      return step("Agents", "message", "Sent", field("text"), oneLine);
+    case agentToolNames.read:
+      return step("Agents", "check", "Read", field("sessionId"), oneLine);
+    case agentToolNames.stop:
+      return step("Agents", "stop", "Stopped", field("sessionId"), oneLine);
+    case agentToolNames.list:
+      return { label: "Agents", noun: "check", verb: "Listed agents", detail: "", subject: "" };
+    case agentToolNames.harnesses:
+      return { label: "Agents", noun: "check", verb: "Listed harnesses", detail: "", subject: "" };
+    case agentToolNames.canvas:
+      return { label: "Canvas", noun: "check", verb: "Read the board", detail: "", subject: "" };
+    case agentToolNames.place:
+      return {
+        label: "Canvas",
+        noun: "arrangement",
+        verb: "Arranged the board",
+        detail: "",
+        subject: "",
+      };
     case "WebFetch":
       return step("Web", "fetch", "Fetched", field("url"), hostname);
     case "WebSearch":
       return step("Web", "search", "Searched the web for", field("query"), oneLine);
     default:
-      return { label: toolName, noun: "call", verb: toolName, detail: "", subject: "" };
+      // An MCP server is a run of its own: its calls file under the server, and
+      // each line says which of its tools ran rather than repeating the header.
+      if (mcp)
+        return step(sentenceCase(mcp.server), "call", sentenceCase(mcp.tool), lead(input), oneLine);
+      return { label: toolName, noun: "call", verb: toolName, detail: lead(input), subject: "" };
   }
+}
+
+/**
+ * What a call nobody knows how to describe was about: its first non-empty string
+ * argument. A tool that takes a path, a query or an id puts it first far more
+ * often than not, and a wrong guess costs a row of grey text.
+ */
+function lead(input: Record<string, unknown>): string {
+  for (const value of Object.values(input)) {
+    if (typeof value === "string" && value.trim().length > 0) return oneLine(value);
+  }
+  return "";
+}
+
+/** `send_to_agent` → `Send to agent`, `readFile` → `Read file`. */
+function sentenceCase(name: string): string {
+  const words = name
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z\d])([A-Z])/g, "$1 $2")
+    .trim()
+    .toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 function step(

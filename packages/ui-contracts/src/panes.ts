@@ -13,6 +13,8 @@ export type KnownPaneKind =
   | "desktop"
   | "editor"
   | "explorer"
+  /** Sits beside a chat and shows what is under it: the trajectory inspector. */
+  | "inspector"
   | "browser"
   | "git"
   | "tasks"
@@ -29,14 +31,6 @@ export interface PaneInstance {
   params?: Record<string, unknown>;
 }
 
-/** Structurally the app's `WindowRect`; contracts cannot import from the app. */
-export interface PaneRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
 export type PaneAxis = "row" | "column";
 
 export type PaneEdge = "left" | "right" | "top" | "bottom";
@@ -46,16 +40,20 @@ export type PaneNode =
   | { kind: "leaf"; instanceId: string }
   | { kind: "split"; axis: PaneAxis; children: PaneNode[]; sizes: number[] };
 
-/** A floating window: where it floats, and the tree of instances inside it. */
-export interface PaneFrame {
-  frameId: string;
-  rect: PaneRect;
+/**
+ * Panes are docked against the edges of the main area, never floated over it:
+ * the board keeps whatever the docks leave, and it is never nothing. One dock per
+ * edge, holding a tree of instances; `size` is the fraction of the area it takes
+ * along its own axis — width for a side dock, height for a top or bottom one.
+ */
+export interface PaneDock {
+  edge: PaneEdge;
+  size: number;
   root: PaneNode;
 }
 
-/** Frame order is the stacking order, last on top. */
 export interface PaneLayout {
-  frames: PaneFrame[];
+  docks: PaneDock[];
   instances: PaneInstance[];
 }
 
@@ -73,6 +71,15 @@ export interface PaneDefinition {
   title: string;
   /** Phosphor icon component shown in the pane's title bar and in its trigger. */
   icon?: Component<{ size?: number }>;
+  /**
+   * How the title bar is drawn. `bar` is the tool-pane default: a bordered strip
+   * above the content. `quiet` lays the bar over the top of the content with no
+   * background of its own and shows it only while the pointer is over the pane,
+   * for a pane that is a page rather than a tool.
+   */
+  chrome?: "bar" | "quiet";
+  /** A title for one instance, from what it was opened with; falls back to `title`. */
+  label?: (params: Record<string, unknown> | undefined) => string;
   component: Component<PaneProps>;
 }
 
@@ -129,10 +136,10 @@ export interface PaneAttachment {
  * subscribe to and nothing to unsubscribe from.
  */
 export interface AttachmentsService {
-  /** The other leaves of the frame this instance is in, in layout order. */
+  /** The other leaves of the dock this instance is in, in layout order. */
   siblings(instanceId: string): PaneAttachment[];
   find(instanceId: string, kind: PaneKind): PaneAttachment | undefined;
   attach(instanceId: string, targetInstanceId: string, edge: PaneEdge): void;
-  /** Moves the instance out of its frame into one of its own. */
+  /** Moves the instance to a dock of its own, on the first edge with none. */
   detach(instanceId: string): void;
 }

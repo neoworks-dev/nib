@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import type { Disposer } from "@nib-ui/kernel";
 import type {
   BoardDoc,
+  CanvasObject,
   CreateSessionInput,
   PaneRegistry,
   SessionsService,
@@ -231,5 +232,46 @@ describe("the board composer", () => {
     expect(await canvasState.startWorkstream("port the engine", { x: 0, y: 0 })).toBeNull();
     expect(cards()).toHaveLength(0);
     expect(canvasState.error).toBe("open a project before starting a workstream");
+  });
+});
+
+describe("where the composer comes from", () => {
+  test("the right button on empty table never opens one: the board's is docked", () => {
+    const registry = canvasState.registry;
+    const dispose = registry.registerContextMenu({
+      items: (target) =>
+        target === null
+          ? [{ kind: "action", id: "board.note", label: "Write a note here", run: () => {} }]
+          : [],
+    });
+
+    registry.contextMenu(null, { x: 40, y: 60 }, { x: 10, y: 12 });
+
+    expect(registry.menu?.items.map((item) => item.id)).toEqual(["board.note"]);
+    expect(registry.prompt).toBeNull();
+    dispose();
+  });
+
+  test("a card's plus dragged off opens one about that card", () => {
+    const registry = canvasState.registry;
+
+    registry.spawnFrom("c1", { x: 40, y: 60 });
+
+    expect(registry.prompt).toEqual({ sourceId: "c1", at: { x: 40, y: 60 } });
+    registry.closePrompt();
+  });
+
+  test("the right button on a card is still that card's menu", () => {
+    const registry = canvasState.registry;
+    const card = { id: "c1", kind: "workstream", x: 0, y: 0 } as unknown as CanvasObject;
+    const dispose = registry.registerContextMenu({
+      items: () => [{ kind: "action", id: "card.act", label: "Act on it", run: () => {} }],
+    });
+
+    registry.contextMenu(card, { x: 40, y: 60 }, { x: 10, y: 12 });
+
+    expect(registry.prompt).toBeNull();
+    expect(registry.menu?.items.map((item) => item.id)).toEqual(["card.act"]);
+    dispose();
   });
 });

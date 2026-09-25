@@ -82,13 +82,13 @@ describe("parseBoard", () => {
 
 describe("parseBoard layout", () => {
   const layout: PaneLayout = {
-    frames: [
+    docks: [
       {
-        frameId: "f1",
-        rect: { x: 10, y: 20, width: 600, height: 400 },
+        edge: "right",
+        size: 0.3,
         root: {
           kind: "split",
-          axis: "row",
+          axis: "column",
           sizes: [0.6, 0.4],
           children: [
             { kind: "leaf", instanceId: "i1" },
@@ -103,14 +103,34 @@ describe("parseBoard layout", () => {
     ],
   };
 
-  it("round-trips the frames, the tree and each instance with its params", () => {
+  it("round-trips the docks, the tree and each instance with its params", () => {
     expect(parseBoard({ rev: 2, cwd, objects: [], layout }, cwd).layout).toEqual(layout);
   });
 
   it("a board without a layout has none rather than an empty one", () => {
     expect(parseBoard({ rev: 1, cwd, objects: [] }, cwd).layout).toBeUndefined();
     expect(parseBoard({ layout: "nonsense" }, cwd).layout).toBeUndefined();
-    expect(parseBoard({ layout: { frames: [], instances: [] } }, cwd).layout).toBeUndefined();
+    expect(parseBoard({ layout: { docks: [], instances: [] } }, cwd).layout).toBeUndefined();
+  });
+
+  it("a layout written by a build that floated its panes opens with none", () => {
+    expect(
+      parseBoard(
+        {
+          layout: {
+            instances: layout.instances,
+            frames: [
+              {
+                frameId: "f1",
+                rect: { x: 0, y: 0, width: 300, height: 200 },
+                root: { kind: "leaf", instanceId: "i1" },
+              },
+            ],
+          },
+        },
+        cwd,
+      ).layout,
+    ).toBeUndefined();
   });
 
   it("a leaf naming an instance the layout does not list is dropped", () => {
@@ -118,9 +138,9 @@ describe("parseBoard layout", () => {
       {
         layout: {
           ...layout,
-          frames: [
+          docks: [
             {
-              ...layout.frames[0],
+              ...layout.docks[0],
               root: {
                 kind: "split",
                 axis: "row",
@@ -137,73 +157,64 @@ describe("parseBoard layout", () => {
       cwd,
     );
 
-    expect(parsed.layout?.frames[0]!.root).toEqual({ kind: "leaf", instanceId: "i1" });
+    expect(parsed.layout?.docks[0]!.root).toEqual({ kind: "leaf", instanceId: "i1" });
     expect(parsed.layout?.instances).toEqual([{ instanceId: "i1", paneId: "git" }]);
   });
 
-  it("a frame with a broken rect or an unreadable tree is dropped, not the whole layout", () => {
+  it("a dock with no edge, no size or an unreadable tree is dropped, not the whole layout", () => {
     const parsed = parseBoard(
       {
         layout: {
           instances: layout.instances,
-          frames: [
-            {
-              frameId: "bad",
-              rect: { x: 0, y: 0, width: "wide" },
-              root: { kind: "leaf", instanceId: "i1" },
-            },
-            {
-              frameId: "alsoBad",
-              rect: { x: 0, y: 0, width: 10, height: 10 },
-              root: { kind: "tabs" },
-            },
-            {
-              frameId: "f2",
-              rect: { x: 1, y: 2, width: 300, height: 200 },
-              root: { kind: "leaf", instanceId: "i2" },
-            },
+          docks: [
+            { edge: "middle", size: 0.3, root: { kind: "leaf", instanceId: "i1" } },
+            { edge: "left", size: "wide", root: { kind: "leaf", instanceId: "i1" } },
+            { edge: "top", size: 0.3, root: { kind: "tabs" } },
+            { edge: "bottom", size: 0.25, root: { kind: "leaf", instanceId: "i2" } },
           ],
         },
       },
       cwd,
     );
 
-    expect(parsed.layout?.frames.map((frame) => frame.frameId)).toEqual(["f2"]);
+    expect(parsed.layout?.docks.map((dock) => dock.edge)).toEqual(["bottom"]);
     expect(parsed.layout?.instances).toEqual([
       { instanceId: "i2", paneId: "chat", params: { sessionId: "s1" } },
     ]);
   });
 
-  it("an instance claimed by two frames is only rendered by the first", () => {
-    const frame = {
-      frameId: "f1",
-      rect: { x: 0, y: 0, width: 300, height: 200 },
-      root: { kind: "leaf", instanceId: "i1" },
-    };
-    const parsed = parseBoard(
-      { layout: { instances: layout.instances, frames: [frame, { ...frame, frameId: "f2" }] } },
-      cwd,
-    );
-
-    expect(parsed.layout?.frames.map((entry) => entry.frameId)).toEqual(["f1"]);
-  });
-
-  it("two frames sharing an id keep only the first, which the shell can address", () => {
-    const rect = { x: 0, y: 0, width: 300, height: 200 };
+  it("an instance claimed by two docks is only rendered by the first", () => {
     const parsed = parseBoard(
       {
         layout: {
           instances: layout.instances,
-          frames: [
-            { frameId: "f1", rect, root: { kind: "leaf", instanceId: "i1" } },
-            { frameId: "f1", rect, root: { kind: "leaf", instanceId: "i2" } },
+          docks: [
+            { edge: "right", size: 0.3, root: { kind: "leaf", instanceId: "i1" } },
+            { edge: "left", size: 0.3, root: { kind: "leaf", instanceId: "i1" } },
           ],
         },
       },
       cwd,
     );
 
-    expect(parsed.layout?.frames).toHaveLength(1);
+    expect(parsed.layout?.docks.map((dock) => dock.edge)).toEqual(["right"]);
+  });
+
+  it("two docks against one edge keep only the first: an edge holds one", () => {
+    const parsed = parseBoard(
+      {
+        layout: {
+          instances: layout.instances,
+          docks: [
+            { edge: "right", size: 0.3, root: { kind: "leaf", instanceId: "i1" } },
+            { edge: "right", size: 0.5, root: { kind: "leaf", instanceId: "i2" } },
+          ],
+        },
+      },
+      cwd,
+    );
+
+    expect(parsed.layout?.docks).toHaveLength(1);
     expect(parsed.layout?.instances).toEqual([{ instanceId: "i1", paneId: "git" }]);
   });
 
@@ -212,15 +223,13 @@ describe("parseBoard layout", () => {
       {
         layout: {
           instances: layout.instances,
-          frames: [
-            { ...layout.frames[0], root: { ...layout.frames[0]!.root, sizes: [3, "wide"] } },
-          ],
+          docks: [{ ...layout.docks[0], root: { ...layout.docks[0]!.root, sizes: [3, "wide"] } }],
         },
       },
       cwd,
     );
 
-    const root = parsed.layout?.frames[0]!.root;
+    const root = parsed.layout?.docks[0]!.root;
     expect(root?.kind === "split" && root.sizes.reduce((sum, size) => sum + size, 0)).toBeCloseTo(
       1,
     );
@@ -234,9 +243,9 @@ describe("parseBoard layout", () => {
       {
         layout: {
           instances: [{ instanceId: "i1", paneId: "git" }],
-          frames: [
+          docks: [
             {
-              ...layout.frames[0],
+              ...layout.docks[0],
               root: {
                 kind: "split",
                 axis: "column",
@@ -250,7 +259,7 @@ describe("parseBoard layout", () => {
       cwd,
     );
 
-    expect(parsed.layout?.frames[0]!.root).toEqual({ kind: "leaf", instanceId: "i1" });
+    expect(parsed.layout?.docks[0]!.root).toEqual({ kind: "leaf", instanceId: "i1" });
   });
 });
 
@@ -317,13 +326,7 @@ describe("board files", () => {
 
   it("the pane layout survives the write and reads back with the board", async () => {
     const layout: BoardDoc["layout"] = {
-      frames: [
-        {
-          frameId: "f1",
-          rect: { x: 4, y: 8, width: 500, height: 300 },
-          root: { kind: "leaf", instanceId: "i1" },
-        },
-      ],
+      docks: [{ edge: "right", size: 0.3, root: { kind: "leaf", instanceId: "i1" } }],
       instances: [{ instanceId: "i1", paneId: "git" }],
     };
 

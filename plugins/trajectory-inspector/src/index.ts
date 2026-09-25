@@ -1,25 +1,43 @@
 import type { Plugin } from "@nib-ui/kernel";
-import { inspectorState } from "./state.svelte";
-import TrajectoryPanel from "./TrajectoryPanel.svelte";
+import PulseIcon from "phosphor-svelte/lib/PulseIcon";
+import { toggleTrajectory, trajectoryPaneId } from "./open";
+import TrajectoryButton from "./TrajectoryButton.svelte";
+import TrajectoryPane from "./TrajectoryPane.svelte";
 
+/**
+ * The trajectory inspector: a property pane of a chat. It docks beside the
+ * conversation it inspects, opened from a button in that chat's title row, and
+ * reads the chat's session rather than the one in the foreground.
+ */
 export const trajectoryInspectorPlugin: Plugin = {
   name: "trajectory-inspector",
-  inject: ["slots", "commands", "sessions"],
+  inject: ["slots", "commands", "panes", "attachments", "sessions"],
   apply(ctx) {
-    inspectorState.sessions = ctx.require("sessions");
+    const panes = ctx.require("panes");
+    const attachments = ctx.require("attachments");
+
     ctx.effect(() =>
-      ctx.require("slots").register("session.header", { component: TrajectoryPanel, order: 20 }),
+      panes.register({
+        id: trajectoryPaneId,
+        kind: "inspector",
+        title: "Trajectory",
+        icon: PulseIcon,
+        component: TrajectoryPane,
+      }),
+    );
+    ctx.effect(() =>
+      ctx.require("slots").register("chat.actions", {
+        component: TrajectoryButton,
+        order: 20,
+        when: (session) => session !== null,
+      }),
     );
     ctx.effect(() =>
       ctx.require("commands").register({
         id: "trajectory.toggle",
         title: "Toggle trajectory inspector",
-        run: () => inspectorState.toggle(),
+        run: () => toggleTrajectory(panes, attachments),
       }),
     );
-    ctx.effect(() => () => {
-      inspectorState.reset();
-      inspectorState.sessions = null;
-    });
   },
 };

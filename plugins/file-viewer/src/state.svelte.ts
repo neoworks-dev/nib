@@ -8,6 +8,15 @@ export interface OpenFile {
 
 const maxTabs = 8;
 
+/**
+ * How a vault note is filed among the tabs: the vault directory in front of it,
+ * which both names where the file actually is and keeps it from colliding with a
+ * workspace file of the same relative path.
+ */
+export function vaultTabPath(path: string): string {
+  return `.nib/${path}`;
+}
+
 class FileViewerState {
   tabs = $state<OpenFile[]>([]);
   activePath = $state<string | null>(null);
@@ -30,8 +39,10 @@ class FileViewerState {
    */
   async open(sessionId: string, path: string, activate = true): Promise<void> {
     const file = await this.read(sessionId, path);
-    if (!file) return;
+    if (file) this.show(file, activate);
+  }
 
+  private show(file: OpenFile, activate: boolean): void {
     if (this.tabs.some((tab) => tab.path === file.path)) {
       this.tabs = this.tabs.map((tab) => (tab.path === file.path ? file : tab));
     } else {
@@ -47,6 +58,28 @@ class FileViewerState {
     }
     // An empty viewer has no tab to protect, so the first background open shows.
     if (activate || this.activePath === null) this.activePath = file.path;
+  }
+
+  /**
+   * A note from a project's vault. The tab is labelled with the vault directory in
+   * front of it, which both names where the file actually is and keeps it from
+   * colliding with a workspace file of the same relative path.
+   */
+  async openVault(cwd: string, path: string, activate = true): Promise<void> {
+    const params = new URLSearchParams({ cwd, path });
+    const file = await this.fetchText(`/api/vault/file?${params.toString()}`, vaultTabPath(path));
+    if (file) this.show(file, activate);
+  }
+
+  /**
+   * A file out of a project directory. It is filed under the project-relative
+   * path, the same one a session in that directory would name, so the same file
+   * reached either way is the same tab.
+   */
+  async openProject(cwd: string, path: string, activate = true): Promise<void> {
+    const params = new URLSearchParams({ cwd, path });
+    const file = await this.fetchText(`/api/fs/file?${params.toString()}`, path);
+    if (file) this.show(file, activate);
   }
 
   /** Re-reads an open file in place, leaving tab order and focus alone. */
@@ -84,6 +117,23 @@ class FileViewerState {
       const file = (await response.json()) as { path: string; text: string };
       this.error = null;
       return { path: file.path, text: file.text };
+    } catch (cause) {
+      this.error = cause instanceof Error ? cause.message : String(cause);
+      return null;
+    }
+  }
+
+  /**
+   * The vault route serves bytes rather than a json document, deliberately: it is
+   * the same endpoint a card loads an image from, and nothing it hands back is
+   * allowed to be a document this origin runs.
+   */
+  private async fetchText(url: string, label: string): Promise<OpenFile | null> {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(await response.text());
+      this.error = null;
+      return { path: label, text: await response.text() };
     } catch (cause) {
       this.error = cause instanceof Error ? cause.message : String(cause);
       return null;

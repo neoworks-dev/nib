@@ -1,14 +1,17 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { SandboxMode, Thread, ThreadOptions } from "@openai/codex-sdk";
+import type { CodexOptions, SandboxMode, Thread, ThreadOptions } from "@openai/codex-sdk";
 import {
+  agentControlServerName,
+  agentToolTimeoutSeconds,
   attachmentMetadata,
   composeAttachmentPrompt,
   type CreateSessionOptions,
   type EmitEvent,
   type HarnessAdapter,
   type HarnessSession,
+  type ModelInfo,
 } from "@nib-ui/protocol";
 import { resolveCodexExecutable } from "./binary";
 import {
@@ -49,6 +52,13 @@ export function createCodexAdapter(config: CodexHarnessConfig): HarnessAdapter {
     defaultPermissionMode: config.sandboxMode ?? defaultSandboxMode,
     models: codexModels,
     defaultModel: config.defaultModel ?? codexDefaultModel.id,
+    listModels: async (): Promise<ModelInfo[]> => {
+      try {
+        return [codexDefaultModel, ...(await readModelCache())];
+      } catch {
+        return codexModels;
+      }
+    },
     createSession: (opts, emit) => startSession(harnessId, config, opts, emit),
     resumeSession: (nativeSessionId, opts, emit) => {
       if (opts.fork) throw new Error("codex cannot fork a thread");
@@ -67,7 +77,7 @@ async function startSession(
   const executable = resolveCodexExecutable(config.executable);
   // Dynamic so the SDK never lands in a bundle that the client could pull in.
   const { Codex } = await import("@openai/codex-sdk");
-  const codex = new Codex({ codexPathOverride: executable });
+  const codex = new Codex(codexOptions(executable, opts));
   const mountSandboxMode = config.sandboxMode ?? defaultSandboxMode;
 
   let threadOptions: ThreadOptions = {
@@ -85,7 +95,12 @@ async function startSession(
     ? codex.resumeThread(resumeThreadId, threadOptions)
     : codex.startThread(threadOptions);
 
-  let state: CodexStreamState = createCodexStreamState(opts.cwd, resumeThreadId ?? null, harnessId);
+  let state: CodexStreamState = createCodexStreamState(
+    opts.cwd,
+    resumeThreadId ?? null,
+    harnessId,
+    resumeThreadId ? attachPrefix() : undefined,
+  );
   let turns: Promise<void> = Promise.resolve();
   let currentTurn: AbortController | null = null;
   let disposed = false;
@@ -186,14 +201,49 @@ async function startSession(
 }
 
 /**
- * The CLI caches the account's model list in `$CODEX_HOME/models_cache.json` and
- * exposes no query command, so an absent or unreadable cache simply leaves the
- * composer on the adapter's static list.
+ * A resumed thread writes onto a log whose earlier turns are already numbered
+ * from one, and this process never sees how far they got; a prefix unique to
+ * the attach keeps its ids clear of theirs.
  */
-async function publishModels(emit: EmitEvent): Promise<void> {
+function attachPrefix(): string {
+  return `${Date.now().toString(36)}-`;
+}
+
+/**
+ * Codex takes MCP servers as config, not as a session option: the SDK flattens
+ * `config` into `--config mcp_servers.nib.url="…"` overrides on the `codex exec`
+ * command line, and the CLI reads a `url` key as a streamable-HTTP server. The
+ * instance is per session here, so the endpoint is the calling agent's own.
+ */
+export function codexOptions(executable: string, opts: CreateSessionOptions): CodexOptions {
+  if (!opts.agentControl) return { codexPathOverride: executable };
+  return {
+    codexPathOverride: executable,
+    config: {
+      mcp_servers: {
+        [agentControlServerName]: {
+          url: opts.agentControl.url,
+          tool_timeout_sec: agentToolTimeoutSeconds,
+        },
+      },
+    },
+  };
+}
+
+/**
+ * The CLI caches the account's model list in `$CODEX_HOME/models_cache.json` and
+ * exposes no query command, so this is the only way to name the models without
+ * running it. Throws when the cache is absent or unreadable.
+ */
+async function readModelCache(): Promise<ModelInfo[]> {
   const codexHome = process.env.CODEX_HOME?.trim() || join(homedir(), ".codex");
+  return parseModelCache(await readFile(join(codexHome, "models_cache.json"), "utf8"));
+}
+
+/** An absent or unreadable cache simply leaves the composer on the adapter's static list. */
+async function publishModels(emit: EmitEvent): Promise<void> {
   try {
-    const models = parseModelCache(await readFile(join(codexHome, "models_cache.json"), "utf8"));
+    const models = await readModelCache();
     if (models.length === 0) return;
     emit({ type: "session.meta", data: { models: [codexDefaultModel, ...models] } });
   } catch (error) {

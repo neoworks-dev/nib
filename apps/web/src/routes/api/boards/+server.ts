@@ -1,4 +1,4 @@
-import type { BoardDoc } from "@nib-ui/ui-contracts";
+import type { BoardWrite } from "@nib-ui/ui-contracts";
 import { error, json, type RequestHandler } from "@sveltejs/kit";
 import { StaleBoardWriteError } from "$lib/server/board-store";
 import { boards } from "$lib/server/context";
@@ -13,7 +13,7 @@ export const GET: RequestHandler = async ({ url }) => json(await boards().read(r
 
 export const PUT: RequestHandler = async ({ url, request }) => {
   const cwd = requireCwd(url);
-  const board = (await request.json()) as BoardDoc;
+  const board = (await request.json()) as BoardWrite;
   if (board?.cwd !== cwd) error(400, "board cwd does not match the query");
 
   try {

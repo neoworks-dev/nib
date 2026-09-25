@@ -293,10 +293,15 @@ describe("freeSlot", () => {
     expect(slot).toEqual({ x: 72, y: 92 });
   });
 
-  test("edges and other kinds do not block a slot", () => {
+  test("an object with no corner of its own does not block a slot", () => {
     const board = [
       { kind: "edge", id: "e", fromId: "a", toId: "b", label: "", direction: "forward" as const },
     ];
     expect(freeSlot(board, { x: 10, y: 10 })).toEqual({ x: 10, y: 10 });
+  });
+
+  test("a vault card blocks a slot, the same as a workstream does", () => {
+    const board = [{ kind: "file", id: "a-note.md", x: 40, y: 60, w: 288, h: 132 }];
+    expect(freeSlot(board, { x: 40, y: 60 })).toEqual({ x: 72, y: 92 });
   });
 });

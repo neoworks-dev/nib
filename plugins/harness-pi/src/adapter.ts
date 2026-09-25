@@ -8,6 +8,7 @@ import type {
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import {
+  type AgentControlTool,
   attachmentMetadata,
   composeAttachmentPrompt,
   type CreateSessionOptions,
@@ -67,6 +68,11 @@ export function createPiAdapter(config: PiHarnessConfig): HarnessAdapter {
     defaultPermissionMode: permissionModeLabel,
     models: piModels,
     defaultModel: config.defaultModel ?? piDefaultModel.id,
+    listModels: async () => {
+      const sdk = await import("@earendil-works/pi-coding-agent");
+      const modelRuntime = await sdk.ModelRuntime.create();
+      return [piDefaultModel, ...parseModels({ models: await modelRuntime.getAvailable() })];
+    },
     createSession: (opts, emit) => startSession(harnessId, config, opts, emit),
     resumeSession: (nativeSessionId, opts, emit) =>
       startSession(harnessId, config, opts, emit, { nativeSessionId, fork: opts.fork }),
@@ -89,12 +95,18 @@ async function startSession(
   if (config.agentDir) sessionOptions.agentDir = config.agentDir;
   if (config.tools) sessionOptions.tools = config.tools;
   if (config.excludeTools) sessionOptions.excludeTools = config.excludeTools;
+  if (opts.agentControl) sessionOptions.customTools = agentControlTools(opts.agentControl.tools);
   const selected = selectModel(modelRuntime, config, opts.options);
   if (selected) sessionOptions.model = selected;
 
   const { session, modelFallbackMessage } = await sdk.createAgentSession(sessionOptions);
 
-  let state: PiStreamState = createPiStreamState(opts.cwd, session.sessionId, harnessId);
+  let state: PiStreamState = createPiStreamState(
+    opts.cwd,
+    session.sessionId,
+    harnessId,
+    resume ? attachPrefix() : undefined,
+  );
   let disposed = false;
 
   emit({
@@ -169,7 +181,7 @@ async function startSession(
 
     async setModel(model) {
       const resolved = resolveModel(modelRuntime, model);
-      if (!resolved) throw new Error(`unknown pi model "${model}"`);
+      if (!resolved) throw new Error(`unknown pi model "${model}"; expected provider/modelId`);
       await session.setModel(resolved);
       emit({ type: "session.meta", data: { model } });
     },
@@ -195,7 +207,38 @@ async function startSession(
   };
 }
 
+/**
+ * pi has no MCP client, so the agent-control tools go in as in-process ones.
+ * `parameters` is typed as TypeBox's `TSchema`, which is an empty interface, and
+ * pi compiles whatever JSON Schema it is handed — so zod's own output goes
+ * straight in. Failures are thrown rather than encoded in the result: pi's loop
+ * catches a thrown tool error and marks the result for the model itself.
+ */
+export function agentControlTools(
+  tools: AgentControlTool[],
+): NonNullable<CreateAgentSessionOptions["customTools"]> {
+  return tools.map((tool) => ({
+    name: tool.name,
+    label: tool.name,
+    description: tool.description,
+    parameters: tool.inputSchema.toJSONSchema(),
+    async execute(_toolCallId, params) {
+      const result = await tool.handler(params);
+      return { content: [{ type: "text", text: JSON.stringify(result) }], details: {} };
+    },
+  }));
+}
+
 type PiSdk = typeof import("@earendil-works/pi-coding-agent");
+
+/**
+ * A resumed session writes onto a log whose earlier turns are already numbered
+ * from one, and this process never sees how far they got; a prefix unique to
+ * the attach keeps its ids clear of theirs.
+ */
+function attachPrefix(): string {
+  return `msg-${Date.now().toString(36)}-`;
+}
 
 /**
  * A native session id names a file pi wrote, and only the listing maps one to

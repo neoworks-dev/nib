@@ -135,6 +135,9 @@ export const canvasMediaPlugin: Plugin = {
           return {
             label: name,
             attachments: [{ assetId: media.assetId, mime: mediaMime(media.assetId), name }],
+            // A picture saved from a page is worth the page too: the harness can
+            // look at the bytes, and read the rest of what it was part of.
+            ...(media.sourceUrl && { text: `${name} — ${media.sourceUrl}` }),
           };
         },
       }),

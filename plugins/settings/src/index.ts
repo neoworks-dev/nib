@@ -1,6 +1,7 @@
 import type { Plugin } from "@nib-ui/kernel";
 import GearSixIcon from "phosphor-svelte/lib/GearSixIcon";
 import GeneralSettings from "./GeneralSettings.svelte";
+import SettingsButton from "./SettingsButton.svelte";
 import SettingsPane from "./SettingsPane.svelte";
 import type { SettingsService } from "./settings";
 import { settingsState } from "./state.svelte";
@@ -35,6 +36,9 @@ export const settingsPlugin: Plugin = {
     );
     // The built-in sections go through the public slot, so nothing here is special-cased.
     ctx.effect(() => slots.register("settings.section", { component: GeneralSettings, order: 0 }));
+    // One of the three things left in the toolbar: it belongs to no board object,
+    // so there is nothing to click to reach it.
+    ctx.effect(() => slots.register("app.toolbar", { component: SettingsButton, order: 20 }));
     ctx.effect(() =>
       ctx.require("commands").register({
         id: "settings.toggle",

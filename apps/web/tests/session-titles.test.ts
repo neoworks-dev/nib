@@ -48,7 +48,10 @@ async function restoreFrom(lines: string[]) {
   const context = createContext();
   context.provide("harnesses", harnesses);
   context.provide("assets", assets);
-  context.use(sessionHostPlugin, { logDirectory });
+  context.use(sessionHostPlugin, {
+    logDirectoryFor: () => logDirectory,
+    logDirectories: () => [logDirectory],
+  });
   return context.require("sessionHost").list();
 }
 

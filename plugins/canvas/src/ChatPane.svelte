@@ -1,12 +1,13 @@
 <script lang="ts">
   import { StatusBadge } from "@neoworks-dev/ui";
-  import { ChatSurface, Composer, type PendingComposer } from "@nib-ui/plugin-chat";
+  import { agentFamily, ChatSurface, Composer, type PendingComposer } from "@nib-ui/plugin-chat";
   import { type PaneProps, statusLabel, statusTone } from "@nib-ui/ui-contracts";
+  import { SlotHost } from "@nib-ui/ui-contracts/svelte";
   import type { ChatPaneParams } from "./chat-pane";
   import { canvasState } from "./state.svelte";
 
   /** `session` is the task in the foreground: what a pane opened without params shows. */
-  const { session: activeSession, params }: PaneProps = $props();
+  const { session: activeSession, instanceId, params }: PaneProps = $props();
 
   const target = $derived(
     canvasState.chatTarget(params as ChatPaneParams | undefined, activeSession),
@@ -23,6 +24,33 @@
   const title = $derived(view?.title ?? session?.title ?? "Chat");
 
   /**
+   * The agents this conversation belongs with: the session the user started and
+   * everything its agents spawned. One of them is on screen; the rest are tabs
+   * on the composer.
+   */
+  const family = $derived.by(() => {
+    if (!session) return [];
+    return agentFamily(canvasState.sessions?.summaries ?? [], session.sessionId);
+  });
+
+  /**
+   * Which member the pane shows is a param, not local state: a pane is restored
+   * from its params, and the neighbours that read them — the trajectory
+   * inspector — must see the agent being looked at rather than the card's own.
+   */
+  function showSession(sessionId: string): void {
+    canvasState.panes?.reparam(instanceId, { ...params, sessionId });
+  }
+
+  function switchAgent(direction: -1 | 1): void {
+    if (!session || family.length < 2) return;
+    const index = family.findIndex((member) => member.id === session.sessionId);
+    if (index < 0) return;
+    const next = family[(index + direction + family.length) % family.length];
+    if (next) showSession(next.id);
+  }
+
+  /**
    * The same composer a running task gets. The picks it makes are held on the
    * card until the first prompt starts the session with them.
    */
@@ -32,10 +60,14 @@
   /**
    * Files linked to a running task that it has not been sent yet. They ride the
    * next prompt, and the links they came in on are marked once they have gone.
+   * They belong to the card's own conversation: an agent it spawned, read in the
+   * same pane through its tab, is not what the board linked them to.
    */
-  const waiting = $derived(
-    workstream && !launching ? canvasState.carriedAttachments(workstream.id) : null,
-  );
+  const waiting = $derived.by(() => {
+    if (!workstream || launching) return null;
+    if (session?.sessionId !== workstream.sessionId) return null;
+    return canvasState.carriedAttachments(workstream.id);
+  });
   const pending = $derived.by((): PendingComposer | null => {
     const card = workstream;
     if (!card || !settings) return null;
@@ -56,8 +88,8 @@
 </script>
 
 <div class="flex h-full min-h-0 flex-col">
-  <header class="flex shrink-0 items-center gap-2 border-b border-line py-2 pr-3 pl-4">
-    <span class="min-w-0 flex-1 truncate text-xs font-medium text-default">{title}</span>
+  <header class="flex shrink-0 items-center gap-2 border-b border-line py-2 pr-3 pl-2">
+    <span class="min-w-0 flex-1 truncate pl-2 text-xs font-medium text-default">{title}</span>
 
     {#if session}
       {@const label = statusLabel(session.status)}
@@ -65,6 +97,9 @@
         <StatusBadge tone={statusTone(session.status)}>{label}</StatusBadge>
       {/if}
     {/if}
+
+    <!-- What plugins offer on this conversation: the trajectory inspector lives here. -->
+    <SlotHost slot="chat.actions" session={session ?? null} class="flex items-center gap-1" />
   </header>
 
   {#if pending}
@@ -124,6 +159,9 @@
         onAnnotationAdd={(annotation) => canvasState.pinAnnotation(annotation)}
         onAnnotationRemove={(annotationId) => canvasState.unpinAnnotation(annotationId)}
         onAttachmentsSent={() => canvasState.markCarried(waiting?.edgeIds ?? [])}
+        agents={family}
+        onSelectAgent={showSession}
+        onSwitchAgent={switchAgent}
       />
     </div>
   {:else}

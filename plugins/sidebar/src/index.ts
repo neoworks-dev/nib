@@ -1,11 +1,12 @@
 import type { Plugin } from "@nib-ui/kernel";
-import Sidebar from "./Sidebar.svelte";
+import ProjectSwitcher from "./ProjectSwitcher.svelte";
 import { sidebarState } from "./state.svelte";
 
 /**
- * The left rail: the projects on disk and, under each, the workstreams that
- * still want attention. It is contributed into `app.sidebar` rather than built
- * into the shell, so the shell reserves the space and draws nothing in it.
+ * The project switcher: the projects on disk and, under each, the workstreams
+ * that still want attention, behind one button in the top-left toolbar. It is
+ * contributed into `app.toolbar` rather than built into the shell, so the shell
+ * draws the bar and nothing in it.
  */
 export const sidebarPlugin: Plugin = {
   name: "sidebar",
@@ -17,7 +18,7 @@ export const sidebarPlugin: Plugin = {
       canvas: ctx.require("canvas"),
     });
 
-    ctx.effect(() => ctx.require("slots").register("app.sidebar", { component: Sidebar }));
+    ctx.effect(() => ctx.require("slots").register("app.toolbar", { component: ProjectSwitcher }));
     ctx.effect(() => sidebarState.startPolling());
     ctx.effect(() => () => sidebarState.detach());
 

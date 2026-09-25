@@ -90,10 +90,12 @@
 
 <button
   type="button"
-  class="flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-xs text-dim hover:border-line-strong hover:text-default"
+  class="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs text-dim hover:bg-hover hover:text-default"
+  title="Git graph"
+  aria-label="Toggle the git graph for this conversation"
   onclick={() => gitGraphState.toggle()}
 >
-  <GraphIcon size={14} />
+  <GraphIcon size={13} />
   Graph
 </button>
 

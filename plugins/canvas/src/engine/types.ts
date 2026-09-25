@@ -53,5 +53,17 @@ export interface EngineHost {
    * that topic's directory (PLAN §5), and for everything else it is nothing.
    */
   dropOnto(ids: string[], toId: string | null, at: Point): void;
+  /**
+   * A drag of `ids` has passed the threshold and is about to move them. What
+   * they were being shown as part of — a folder laid open, a pile spread out —
+   * is put away here, so the drag crosses a board that is not still covered by
+   * the block the cards came out of.
+   */
+  beginDrag(ids: string[]): void;
   contextMenu(target: CanvasObject | null, at: Point, screen: Point): void;
+  /**
+   * A plus button dragged off a card and let go at `at`: the host asks what to
+   * do with the object there, which is how a task is started from a picture.
+   */
+  spawnFrom(id: string, at: Point): void;
 }

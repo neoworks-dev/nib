@@ -1,5 +1,6 @@
 import type { Plugin } from "@nib-ui/kernel";
 import FallbackRenderer from "../components/FallbackRenderer.svelte";
+import SpotlightButton from "../components/SpotlightButton.svelte";
 import { PaneAttachments } from "../registries/attachments";
 import { ReactiveCommandRegistry } from "../registries/commands.svelte";
 import { ReactivePaneRegistry } from "../registries/panes.svelte";
@@ -48,9 +49,13 @@ export const panesPlugin: Plugin = {
 
 export const commandsPlugin: Plugin = {
   name: "commands",
+  inject: ["slots"],
   apply(ctx) {
     const registry = new ReactiveCommandRegistry();
     ctx.provide("commands", registry);
+    ctx.effect(() =>
+      ctx.require("slots").register("app.toolbar", { component: SpotlightButton, order: 10 }),
+    );
     ctx.effect(() => {
       const onKeydown = (event: KeyboardEvent) => {
         if (!(event.ctrlKey || event.metaKey) || event.key !== "k") return;

@@ -115,6 +115,23 @@ describe("tolerance", () => {
     expect(view.orphanBlocks).toEqual({});
   });
 
+  test("a block announced twice is one block, with the later content", () => {
+    // Two attaches of one harness numbered their turns alike, so the log holds
+    // `m1`/`b1` twice; a renderer keyed on block ids would refuse a duplicate.
+    const view = project([
+      event(1, "message.started", { messageId: "m1", role: "user" }),
+      event(2, "block.started", { messageId: "m1", blockId: "b1", kind: "text" }),
+      event(3, "block.completed", { blockId: "b1", content: { kind: "text", text: "first" } }),
+      event(4, "message.started", { messageId: "m1", role: "user" }),
+      event(5, "block.started", { messageId: "m1", blockId: "b1", kind: "text" }),
+      event(6, "block.completed", { blockId: "b1", content: { kind: "text", text: "second" } }),
+    ]);
+
+    expect(view.messages).toHaveLength(1);
+    expect(view.messages[0]?.blocks.map((block) => block.id)).toEqual(["b1"]);
+    expect(view.messages[0]?.blocks[0]?.text).toBe("second");
+  });
+
   test("block.completed before block.started still wins over deltas", () => {
     const view = project([
       event(1, "block.completed", { blockId: "b1", content: { kind: "text", text: "final" } }),
@@ -232,6 +249,33 @@ describe("session.meta", () => {
     expect(view.model).toBe("claude-opus-5");
     expect(view.slashCommands).toHaveLength(1);
     expect(view.permissionMode).toBe("plan");
+  });
+
+  test("session.created records who spawned the session, and a log without it stays a root", () => {
+    const created = (parentSessionId?: string) =>
+      parseAgentEvent({
+        id: "e1",
+        sessionId: "s1",
+        seq: 1,
+        ts: 1,
+        type: "session.created",
+        data: {
+          harnessId: "codex",
+          cwd: "/tmp/demo",
+          capabilities: {
+            interrupt: true,
+            permissionModes: [],
+            resume: false,
+            fork: false,
+            slashCommands: false,
+            models: false,
+          },
+          ...(parentSessionId && { parentSessionId }),
+        },
+      });
+
+    expect(project([created("planner")]).parentSessionId).toBe("planner");
+    expect(project([created()]).parentSessionId).toBeNull();
   });
 
   test("a later label wins over the one session.created carried", () => {

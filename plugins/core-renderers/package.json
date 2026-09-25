@@ -17,8 +17,10 @@
     "@neoworks-dev/ui": "link:@neoworks-dev/ui",
     "@nib-ui/file-icons": "workspace:*",
     "@nib-ui/kernel": "workspace:*",
+    "@nib-ui/render": "workspace:*",
     "@nib-ui/protocol": "workspace:*",
     "@nib-ui/ui-contracts": "workspace:*",
+    "katex": "^0.18.7",
     "marked": "^18.0.10",
     "phosphor-svelte": "^3.1.0"
   },

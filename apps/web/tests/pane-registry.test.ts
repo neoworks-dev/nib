@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { PaneKind, PaneLayout, PaneProps } from "@nib-ui/ui-contracts";
 import type { Component } from "svelte";
-import { frameChrome, listLeaves } from "../src/lib/client/layout/frames";
+import { dockPixels, MIN_BOARD_WIDTH, MIN_DOCK_WIDTH } from "../src/lib/client/layout/docks";
+import { listLeaves } from "../src/lib/client/layout/tree";
 import { PaneAttachments } from "../src/lib/client/registries/attachments";
 import { ReactivePaneRegistry, rootPaneId } from "../src/lib/client/registries/panes.svelte";
 
 const component = {} as Component<PaneProps>;
+
+const bounds = { width: 1200, height: 800 };
 
 let panes: ReactivePaneRegistry;
 let attachments: PaneAttachments;
@@ -15,14 +18,18 @@ function register(id: string, kind: PaneKind, title = id) {
 }
 
 function leavesOf(instanceId: string): string[] {
-  const frame = panes.frameOf(instanceId);
-  return frame ? listLeaves(frame.root) : [];
+  const dock = panes.dockOf(instanceId);
+  return dock ? listLeaves(dock.root) : [];
+}
+
+function edgesOpen(): string[] {
+  return panes.docks.map((dock) => dock.edge);
 }
 
 beforeEach(() => {
   panes = new ReactivePaneRegistry();
   attachments = new PaneAttachments(panes);
-  panes.setBounds({ width: 1200, height: 800 });
+  panes.setBounds(bounds);
   register(rootPaneId, "canvas", "Canvas");
   register("git", "git", "Git");
   register("files.viewer", "editor", "Editor");
@@ -30,13 +37,22 @@ beforeEach(() => {
 });
 
 describe("opening", () => {
-  test("an instance gets a frame of its own, and the pane counts as open", () => {
+  test("a pane docks against the right edge rather than floating over the board", () => {
     const instanceId = panes.open("git");
 
     expect(panes.isOpen("git")).toBe(true);
     expect(panes.isInstanceOpen(instanceId)).toBe(true);
-    expect(panes.frames).toHaveLength(1);
+    expect(edgesOpen()).toEqual(["right"]);
     expect(leavesOf(instanceId)).toEqual([instanceId]);
+  });
+
+  test("the second pane splits that dock below the first", () => {
+    const git = panes.open("git");
+    const editor = panes.open("files.viewer");
+
+    expect(edgesOpen()).toEqual(["right"]);
+    expect(leavesOf(git)).toEqual([git, editor]);
+    expect(panes.dock("right")?.root).toMatchObject({ kind: "split", axis: "column" });
   });
 
   test("opening again without params reuses the newest instance", () => {
@@ -44,7 +60,7 @@ describe("opening", () => {
 
     expect(panes.open("git")).toBe(first);
     expect(panes.instances("git")).toHaveLength(1);
-    expect(panes.frames).toHaveLength(1);
+    expect(leavesOf(first)).toEqual([first]);
   });
 
   test("params of their own make a second instance of the same pane", () => {
@@ -53,7 +69,7 @@ describe("opening", () => {
 
     expect(second).not.toBe(first);
     expect(panes.instances("chat")).toHaveLength(2);
-    expect(panes.frames).toHaveLength(2);
+    expect(leavesOf(first)).toEqual([first, second]);
   });
 
   test("the same params reach the instance that already has them", () => {
@@ -72,23 +88,17 @@ describe("opening", () => {
     expect(panes.instances("chat")).toHaveLength(2);
   });
 
-  test("the root pane is the shell itself and never becomes a window", () => {
+  test("the root pane is the shell itself and is never docked", () => {
     expect(panes.open(rootPaneId)).toBe(rootPaneId);
-    expect(panes.frames).toHaveLength(0);
+    expect(panes.docks).toHaveLength(0);
     expect(panes.isOpen(rootPaneId)).toBe(true);
   });
 
-  test("a new frame is raised and focused", () => {
+  test("the newly opened pane is the focused one", () => {
     panes.open("git");
     const editor = panes.open("files.viewer");
 
     expect(panes.focusedInstanceId).toBe(editor);
-    expect(panes.frames.at(-1)?.frameId).toBe(panes.frameOf(editor)?.frameId);
-
-    panes.focusInstance(panes.instances("git")[0]!.instanceId);
-    expect(panes.frames.at(-1)?.frameId).toBe(
-      panes.frameOf(panes.instances("git")[0]!.instanceId)?.frameId,
-    );
   });
 
   test("focus follows the instance that was attached, and survives its neighbour closing", () => {
@@ -104,13 +114,12 @@ describe("opening", () => {
 });
 
 describe("re-keying an open instance", () => {
-  test("the instance keeps its place and its frame, and answers to the new params", () => {
+  test("the instance keeps its place and its dock, and answers to the new params", () => {
     const chat = panes.open("chat", { sessionId: "s1" });
-    const frameId = panes.frameOf(chat)?.frameId;
     panes.reparam(chat, { sessionId: "s2" });
 
     expect(panes.instance(chat)?.params).toEqual({ sessionId: "s2" });
-    expect(panes.frameOf(chat)?.frameId).toBe(frameId);
+    expect(panes.dockOf(chat)?.edge).toBe("right");
     expect(panes.instances("chat")).toHaveLength(1);
   });
 
@@ -146,11 +155,11 @@ describe("re-keying an open instance", () => {
 });
 
 describe("closing", () => {
-  test("closing the last instance takes its frame with it", () => {
+  test("closing the last instance takes its dock with it", () => {
     const instanceId = panes.open("git");
     panes.closeInstance(instanceId);
 
-    expect(panes.frames).toHaveLength(0);
+    expect(panes.docks).toHaveLength(0);
     expect(panes.isOpen("git")).toBe(false);
     expect(panes.focusedInstanceId).toBeNull();
   });
@@ -161,16 +170,15 @@ describe("closing", () => {
     panes.close("chat");
 
     expect(panes.instances("chat")).toHaveLength(0);
-    expect(panes.frames).toHaveLength(0);
+    expect(panes.docks).toHaveLength(0);
   });
 
-  test("a shared frame survives one of its panes closing", () => {
+  test("a shared dock survives one of its panes closing", () => {
     const git = panes.open("git");
     const editor = panes.open("files.viewer");
-    attachments.attach(editor, git, "right");
     panes.closeInstance(git);
 
-    expect(panes.frames).toHaveLength(1);
+    expect(panes.docks).toHaveLength(1);
     expect(leavesOf(editor)).toEqual([editor]);
   });
 
@@ -187,7 +195,7 @@ describe("closing", () => {
     dispose();
 
     expect(panes.list().some((entry) => entry.id === "scratch")).toBe(false);
-    expect(panes.frames).toHaveLength(0);
+    expect(panes.docks).toHaveLength(0);
   });
 });
 
@@ -199,12 +207,12 @@ describe("attachments", () => {
     expect(attachments.siblings("nobody")).toEqual([]);
   });
 
-  test("attaching brings both panes into one frame", () => {
+  test("attaching puts one pane beside another in the dock it is in", () => {
     const git = panes.open("git");
     const editor = panes.open("files.viewer");
     attachments.attach(editor, git, "right");
 
-    expect(panes.frames).toHaveLength(1);
+    expect(panes.docks).toHaveLength(1);
     expect(leavesOf(git)).toEqual([git, editor]);
     expect(attachments.siblings(git).map((entry) => entry.instanceId)).toEqual([editor]);
   });
@@ -224,100 +232,102 @@ describe("attachments", () => {
     expect(attachments.find(git, "browser")).toBeUndefined();
   });
 
-  test("detaching gives the pane a frame of its own again", () => {
+  test("detaching moves the pane to the first edge with no dock on it", () => {
     const git = panes.open("git");
     const editor = panes.open("files.viewer");
-    attachments.attach(editor, git, "right");
     attachments.detach(editor);
 
-    expect(panes.frames).toHaveLength(2);
+    expect(edgesOpen()).toEqual(["right", "bottom"]);
+    expect(panes.dockOf(editor)?.edge).toBe("bottom");
     expect(attachments.siblings(editor)).toEqual([]);
     expect(attachments.siblings(git)).toEqual([]);
   });
 
-  test("detaching a pane that is already alone leaves the layout as it was", () => {
+  test("detaching a pane that is already alone in its dock leaves the layout as it was", () => {
     const git = panes.open("git");
-    const frames = panes.frames;
+    const docks = panes.snapshotLayout().docks;
     attachments.detach(git);
 
-    expect(panes.frames).toEqual(frames);
+    expect(panes.snapshotLayout().docks).toEqual(docks);
   });
 
-  test("attaching across frames empties the frame the pane came from", () => {
+  test("attaching across docks empties the dock the pane came from", () => {
     const git = panes.open("git");
     const editor = panes.open("files.viewer");
-    const chat = panes.open("chat");
-    attachments.attach(editor, git, "right");
-    attachments.attach(chat, editor, "bottom");
+    attachments.detach(editor);
+    attachments.attach(editor, git, "bottom");
 
-    expect(panes.frames).toHaveLength(1);
-    expect(leavesOf(git)).toEqual([git, editor, chat]);
-  });
-
-  test("a pane can be moved to another edge of the frame it is already in", () => {
-    const git = panes.open("git");
-    const editor = panes.open("files.viewer");
-    attachments.attach(editor, git, "right");
-    panes.attachToFrame(editor, panes.frameOf(git)!.frameId, "left");
-
-    expect(panes.frames).toHaveLength(1);
-    expect(leavesOf(git)).toEqual([editor, git]);
+    expect(edgesOpen()).toEqual(["right"]);
+    expect(leavesOf(git)).toEqual([git, editor]);
   });
 });
 
-describe("frame chrome", () => {
-  function chromeOf(instanceId: string) {
-    return frameChrome(panes.frameOf(instanceId)!.root);
-  }
-
-  test("a frame gains its own drag strip when it stops holding a single pane", () => {
+describe("docking against an edge", () => {
+  test("a pane dropped on another edge takes a dock of its own there", () => {
     const git = panes.open("git");
-    expect(chromeOf(git)).toEqual({ frameBar: false, leafDrag: "move" });
-
     const editor = panes.open("files.viewer");
-    attachments.attach(editor, git, "right");
-    expect(chromeOf(git)).toEqual({ frameBar: true, leafDrag: "detach" });
+    panes.attachToEdge(editor, "left");
+
+    expect(edgesOpen()).toEqual(["right", "left"]);
+    expect(leavesOf(git)).toEqual([git]);
+    expect(leavesOf(editor)).toEqual([editor]);
   });
 
-  test("the pane detached out of a shared frame leaves both frames movable again", () => {
+  test("a pane dropped on an edge that already has a dock splits it along its length", () => {
     const git = panes.open("git");
     const editor = panes.open("files.viewer");
-    attachments.attach(editor, git, "right");
-    attachments.detach(editor);
+    panes.attachToEdge(editor, "bottom");
+    panes.attachToEdge(git, "bottom");
 
-    expect(chromeOf(git)).toEqual({ frameBar: false, leafDrag: "move" });
-    expect(chromeOf(editor)).toEqual({ frameBar: false, leafDrag: "move" });
+    expect(edgesOpen()).toEqual(["bottom"]);
+    expect(leavesOf(git)).toEqual([editor, git]);
+    expect(panes.dock("bottom")?.root).toMatchObject({ kind: "split", axis: "row" });
   });
 
-  test("closing back down to one pane takes the strip away again", () => {
+  test("a pane that is the whole of its dock stays put when dropped back on that edge", () => {
     const git = panes.open("git");
-    const editor = panes.open("files.viewer");
-    const chat = panes.open("chat");
-    attachments.attach(editor, git, "right");
-    attachments.attach(chat, git, "bottom");
-    expect(chromeOf(git).frameBar).toBe(true);
+    const before = panes.snapshotLayout().docks;
+    panes.attachToEdge(git, "right");
 
-    panes.closeInstance(chat);
-    expect(chromeOf(git).frameBar).toBe(true);
-    panes.closeInstance(editor);
-    expect(chromeOf(git)).toEqual({ frameBar: false, leafDrag: "move" });
+    expect(panes.snapshotLayout().docks).toEqual(before);
   });
 
-  test("a frame with a strip still moves and still stops at the edge of the area", () => {
+  test("where a pane is let go decides its edge: nothing is left floating", () => {
     const git = panes.open("git");
-    const editor = panes.open("files.viewer");
-    attachments.attach(editor, git, "right");
-    const frameId = panes.frameOf(git)!.frameId;
-    const rect = panes.frame(frameId)!.rect;
+    panes.open("files.viewer");
+    panes.dropAt(git, 12, 400);
 
-    panes.setFrameRect(frameId, { ...rect, x: rect.x + 40, y: rect.y + 40 });
-    expect(panes.frame(frameId)!.rect).toMatchObject({ x: rect.x + 40, y: rect.y + 40 });
+    expect(panes.dockOf(git)?.edge).toBe("left");
+  });
+});
 
-    panes.setFrameRect(frameId, { ...rect, x: 5000, y: 5000 });
-    expect(panes.frame(frameId)!.rect).toMatchObject({
-      x: 1200 - rect.width,
-      y: 800 - rect.height,
-    });
+describe("dock size", () => {
+  test("a dock opens taking part of the area, never the whole of it", () => {
+    panes.open("git");
+    const dock = panes.dock("right")!;
+
+    expect(dockPixels("right", dock.size, bounds)).toBeGreaterThanOrEqual(MIN_DOCK_WIDTH);
+    expect(dockPixels("right", dock.size, bounds)).toBeLessThanOrEqual(
+      bounds.width - MIN_BOARD_WIDTH,
+    );
+  });
+
+  test("dragging a dock past the board's minimum stops at it", () => {
+    panes.open("git");
+    panes.setDockSize("right", 1);
+
+    expect(dockPixels("right", panes.dock("right")!.size, bounds)).toBe(
+      bounds.width - MIN_BOARD_WIDTH,
+    );
+  });
+
+  test("a narrower area re-clamps the docks in it rather than leaving them over the board", () => {
+    panes.open("git");
+    panes.setDockSize("right", 0.6);
+    panes.setBounds({ width: 700, height: 500 });
+
+    const pixels = dockPixels("right", panes.dock("right")!.size, { width: 700, height: 500 });
+    expect(pixels).toBeLessThanOrEqual(700 - MIN_BOARD_WIDTH);
   });
 });
 
@@ -325,17 +335,16 @@ describe("layout persistence", () => {
   test("a snapshot round-trips through restore", () => {
     const git = panes.open("git");
     const editor = panes.open("files.viewer");
-    attachments.attach(editor, git, "bottom");
     const layout = panes.snapshotLayout();
 
     const reopened = new ReactivePaneRegistry();
-    reopened.setBounds({ width: 1200, height: 800 });
+    reopened.setBounds(bounds);
     reopened.register({ id: "git", kind: "git", title: "Git", component });
     reopened.register({ id: "files.viewer", kind: "editor", title: "Editor", component });
     reopened.restoreLayout(layout);
 
-    expect(reopened.frames).toHaveLength(1);
-    expect(listLeaves(reopened.frames[0]!.root)).toEqual([git, editor]);
+    expect(reopened.docks).toHaveLength(1);
+    expect(listLeaves(reopened.docks[0]!.root)).toEqual([git, editor]);
     expect(reopened.instances()).toHaveLength(2);
   });
 
@@ -349,21 +358,23 @@ describe("layout persistence", () => {
     reopened.restoreLayout(layout);
 
     expect(reopened.instances().map((entry) => entry.instanceId)).toEqual([git]);
-    expect(reopened.frames).toHaveLength(1);
+    expect(reopened.docks).toHaveLength(1);
     expect(reopened.isInstanceOpen(editor)).toBe(false);
   });
 
-  test("a frame off the current bounds is pulled back onto them", () => {
+  test("a stored dock too wide for the area it reopens in is cut back to it", () => {
     const instanceId = panes.open("git");
     const layout = panes.snapshotLayout();
-    layout.frames[0]!.rect = { x: 5000, y: 4000, width: 600, height: 400 };
+    layout.docks[0]!.size = 0.95;
 
     const reopened = new ReactivePaneRegistry();
     reopened.setBounds({ width: 1000, height: 700 });
     reopened.register({ id: "git", kind: "git", title: "Git", component });
     reopened.restoreLayout(layout);
 
-    expect(reopened.frames[0]!.rect).toEqual({ x: 400, y: 300, width: 600, height: 400 });
+    expect(dockPixels("right", reopened.docks[0]!.size, { width: 1000, height: 700 })).toBe(
+      1000 - MIN_BOARD_WIDTH,
+    );
     expect(reopened.isInstanceOpen(instanceId)).toBe(true);
   });
 
@@ -371,11 +382,11 @@ describe("layout persistence", () => {
     panes.open("git");
     panes.restoreLayout(undefined);
 
-    expect(panes.frames).toEqual([]);
+    expect(panes.docks).toEqual([]);
     expect(panes.instances()).toEqual([]);
 
-    panes.restoreLayout({ frames: [], instances: [] } as PaneLayout);
-    expect(panes.frames).toEqual([]);
+    panes.restoreLayout({ docks: [], instances: [] } as PaneLayout);
+    expect(panes.docks).toEqual([]);
   });
 
   test("a snapshot holds plain values, not live state", () => {
@@ -383,24 +394,7 @@ describe("layout persistence", () => {
     const layout = panes.snapshotLayout();
     panes.close("git");
 
-    expect(layout.frames).toHaveLength(1);
+    expect(layout.docks).toHaveLength(1);
     expect(JSON.parse(JSON.stringify(layout))).toEqual(layout);
-  });
-});
-
-describe("bounds", () => {
-  test("frames follow the area rather than fall off it", () => {
-    const instanceId = panes.open("git");
-    panes.setFrameRect(panes.frameOf(instanceId)!.frameId, {
-      x: 800,
-      y: 600,
-      width: 380,
-      height: 200,
-    });
-    panes.setBounds({ width: 600, height: 500 });
-
-    const rect = panes.frames[0]!.rect;
-    expect(rect.x + rect.width).toBeLessThanOrEqual(600);
-    expect(rect.y + rect.height).toBeLessThanOrEqual(500);
   });
 });

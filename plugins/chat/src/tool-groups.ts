@@ -1,4 +1,4 @@
-import type { BlockView } from "@nib-ui/protocol";
+import { agentToolNames, type BlockView, isAgentTool } from "@nib-ui/protocol";
 import { countedNoun, describeCall } from "@nib-ui/ui-contracts";
 
 /** A run of adjacent calls that did the same kind of work. */
@@ -15,11 +15,15 @@ export type TurnItem = { kind: "block"; block: BlockView } | { kind: "group"; gr
  * Tool calls read as activity, not as documents: adjacent calls of the same kind
  * collapse under one header, and anything else (prose, thinking, an unpaired
  * result) stays where the harness put it.
+ *
+ * Starting an agent is the exception. Its card is not a record of a call but the
+ * agent itself — the only way into that conversation from here — so it stands in
+ * the turn rather than folding into a run nobody would open.
  */
 export function groupTurnBlocks(blocks: BlockView[]): TurnItem[] {
   const items: TurnItem[] = [];
   for (const block of blocks) {
-    if (block.kind !== "tool_use") {
+    if (block.kind !== "tool_use" || isAgentTool(block.toolName, agentToolNames.spawn)) {
       items.push({ kind: "block", block });
       continue;
     }

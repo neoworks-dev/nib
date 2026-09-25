@@ -7,9 +7,9 @@ export const gitGraphPlugin: Plugin = {
   inject: ["slots", "commands"],
   apply(ctx) {
     ctx.effect(() =>
-      ctx.require("slots").register("session.header", {
+      ctx.require("slots").register("chat.actions", {
         component: GitGraphOverlay,
-        order: 11,
+        order: 15,
         when: (session) => session !== null,
       }),
     );

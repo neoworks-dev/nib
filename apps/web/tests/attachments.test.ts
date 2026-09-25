@@ -111,7 +111,11 @@ describe("session.send dispatch", () => {
     ctx = createContext();
     ctx.use(harnessRegistryPlugin);
     ctx.provide("assets", assets);
-    ctx.use(sessionHostPlugin, { logDirectory: await mkdtemp(join(tmpdir(), "nib-attachments-")) });
+    const logDirectory = await mkdtemp(join(tmpdir(), "nib-attachments-"));
+    ctx.use(sessionHostPlugin, {
+      logDirectoryFor: () => logDirectory,
+      logDirectories: () => [logDirectory],
+    });
     ctx.require("harnesses").register(stubAdapter(sends));
     host = ctx.require("sessionHost");
   });

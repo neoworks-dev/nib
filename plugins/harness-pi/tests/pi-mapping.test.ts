@@ -75,6 +75,26 @@ describe("mapPiEvent user messages", () => {
     expect(ofType(events, "message.completed")[0]?.data.messageId).toBe("msg-1");
   });
 
+  test("a resumed session numbers its messages apart from the ones already logged", () => {
+    const resumed = createPiStreamState("/repo", "session-1", "pi", "msg-r2-");
+    const { events } = drain(
+      [
+        { type: "message_start", message: { role: "user", content: "again" } },
+        assistantStart,
+        delta({ type: "text_delta", contentIndex: 0, delta: "ok" }),
+      ],
+      resumed,
+    );
+    expect(ofType(events, "message.started").map((event) => event.data.messageId)).toEqual([
+      "msg-r2-1",
+      "msg-r2-2",
+    ]);
+    expect(ofType(events, "block.started").map((event) => event.data.blockId)).toEqual([
+      "msg-r2-1:0",
+      "msg-r2-2:0",
+    ]);
+  });
+
   test("reads the text out of a content block array once images are attached", () => {
     const { events } = drain([
       {

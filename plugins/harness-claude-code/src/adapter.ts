@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type {
   CanUseTool,
   EffortLevel,
@@ -9,6 +10,9 @@ import type {
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import {
+  agentControlInstructions,
+  agentControlServerName,
+  agentToolTimeoutSeconds,
   attachmentMetadata,
   composeAttachmentPrompt,
   type CreateSessionOptions,
@@ -18,6 +22,7 @@ import {
   type PermissionBehavior,
   type SessionAttachment,
 } from "@nib-ui/protocol";
+import { vaultInstructions, VAULT_DIRECTORY } from "@nib-ui/vault";
 import { resolveClaudeExecutable } from "./binary";
 import {
   ClaudeMessageMapper,
@@ -109,7 +114,7 @@ async function startSession(
   const session: Query = query({
     prompt: queue,
     options: {
-      ...(opts.options as Options),
+      ...withAgentControl(opts),
       cwd: opts.cwd,
       abortController,
       includePartialMessages: true,
@@ -117,6 +122,10 @@ async function startSession(
       enableFileCheckpointing: true,
       pathToClaudeCodeExecutable: executable,
       canUseTool,
+      // The SDK's default, pinned: the project's own `.claude/` and its CLAUDE.md
+      // are part of what the model is being pointed at, and should not depend on
+      // an SDK default staying what it is.
+      settingSources: ["user", "project", "local"],
       ...(resume ? { resume: resume.nativeSessionId, forkSession: resume.fork } : {}),
     },
   });
@@ -204,6 +213,39 @@ async function startSession(
       session.close();
       abortController.abort();
       await pump;
+    },
+  };
+}
+
+/**
+ * The caller's options plus what every session is told. The vault rules are
+ * appended to the preset rather than substituted, so the preset's prompt-caching
+ * prefix survives; not a caller option, since a session that was never told the
+ * format writes a vault nothing can read back (PLAN §8). With an agent-control
+ * link, the `nib` server is merged into whatever MCP servers the caller already
+ * names, and the model is told to spawn through it rather than through the
+ * CLI's own Agent tool.
+ */
+export function withAgentControl(opts: CreateSessionOptions): Options {
+  const options = opts.options as Options | undefined;
+  const vault = vaultInstructions(join(opts.cwd, VAULT_DIRECTORY));
+  if (!opts.agentControl) {
+    return { ...options, systemPrompt: { type: "preset", preset: "claude_code", append: vault } };
+  }
+  return {
+    ...options,
+    systemPrompt: {
+      type: "preset",
+      preset: "claude_code",
+      append: `${vault}\n\n${agentControlInstructions}`,
+    },
+    mcpServers: {
+      ...options?.mcpServers,
+      [agentControlServerName]: {
+        type: "http",
+        url: opts.agentControl.url,
+        timeout: agentToolTimeoutSeconds * 1000,
+      },
     },
   };
 }

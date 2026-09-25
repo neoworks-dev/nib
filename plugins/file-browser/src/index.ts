@@ -7,16 +7,26 @@ export const explorerPaneId = "files.explorer";
 
 export const fileBrowserPlugin: Plugin = {
   name: "file-browser",
-  inject: ["panes", "fileViewer"],
+  inject: ["panes", "commands", "fileViewer"],
   apply(ctx) {
+    const panes = ctx.require("panes");
     fileBrowserState.viewer = ctx.require("fileViewer");
     ctx.effect(() =>
-      ctx.require("panes").register({
+      panes.register({
         id: explorerPaneId,
         kind: "explorer",
         title: "Files",
         icon: TreeStructureIcon,
         component: FileBrowser,
+      }),
+    );
+    // The explorer opens beside a file the viewer was asked for; this is the way
+    // to it when there is no file to click.
+    ctx.effect(() =>
+      ctx.require("commands").register({
+        id: "files.toggle",
+        title: "Toggle the file explorer",
+        run: () => panes.toggle(explorerPaneId),
       }),
     );
     ctx.effect(() => () => {

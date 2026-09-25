@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { renderMarkdown } from "../src/markdown";
+import { openFence, renderMarkdown } from "../src/markdown";
 
 describe("renderMarkdown", () => {
   test("renders a bullet list as a single list element", () => {
@@ -58,5 +58,60 @@ describe("renderMarkdown", () => {
     expect(html).toContain("<strong>bold</strong>");
     expect(html).toContain("<em>italic</em>");
     expect(html).toContain("<code>code</code>");
+  });
+});
+
+describe("mermaid", () => {
+  test("leaves a mermaid fence as a placeholder carrying its source", () => {
+    const html = renderMarkdown("```mermaid\nflowchart TD\n  a --> b\n```");
+    expect(html).toContain('class="mermaid"');
+    expect(html).toContain("flowchart TD");
+    expect(html).not.toContain("<pre>");
+  });
+
+  test("renders every other fence as code", () => {
+    const html = renderMarkdown("```ts\nconst a = 1;\n```");
+    expect(html).toContain("<pre>");
+    expect(html).not.toContain('class="mermaid"');
+  });
+
+  test("escapes a source that would otherwise close the attribute", () => {
+    const html = renderMarkdown('```mermaid\ngraph TD\n  a["<b>"]\n```');
+    expect(html).not.toContain('<b>"]');
+    expect(html).toContain("&lt;b&gt;");
+  });
+});
+
+describe("openFence", () => {
+  test("is true while a fence is still open", () => {
+    expect(openFence("text\n```mermaid\nflowchart TD")).toBe(true);
+  });
+
+  test("is false once it closes", () => {
+    expect(openFence("```mermaid\nflowchart TD\n```")).toBe(false);
+  });
+});
+
+describe("math", () => {
+  test("sets an inline formula", () => {
+    const html = renderMarkdown("mass is $E = mc^2$ here");
+    expect(html).toContain("katex");
+    expect(html).not.toContain("$E = mc^2$");
+  });
+
+  test("sets a display formula", () => {
+    expect(renderMarkdown("$$E = mc^2$$")).toContain("katex-display");
+  });
+
+  test("leaves two prices alone", () => {
+    const html = renderMarkdown("it went from $5 to $10 overnight");
+    expect(html).not.toContain("katex");
+    expect(html).toContain("$5");
+  });
+
+  test("leaves a dollar sign in code alone", () => {
+    const html = renderMarkdown("the `$PATH` of it");
+    expect(html).not.toContain("katex");
+    expect(html).toContain("$PATH");
   });
 });

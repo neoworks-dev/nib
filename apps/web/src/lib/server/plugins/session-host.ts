@@ -11,8 +11,10 @@ import {
   createSessionView,
   deriveTaskTitle,
   reduceSession,
+  sessionDigest,
 } from "@nib-ui/protocol";
 import type {
+  AgentControlProvider,
   CreateSessionOptions,
   HarnessRegistry,
   HarnessSession,
@@ -23,24 +25,40 @@ import type {
 import { deleteSessionLog, HostedSession, readSessionLogs } from "../session-store";
 
 export interface SessionHostConfig {
-  logDirectory: string;
+  /**
+   * Where one project's transcripts are written. A function of the working
+   * directory rather than a single path: a chat belongs to the project it is
+   * about, so its log lives in that project's vault (PLAN §7).
+   */
+  logDirectoryFor(cwd: string): string;
+  /** Every directory a transcript might be in, for the restore after a restart. */
+  logDirectories(): string[];
 }
 
 class SessionHostService implements SessionHost {
   private readonly sessions = new Map<string, HostedSession>();
   private readonly reviving = new Map<string, Promise<void>>();
+  private agentControl: AgentControlProvider | null = null;
 
   constructor(
     private readonly ctx: Context,
     private readonly harnesses: HarnessRegistry,
-    private readonly logDirectory: string,
+    private readonly config: SessionHostConfig,
   ) {}
+
+  useAgentControl(provider: AgentControlProvider): Disposer {
+    this.agentControl = provider;
+    return () => {
+      if (this.agentControl === provider) this.agentControl = null;
+    };
+  }
 
   async create(input: {
     harnessId: string;
     cwd: string;
     label?: string;
     options?: Record<string, unknown>;
+    parentSessionId?: string;
   }): Promise<string> {
     const { adapter, hosted, emit } = this.prepare(input.harnessId, input.cwd);
     // The log has to describe its own session: without this the harness owns the
@@ -48,7 +66,12 @@ class SessionHostService implements SessionHost {
     // whose process never starts could never be restored after a restart.
     emit({
       type: "session.created",
-      data: { harnessId: input.harnessId, cwd: input.cwd, capabilities: adapter.capabilities },
+      data: {
+        harnessId: input.harnessId,
+        cwd: input.cwd,
+        capabilities: adapter.capabilities,
+        parentSessionId: input.parentSessionId,
+      },
     });
     // Pre-flight: the composer gets modes and models now, not after the first turn.
     emit({
@@ -61,8 +84,9 @@ class SessionHostService implements SessionHost {
         models: adapter.models,
       },
     });
+    const agentControl = await this.agentControl?.(hosted.id);
     await this.attach(hosted, () =>
-      adapter.createSession({ cwd: input.cwd, options: input.options }, emit),
+      adapter.createSession({ cwd: input.cwd, options: input.options, agentControl }, emit),
     );
     return hosted.id;
   }
@@ -96,6 +120,7 @@ class SessionHostService implements SessionHost {
       cwd: input.cwd,
       options: input.options,
       fork: input.fork,
+      agentControl: await this.agentControl?.(hosted.id),
     };
     await this.attach(hosted, () => adapter.resumeSession!(input.nativeSessionId, opts, emit));
     return hosted.id;
@@ -238,6 +263,8 @@ class SessionHostService implements SessionHost {
       live: hosted.harnessSession !== null,
       resumable: this.harnesses.get(hosted.harnessId)?.resumeSession !== undefined,
       nativeSessionId: hosted.view.nativeSessionId,
+      parentSessionId: hosted.view.parentSessionId,
+      digest: sessionDigest(hosted.view),
     }));
   }
 
@@ -263,25 +290,41 @@ class SessionHostService implements SessionHost {
     if (!hosted) return;
     this.sessions.delete(sessionId);
     await hosted.dispose();
-    deleteSessionLog(this.logDirectory, sessionId);
+    deleteSessionLog(this.config.logDirectoryFor(hosted.cwd), sessionId);
   }
 
   async disposeAll(): Promise<void> {
     await Promise.all([...this.sessions.values()].map((hosted) => hosted.dispose()));
   }
 
-  /** Rebuilds every session the previous process logged, detached from any harness. */
+  /**
+   * Rebuilds every session the previous process logged, detached from any
+   * harness. Transcripts are spread across the projects they belong to, so this
+   * walks every vault a board has been opened for as well as the legacy
+   * directory: a log whose project has been deleted is simply not found.
+   */
   restore(): void {
-    for (const { id, events } of readSessionLogs(this.logDirectory)) {
+    const logs = this.config
+      .logDirectories()
+      .flatMap((directory) => readSessionLogs(directory))
+      .sort((left, right) => (left.events[0]?.ts ?? 0) - (right.events[0]?.ts ?? 0));
+
+    for (const { id, events } of logs) {
       if (this.sessions.has(id)) continue;
       const view = events.reduce(reduceSession, createSessionView(id));
       if (!view.harnessId || !view.cwd) continue;
-      const hosted = new HostedSession(id, view.harnessId, view.cwd, this.logDirectory);
+      const hosted = new HostedSession(
+        id,
+        view.harnessId,
+        view.cwd,
+        this.config.logDirectoryFor(view.cwd),
+      );
       hosted.restore(events);
       this.sessions.set(id, hosted);
       // Tasks logged before titles existed would read as "Untitled" forever.
       if (!view.title) {
-        const label = deriveTaskTitle(firstPrompt(view));
+        const prompt = sessionDigest(view).prompt;
+        const label = prompt === null ? null : deriveTaskTitle(prompt);
         if (label) this.emit(hosted, { type: "session.meta", data: { label } });
       }
       // A log that ends mid-turn would otherwise claim to still be working.
@@ -297,7 +340,12 @@ class SessionHostService implements SessionHost {
   private prepare(harnessId: string, cwd: string) {
     const adapter = this.harnesses.get(harnessId);
     if (!adapter) throw new Error(`unknown harness "${harnessId}"`);
-    const hosted = new HostedSession(crypto.randomUUID(), harnessId, cwd, this.logDirectory);
+    const hosted = new HostedSession(
+      crypto.randomUUID(),
+      harnessId,
+      cwd,
+      this.config.logDirectoryFor(cwd),
+    );
     this.sessions.set(hosted.id, hosted);
     return { adapter, hosted, emit: (event: EmittedEvent) => this.emit(hosted, event) };
   }
@@ -350,8 +398,11 @@ class SessionHostService implements SessionHost {
     await hosted.harnessSession?.dispose();
     hosted.harnessSession = null;
     const emit = (event: EmittedEvent) => this.emit(hosted, event);
+    // A session revived after a restart is as much an agent as a fresh one, so
+    // it gets its own link rather than coming back without the tools.
+    const agentControl = await this.agentControl?.(hosted.id);
     await this.attach(hosted, () =>
-      adapter.resumeSession!(nativeSessionId, { cwd: hosted.cwd, fork }, emit),
+      adapter.resumeSession!(nativeSessionId, { cwd: hosted.cwd, fork, agentControl }, emit),
     );
   }
 
@@ -360,16 +411,6 @@ class SessionHostService implements SessionHost {
     if (!hosted) throw new Error(`unknown session "${sessionId}"`);
     return hosted;
   }
-}
-
-/** The text of the first thing the user asked for, which is what names the task. */
-function firstPrompt(view: SessionView): string {
-  const message = view.messages.find((candidate) => candidate.role === "user");
-  if (!message) return "";
-  return message.blocks
-    .filter((block) => block.kind === "text")
-    .map((block) => (block.content?.kind === "text" ? block.content.text : block.text))
-    .join("\n");
 }
 
 function readStringOption(
@@ -384,7 +425,7 @@ export const sessionHostPlugin: Plugin<SessionHostConfig> = {
   name: "session-host",
   inject: ["harnesses", "assets"],
   apply(ctx, config) {
-    const host = new SessionHostService(ctx, ctx.require("harnesses"), config.logDirectory);
+    const host = new SessionHostService(ctx, ctx.require("harnesses"), config);
     host.restore();
     ctx.provide("sessionHost", host);
     ctx.effect(() => () => void host.disposeAll());

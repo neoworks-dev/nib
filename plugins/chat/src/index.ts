@@ -5,6 +5,8 @@
  * composer and the pure text they need.
  */
 
+export { agentFamily } from "./agent-family";
+export { default as AgentTabs } from "./AgentTabs.svelte";
 export { composeAnnotatedMessage, createAnnotation, type StagedAnnotation } from "./annotations";
 export { default as ChatSurface } from "./ChatSurface.svelte";
 export { default as Composer } from "./Composer.svelte";

@@ -329,6 +329,14 @@ describe("mapUserText", () => {
     const second = mapUserText(first.state, "two");
     expect(ofType(second.events, "message.started")[0]?.data.messageId).toBe("user-2");
   });
+
+  test("a resumed thread numbers its messages apart from the ones already logged", () => {
+    const resumed = createCodexStreamState("/repo", "thread-1", "codex", "r2-");
+    const { state, events } = mapUserText(resumed, "again");
+    expect(ofType(events, "message.started")[0]?.data.messageId).toBe("r2-user-1");
+    const turn = mapCodexEvent(state, { type: "turn.started" });
+    expect(ofType(turn.events, "message.started")[0]?.data.messageId).toBe("r2-turn-1");
+  });
 });
 
 describe("parseModelCache", () => {

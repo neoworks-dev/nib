@@ -48,6 +48,57 @@ export function metaString(meta: Record<string, string | string[]>, key: string)
   return first;
 }
 
+/**
+ * Writes one scalar key back into a file's frontmatter, leaving every other line
+ * of it — and the body — exactly as it was. A null value removes the key, and a
+ * block left with nothing in it goes with it: a note that was never given a
+ * colour should read as a plain note, not as one carrying an empty fence.
+ *
+ * Line-based rather than a parse-and-serialise round trip, because the parser
+ * covers a subset of YAML: rewriting the whole block from what it understood
+ * would silently drop anything it skipped.
+ */
+export function setMetaString(source: string, key: string, value: string | null): string {
+  const text = source.replace(/\r\n?/g, "\n");
+  const entry = `${key}: ${value ?? ""}`;
+  const lines = text.split("\n");
+  const closing =
+    lines[0]?.trim() === FENCE
+      ? lines.findIndex((line, index) => index > 0 && line.trim() === FENCE)
+      : -1;
+
+  if (closing === -1) {
+    if (value === null) return text;
+    return `${FENCE}\n${entry}\n${FENCE}\n${text}`;
+  }
+
+  const block = lines.slice(1, closing);
+  const at = block.findIndex((line) => keyOf(line) === key);
+  if (at === -1) {
+    if (value === null) return text;
+    block.push(entry);
+  } else if (value === null) {
+    block.splice(at, 1);
+  } else {
+    block[at] = entry;
+  }
+
+  const rest = lines.slice(closing + 1);
+  // An empty block is no block. The body keeps its own opening blank line, so
+  // dropping the fence cannot glue the first paragraph onto the line above it.
+  if (block.length === 0) return rest.join("\n").replace(/^\n/, "");
+  return [FENCE, ...block, FENCE, ...rest].join("\n");
+}
+
+/** The key a frontmatter line declares, or null for a list item, comment or blank. */
+function keyOf(line: string): string | null {
+  const trimmed = line.trim();
+  if (trimmed.length === 0 || trimmed.startsWith("#") || trimmed.startsWith("- ")) return null;
+  const separator = trimmed.indexOf(":");
+  if (separator <= 0) return null;
+  return trimmed.slice(0, separator).trim();
+}
+
 function parseMeta(lines: readonly string[]): Record<string, string | string[]> {
   const meta: Record<string, string | string[]> = {};
   let listKey: string | null = null;

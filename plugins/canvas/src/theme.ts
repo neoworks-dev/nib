@@ -70,9 +70,14 @@ export const CARD_SHADOW_RAISED = {
  */
 export const SELECTION = {
   ringWidth: 3,
-  ringOffset: 3,
-  handleLength: 22,
-  handleThickness: 3,
+  handleLength: 34,
+  handleThickness: 2,
+  /**
+   * Screen pixels the bars sit in from the card's own edge. Spatial draws them
+   * on the card rather than around it: a bar centred on the edge hangs half of
+   * itself over the table and reads as chrome bolted on.
+   */
+  handleInset: 9,
   handleColor: 0x9aa0a8,
   /** How far from a handle the pointer still counts as grabbing it. */
   handleReach: 9,
@@ -86,6 +91,29 @@ export const MARQUEE = {
   fillAlpha: 0.2,
 } as const;
 
+/**
+ * The alignment guides a drag draws against the cards already placed. White and
+ * faint, the same family as the selection ring: a guide is something to aim by
+ * for the length of a gesture, so it has to be visible on the table and on the
+ * cards it crosses without being the brightest thing on either.
+ */
+/**
+ * The gutter cards keep from each other: what a drag snaps to when one is
+ * brought up beside another, and what the grid arranges by. One number, so a row
+ * built by hand and a row the board built are the same row.
+ */
+export const CARD_GAP = 32;
+
+export const GUIDE = {
+  stroke: 0xffffff,
+  strokeAlpha: 0.65,
+  strokeWidth: 1,
+  /** Screen pixels an edge may be off an alignment before it is taken. */
+  tolerance: 7,
+  /** How far the line runs past the outermost card it joins, in screen pixels. */
+  overhang: 14,
+} as const;
+
 /** What the rest of the board fades to while one thing has the focus. */
 export const DIMMED_ALPHA = 0.15;
 
@@ -95,8 +123,95 @@ export const CARD_TYPE = {
   titleSize: 20,
   bodySize: 14,
   metaSize: 11,
-  /** A sheet is a page, so its headline is the loudest thing on the board. */
-  headlineSize: 26,
+} as const;
+
+/**
+ * A sticky is a coloured square of paper, and the colour is the note's own: it is
+ * written in the file's frontmatter, so a note keeps its colour outside the app
+ * and a hand-edited `color:` is honoured. The palette is the board's, because a
+ * note that could name any hex would let the board be made unreadable one card
+ * at a time.
+ */
+export type StickyColor = "green" | "yellow" | "orange" | "red" | "blue" | "violet" | "grey";
+
+export const STICKY_DEFAULT_COLOR: StickyColor = "green";
+
+/** The order the swatches are offered in: the default first, then warm to cool. */
+export const STICKY_PALETTE: readonly StickyColor[] = [
+  "green",
+  "yellow",
+  "orange",
+  "red",
+  "blue",
+  "violet",
+  "grey",
+];
+
+/** The paper, and the same colour as CSS for the swatches that pick it. */
+export const STICKY_COLORS: Record<StickyColor, { surface: number; css: string }> = {
+  green: { surface: 0x74e02c, css: "#74e02c" },
+  yellow: { surface: 0xffdf4f, css: "#ffdf4f" },
+  orange: { surface: 0xffb34d, css: "#ffb34d" },
+  red: { surface: 0xff7a6b, css: "#ff7a6b" },
+  blue: { surface: 0x6fd0ff, css: "#6fd0ff" },
+  violet: { surface: 0xc6a0ff, css: "#c6a0ff" },
+  grey: { surface: 0xe8eaee, css: "#e8eaee" },
+};
+
+/**
+ * Ink on a sticky is near-black whatever the paper is, rather than the board's
+ * greys: those are tuned for white cards and vanish on a saturated colour.
+ */
+export const STICKY_INK = {
+  text: "#101114",
+  muted: "rgba(16, 17, 20, 0.74)",
+  faint: "rgba(16, 17, 20, 0.42)",
+  /** A link, dark enough to read on the lightest paper in the palette. */
+  link: "#0b3fa8",
+} as const;
+
+/** A `color:` as the board reads it: an unknown name is the default, not an error. */
+export function stickyColor(name: string | null | undefined): StickyColor {
+  if (name === null || name === undefined) return STICKY_DEFAULT_COLOR;
+  const lower = name.trim().toLowerCase();
+  return lower in STICKY_COLORS ? (lower as StickyColor) : STICKY_DEFAULT_COLOR;
+}
+
+/**
+ * How far a sticky is turned on the table, in radians, from its own path: a wall
+ * of perfectly square notes reads as a spreadsheet. Derived rather than stored,
+ * so the angle is the same on every machine and across a reload, and never
+ * something the user has to undo.
+ */
+export function stickyTilt(path: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < path.length; index += 1) {
+    hash ^= path.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  const unit = ((hash >>> 0) % 1000) / 1000;
+  // Away from zero: a note turned by a tenth of a degree just looks misaligned.
+  const degrees = STICKY_TILT_MIN + unit * (STICKY_TILT_MAX - STICKY_TILT_MIN);
+  const left = ((hash >>> 10) & 1) === 0;
+  return ((left ? -degrees : degrees) * Math.PI) / 180;
+}
+
+const STICKY_TILT_MIN = 1.2;
+const STICKY_TILT_MAX = 5;
+
+/**
+ * The sheet's own scale. A sheet is a page rather than a snippet, so its type is
+ * small against the card: a paragraph has to read as a paragraph at board zoom,
+ * and what tells a heading from the prose under it is the step between these
+ * sizes, not the absolute size of either.
+ */
+export const SHEET_TYPE = {
+  padding: 18,
+  /** `#`, which is the document's own name where it has one. */
+  display: 17,
+  headline: 12,
+  subheader: 10.5,
+  body: 9.5,
 } as const;
 
 const SURFACE = {

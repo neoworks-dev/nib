@@ -14,9 +14,12 @@ import type {
   CanvasObjectKind,
   CanvasObjectRenderer,
 } from "@nib-ui/ui-contracts";
-import { Assets, Graphics, Sprite, Texture } from "pixi.js";
+import { Graphics, Sprite, Texture } from "pixi.js";
 import { type WebclipObject, parseWebclip } from "../board-view";
-import { type BoardTheme, SHARP_RADIUS } from "../theme";
+import { loadTexture } from "../engine/utils/texture";
+import { SANS, type TextRun, type TextTextureCache } from "../engine/utils/textTexture";
+import { type BoardTheme, CARD_TYPE, SHARP_RADIUS, themeRevision } from "../theme";
+import type { PageCapture } from "../vault.svelte";
 import { CardRenderer } from "./CardRenderer";
 
 /** The portrait card a capture is taken into. */
@@ -31,8 +34,9 @@ const BLINK_MS = 560;
 
 export interface WebclipDeps {
   theme(): BoardTheme;
+  textures: TextTextureCache;
   /** The cached capture for a url, or null while it has not been taken yet. */
-  captureUrl(url: string): string | null;
+  capture(url: string): PageCapture | null;
   /** The close button under a loading card: give up on this clip. */
   cancel(clip: WebclipObject): void;
   /** A double click opens the site itself. */
@@ -40,20 +44,28 @@ export interface WebclipDeps {
 }
 
 class WebclipCardRenderer extends CardRenderer<WebclipObject> {
+  protected override get spawnable(): boolean {
+    return true;
+  }
+
   private readonly capture = new Sprite();
+  private readonly label = new Sprite();
   private readonly chrome = new Graphics();
   private readonly caret = new Graphics();
 
   private loadedUrl = "";
   private loading = true;
+  /** Where the capture stops, which is where the page's own name starts. */
+  private captureBottom = 0;
 
   constructor(
     engine: CanvasEngineApi,
     private readonly deps: WebclipDeps,
   ) {
     super(engine);
-    this.content.addChild(this.capture, this.chrome, this.caret);
+    this.content.addChild(this.capture, this.label, this.chrome, this.caret);
     this.capture.visible = false;
+    this.label.visible = false;
 
     // The caret blinks for as long as the card is waiting, which is the only
     // thing on a loading clip that says it is still going.
@@ -77,7 +89,8 @@ class WebclipCardRenderer extends CardRenderer<WebclipObject> {
   }
 
   protected contentSignature(data: WebclipObject): string {
-    return [data.id, data.url, this.deps.captureUrl(data.url) ?? ""].join(" ");
+    const capture = this.deps.capture(data.url);
+    return [data.id, data.url, capture?.image ?? "", capture?.title ?? ""].join(" ");
   }
 
   /** The close button is the one thing on a loading clip that answers a press. */
@@ -99,19 +112,66 @@ class WebclipCardRenderer extends CardRenderer<WebclipObject> {
     const data = this.data;
     if (!data) return;
 
-    const url = this.deps.captureUrl(data.url);
-    if (url !== null && url !== this.loadedUrl) {
-      this.loadedUrl = url;
-      void this.load(url);
+    const capture = this.deps.capture(data.url);
+    if (capture !== null && capture.image !== this.loadedUrl) {
+      this.loadedUrl = capture.image;
+      void this.load(capture.image);
     }
-    if (url === null) {
+    if (capture === null) {
       this.loading = true;
       this.loadedUrl = "";
       this.capture.visible = false;
     }
 
     this.layoutCapture();
+    this.drawLabel(capture);
     this.drawLoadingChrome();
+  }
+
+  /**
+   * What the page calls itself, under the capture. The file behind a webclip is a
+   * url and nothing else, so its name is the host and its path — the scrape is
+   * the only thing that knows the page has a name, and a capture with no name
+   * under it is a picture of a site rather than a reference to a page.
+   */
+  private drawLabel(capture: PageCapture | null): void {
+    const data = this.data;
+    this.label.visible = data !== null && capture !== null;
+    if (!data || !capture) return;
+
+    const theme = this.deps.theme();
+    const pad = CARD_TYPE.padding;
+    const column = Math.max(1, this.width - pad * 2);
+    const runs: TextRun[] = [
+      {
+        text: capture.title,
+        size: CARD_TYPE.bodySize,
+        color: theme.text,
+        weight: 600,
+        family: SANS,
+        lineHeight: Math.round(CARD_TYPE.bodySize * 1.4),
+        maxLines: 3,
+        gapAfter: 6,
+      },
+      {
+        text: capture.domain,
+        size: CARD_TYPE.metaSize,
+        color: theme.dim,
+        family: SANS,
+        lineHeight: Math.round(CARD_TYPE.metaSize * 1.4),
+        maxLines: 1,
+      },
+    ];
+
+    const baked = this.deps.textures.get(
+      `webclip:${themeRevision()}:${data.id}:${capture.title}:${capture.domain}`,
+      runs,
+      column,
+      this.resolution,
+    );
+    this.label.texture = baked.texture;
+    this.label.setSize(baked.width, baked.height);
+    this.label.position.set(pad, this.captureBottom + pad);
   }
 
   /**
@@ -125,6 +185,7 @@ class WebclipCardRenderer extends CardRenderer<WebclipObject> {
     const drawHeight = (this.width / texture.width) * texture.height;
     this.capture.setSize(this.width, drawHeight);
     this.capture.position.set(0, 0);
+    this.captureBottom = Math.min(drawHeight, this.height);
   }
 
   private drawLoadingChrome(): void {
@@ -157,7 +218,8 @@ class WebclipCardRenderer extends CardRenderer<WebclipObject> {
   private async load(url: string): Promise<void> {
     let texture: Texture;
     try {
-      texture = (await Assets.load(url)) as Texture;
+      // The capture is a png in the asset store, whatever the page it came from.
+      texture = await loadTexture(url, "capture.png");
     } catch {
       // The capture failed. The card keeps waiting rather than claiming a page
       // that was never fetched, and the close button is still there to give up on.
@@ -169,6 +231,7 @@ class WebclipCardRenderer extends CardRenderer<WebclipObject> {
     this.capture.visible = true;
     this.loading = false;
     this.layoutCapture();
+    this.drawLabel(this.data ? this.deps.capture(this.data.url) : null);
     this.drawLoadingChrome();
   }
 }

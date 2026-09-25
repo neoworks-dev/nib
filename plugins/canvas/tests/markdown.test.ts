@@ -1,13 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import {
-  type Block,
-  blockAfter,
-  blockStyleRows,
   documentToMarkdown,
   parseBlock,
   parseBlocks,
   parseDocument,
-  restyle,
+  parseInline,
+  splitFrontmatter,
   toMarkdown,
   toggleTask,
 } from "../src/markdown";
@@ -39,6 +37,8 @@ describe("round trip", () => {
     "",
     "Some prose about it.",
     "- a list line",
+    "1. the first step",
+    "7. the seventh",
     "- [ ] a task",
     "- [x] a done task",
     "### A subheader",
@@ -50,6 +50,65 @@ describe("round trip", () => {
 
   it("normalises line endings on the way in", () => {
     expect(toMarkdown(parseBlocks("a\r\nb\rc"))).toBe("a\nb\nc");
+  });
+});
+
+describe("ordered lists", () => {
+  it("keeps the number it was written with, so the list is not renumbered", () => {
+    expect(parseBlock("3. third")).toEqual({
+      style: "ordered",
+      text: "third",
+      done: false,
+      ordinal: 3,
+    });
+  });
+
+  it("leaves a line that only looks like one alone", () => {
+    expect(parseBlock("1.no space").style).toBe("body");
+    expect(parseBlock("1) a paren").style).toBe("body");
+  });
+});
+
+describe("parseInline", () => {
+  it("marks the emphasis and takes its syntax off", () => {
+    expect(parseInline("a **bold** b")).toEqual([
+      { text: "a " },
+      { text: "bold", strong: true },
+      { text: " b" },
+    ]);
+    expect(parseInline("~~gone~~")).toEqual([{ text: "gone", strike: true }]);
+    expect(parseInline("*soft* and _soft_")).toEqual([
+      { text: "soft", em: true },
+      { text: " and " },
+      { text: "soft", em: true },
+    ]);
+  });
+
+  it("carries the outer mark through the inner one", () => {
+    expect(parseInline("**all ~~but~~ this**")).toEqual([
+      { text: "all ", strong: true },
+      { text: "but", strike: true, strong: true },
+      { text: " this", strong: true },
+    ]);
+  });
+
+  it("leaves an unbalanced marker as the text it is", () => {
+    expect(parseInline("2 * 3 = 6")).toEqual([{ text: "2 * 3 = 6" }]);
+    expect(parseInline("**open")).toEqual([{ text: "**open" }]);
+  });
+
+  it("says nothing about a line with no emphasis in it", () => {
+    expect(parseInline("plain")).toEqual([{ text: "plain" }]);
+  });
+});
+
+describe("toggleTask", () => {
+  it("flips a task and leaves every other style alone", () => {
+    const task = { style: "task" as const, text: "do it", done: false };
+    expect(toggleTask(task)).toEqual({ ...task, done: true });
+    expect(toggleTask(toggleTask(task))).toEqual(task);
+    const body = { style: "body" as const, text: "prose", done: false };
+    expect(toggleTask(body)).toBe(body);
   });
 });
 
@@ -75,84 +134,22 @@ describe("parseDocument", () => {
   });
 });
 
-describe("restyle", () => {
-  const task: Block = { style: "task", text: "do it", done: true };
-
-  it("keeps the words: a style is how a line is drawn, not what it says", () => {
-    expect(restyle(task, "headline")).toEqual({
-      style: "headline",
-      text: "do it",
-      done: false,
+describe("splitFrontmatter", () => {
+  it("returns the body as the text it is, frontmatter aside", () => {
+    expect(splitFrontmatter("---\nid: abc\n---\n# Today\n\ntext\n")).toEqual({
+      frontmatter: "---\nid: abc\n---",
+      body: "# Today\n\ntext\n",
     });
   });
 
-  it("keeps a task's checked state when the style does not change", () => {
-    expect(restyle(task, "task")).toBe(task);
+  it("leaves a document without frontmatter whole", () => {
+    expect(splitFrontmatter("just a line")).toEqual({ frontmatter: null, body: "just a line" });
   });
 
-  it("forgets `done` on anything that is not a task, so it cannot come back", () => {
-    const body = restyle(task, "body");
-
-    expect(body.done).toBe(false);
-    expect(restyle(body, "task").done).toBe(false);
-  });
-});
-
-describe("toggleTask", () => {
-  it("flips a task and leaves everything else alone", () => {
-    expect(toggleTask({ style: "task", text: "x", done: false }).done).toBe(true);
-    expect(toggleTask({ style: "task", text: "x", done: true }).done).toBe(false);
-
-    const body: Block = { style: "body", text: "x", done: false };
-    expect(toggleTask(body)).toBe(body);
-  });
-});
-
-describe("blockAfter", () => {
-  it("continues a list or a task, so writing three is three lines", () => {
-    expect(blockAfter({ style: "list", text: "a", done: false }).style).toBe("list");
-    expect(blockAfter({ style: "task", text: "a", done: true })).toEqual({
-      style: "task",
-      text: "",
-      done: false,
+  it("gives frontmatter with nothing after it an empty body", () => {
+    expect(splitFrontmatter("---\nid: abc\n---")).toEqual({
+      frontmatter: "---\nid: abc\n---",
+      body: "",
     });
-  });
-
-  it("drops back to body after a heading", () => {
-    expect(blockAfter({ style: "display", text: "Today", done: false }).style).toBe("body");
-    expect(blockAfter({ style: "subheader", text: "Today", done: false }).style).toBe("body");
-  });
-});
-
-describe("blockStyleRows", () => {
-  it("lists exactly the six rows, in Spatial's order", () => {
-    expect(blockStyleRows("body").map((row) => row.label)).toEqual([
-      "01 Display",
-      "02 Headline",
-      "03 Subheader",
-      "04 Body",
-      "List",
-      "Task",
-    ]);
-  });
-
-  it("greys exactly one row: the style the block already has", () => {
-    for (const current of ["display", "headline", "subheader", "body", "list", "task"] as const) {
-      const rows = blockStyleRows(current);
-      const disabled = rows.filter((row) => row.disabled);
-
-      expect(disabled).toHaveLength(1);
-      expect(disabled[0]?.style).toBe(current);
-    }
-  });
-
-  it("still offers every style, so none becomes one you cannot get back to", () => {
-    expect(blockStyleRows("task")).toHaveLength(6);
-  });
-
-  it("draws its one divider above List, splitting the styles from the lists", () => {
-    const rows = blockStyleRows("body");
-
-    expect(rows.filter((row) => row.dividerBefore).map((row) => row.style)).toEqual(["list"]);
   });
 });

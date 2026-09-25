@@ -11,7 +11,9 @@
  * Pure: no Pixi, no reactivity.
  */
 
+import type { Point } from "@nib-ui/ui-contracts";
 import type { Placement, Rect, StackMap } from "@nib-ui/vault";
+import { CARD_GAP } from "./theme";
 
 /** World units each layer of a pile steps up and to the left. */
 export const CASCADE_STEP = 7;
@@ -52,6 +54,21 @@ export function stacksIn(placements: Readonly<Record<string, Placement>>): Set<s
   return stacks;
 }
 
+/**
+ * Where a folded pile sits: the footprint of the card on top of it, which is the
+ * rectangle `collapse` gave the pile and the one a drag of the pile carries. The
+ * members come as `membersOf` answers them, bottom of the pile first.
+ *
+ * Read from the cards rather than from the stored rectangle because a drag moves
+ * placements and nothing else: a pile that has been moved and then opened used to
+ * spread around where it no longer was.
+ */
+export function pileRect(members: readonly StackMember[]): Rect | null {
+  const top = members.at(-1);
+  if (!top) return null;
+  return { x: top.placement.x, y: top.placement.y, w: top.placement.w, h: top.placement.h };
+}
+
 /** The box a set of placements covers, or null for none of them. */
 export function boundsOf(placements: readonly Placement[]): Rect | null {
   if (placements.length === 0) return null;
@@ -77,31 +94,43 @@ export interface CollapseResult {
 }
 
 /**
- * Folds a selection into a pile at the centre of what it covered. The member
- * nearest the cursor ends up on top, because that is the one the user was
- * looking at when they asked for the pile.
+ * Folds a selection into a pile at the centre of what it covered, largest card at
+ * the back and smallest on top, so every card shows an edge and none is buried
+ * under a bigger one.
+ *
+ * Ordered by size rather than by where the pointer was: the pile is folded, spread
+ * to be looked through and folded again, and an order read off the cursor or off
+ * the spread layout gave a different pile every time. Size is the one thing the
+ * cards carry through all of it, so the pile comes back as the pile that was left.
  *
  * Each layer steps up and to the left of the one above it, so the card on top is
  * fully visible and the ones under it show only as edges.
+ *
+ * `at` is where the pile lands, and a pile that is being folded back up passes the
+ * one it already has: the middle of what the cards cover is the middle of a spread
+ * block by then, not the middle of the pile they came out of, so folding without it
+ * walked the pile a little further off every time it was opened and closed.
  */
 export function collapse(
   members: readonly StackMember[],
   stack: string,
-  cursor: { x: number; y: number },
+  at?: Point,
 ): CollapseResult | null {
   if (members.length < 2) return null;
 
   const covered = boundsOf(members.map((member) => member.placement));
   if (!covered) return null;
 
-  // Furthest from the cursor first, so the nearest ends up last and on top.
+  // Largest first, so it ends up deepest; the path breaks a tie, because two cards
+  // of one size must not swap places from one fold to the next.
   const ordered = [...members].sort(
-    (left, right) => distanceTo(right.placement, cursor) - distanceTo(left.placement, cursor),
+    (left, right) =>
+      areaOf(right.placement) - areaOf(left.placement) || left.path.localeCompare(right.path),
   );
   const top = ordered.at(-1);
   if (!top) return null;
 
-  const center = { x: covered.x + covered.w / 2, y: covered.y + covered.h / 2 };
+  const center = at ?? { x: covered.x + covered.w / 2, y: covered.y + covered.h / 2 };
   const rect: Rect = {
     x: Math.round(center.x - top.placement.w / 2),
     y: Math.round(center.y - top.placement.h / 2),
@@ -183,9 +212,115 @@ export function dissolve(
   return { placements: next, stacks: remaining };
 }
 
-function distanceTo(placement: Placement, point: { x: number; y: number }): number {
-  return Math.hypot(
-    placement.x + placement.w / 2 - point.x,
-    placement.y + placement.h / 2 - point.y,
+/**
+ * Cards dragged out of their piles. A member let go where it no longer touches
+ * any other member of its pile has left it; one dropped back onto the pile is
+ * still in it. A pile left with one card is no pile — one card in a stack is
+ * just a card — so it is taken apart with the leaver.
+ */
+export function release(
+  placements: Readonly<Record<string, Placement>>,
+  stacks: StackMap,
+  ids: readonly string[],
+): { placements: Record<string, Placement>; stacks: StackMap } {
+  let next: Record<string, Placement> = { ...placements };
+  let remaining: StackMap = { ...stacks };
+
+  for (const id of ids) {
+    const placement = next[id];
+    const stack = placement?.stack;
+    if (!placement || stack === undefined) continue;
+    const others = membersOf(next, stack).filter((member) => member.path !== id);
+    if (others.some((member) => overlaps(placement, member.placement))) continue;
+    const { stack: _left, ...rest } = placement;
+    next[id] = rest;
+    if (others.length >= 2) continue;
+    const taken = dissolve(next, remaining, stack);
+    next = taken.placements;
+    remaining = taken.stacks;
+  }
+  return { placements: next, stacks: remaining };
+}
+
+/** World units between cards laid out as a grid: the board's own gutter. */
+export const GRID_GAP = CARD_GAP;
+
+/**
+ * The selection laid out in columns, as many columns as rows or one more, in
+ * reading order of where the cards were: the one nearest the top left leads, so
+ * the arrangement keeps whatever order it already had. It starts at the top left
+ * of what the selection covered.
+ *
+ * Columns rather than rows, because a vault holds cards of very different
+ * heights. Rows advance by their tallest card, so one long note drags a band of
+ * empty table under every short card beside it. Each card instead goes to
+ * whichever column currently reaches least far down, which is what makes the
+ * gaps read as even — the same masonry Pinterest lays out.
+ *
+ * Every column is one gap apart and as wide as the widest card in that column, so
+ * the left edges line up as a grid does and a narrow card leaves its slack on its
+ * own right. Sizing every column to the widest card on the board instead is what
+ * put two narrow cards a gap plus somebody else's slack apart.
+ */
+export function arrangeGrid(
+  members: readonly StackMember[],
+  gap = GRID_GAP,
+): Record<string, Placement> {
+  if (members.length === 0) return {};
+
+  const columns = Math.ceil(Math.sqrt(members.length));
+  const band = Math.max(...members.map((member) => member.placement.h)) + gap;
+  // Cards within a band of each other are one row, read left to right.
+  const row = (member: StackMember): number => Math.floor(member.placement.y / band);
+  const ordered = [...members].sort(
+    (left, right) => row(left) - row(right) || left.placement.x - right.placement.x,
   );
+  const bounds = boundsOf(ordered.map((member) => member.placement));
+  if (!bounds) return {};
+
+  const bottoms = new Array<number>(columns).fill(bounds.y);
+  const packed: { member: StackMember; column: number; top: number }[] = [];
+  for (const member of ordered) {
+    let column = 0;
+    let top = bounds.y;
+    for (const [index, bottom] of bottoms.entries()) {
+      if (index > 0 && bottom >= top) continue;
+      column = index;
+      top = bottom;
+    }
+
+    packed.push({ member, column, top });
+    bottoms[column] = top + member.placement.h + gap;
+  }
+
+  // Each column starts a gap after the widest card in the one before it. A column
+  // nothing landed in takes no room, so it opens no gap either.
+  const placements: Record<string, Placement> = {};
+  let left = bounds.x;
+  for (const [index] of bottoms.entries()) {
+    const inColumn = packed.filter((entry) => entry.column === index);
+    if (inColumn.length === 0) continue;
+    for (const entry of inColumn) {
+      placements[entry.member.path] = {
+        ...entry.member.placement,
+        x: Math.round(left),
+        y: Math.round(entry.top),
+      };
+    }
+    left += Math.max(...inColumn.map((entry) => entry.member.placement.w)) + gap;
+  }
+  return placements;
+}
+
+function overlaps(left: Placement, right: Placement): boolean {
+  return (
+    left.x < right.x + right.w &&
+    left.x + left.w > right.x &&
+    left.y < right.y + right.h &&
+    left.y + left.h > right.y
+  );
+}
+
+function areaOf(placement: Placement): number {
+  return placement.w * placement.h;
 }

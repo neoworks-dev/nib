@@ -2,6 +2,7 @@ import type { Disposer } from "@nib-ui/kernel";
 import type { MessageAttachment } from "@nib-ui/protocol";
 import type { PlacementMap, StackMap } from "@nib-ui/vault";
 import type { Application, Container } from "pixi.js";
+import type { Component } from "svelte";
 import type { PaneLayout } from "./panes";
 
 export interface Point {
@@ -101,6 +102,12 @@ export interface CanvasObjectRenderer<TData extends CanvasObject = CanvasObject>
   spawn?(): void;
   /** Animate out, then call `done`. Without it the container is removed at once. */
   exit?(done: () => void): void;
+  /**
+   * The object is back before its exit finished, so `done` must never be called.
+   * Without it an object that returns mid-exit is drawn twice: the one on its way
+   * out and the one that has just been made.
+   */
+  cancelExit?(): void;
   destroy?(): void;
 }
 
@@ -197,6 +204,12 @@ export interface CanvasDropPayload {
   uri?: string;
   /** Dropped out of another pane; the bytes are still in the session's workspace. */
   workspaceFiles?: WorkspaceFileRef[];
+  /**
+   * Every drag type the drop carried, by type name. A plugin that defines a drag
+   * type of its own reads it from here rather than having the board grow a field
+   * for it.
+   */
+  data?: Record<string, string>;
 }
 
 export interface CanvasDropHandler {
@@ -204,8 +217,27 @@ export interface CanvasDropHandler {
   handle(payload: CanvasDropPayload, at: Point): boolean | Promise<boolean>;
 }
 
+/** One colour offered in a swatch row, drawn as itself rather than as its name. */
+export interface CanvasMenuSwatch {
+  id: string;
+  label: string;
+  /** Any css colour: the menu paints the dot with it. */
+  css: string;
+}
+
 export type CanvasMenuItem =
-  | { kind: "action"; id: string; label: string; run(): void | Promise<void> }
+  | {
+      kind: "action";
+      id: string;
+      label: string;
+      /** Phosphor icon component, as a pane's is. */
+      icon?: Component<{ size?: number }>;
+      /** Drawn in red: the entry destroys something rather than rearranging it. */
+      danger?: boolean;
+      run(): void | Promise<void>;
+    }
+  /** A row of colours, because six named entries is a list and six dots is a choice. */
+  | { kind: "swatches"; id: string; swatches: CanvasMenuSwatch[]; run(swatchId: string): void }
   | { kind: "separator"; id: string };
 
 export interface CanvasMenuProvider {
@@ -223,11 +255,23 @@ export interface CanvasObjectContext {
   label: string;
   attachments?: MessageAttachment[];
   /**
+   * Attachments that exist only once made: a file in the vault is copied into
+   * the asset store on demand, so the transcript can name it the way it names
+   * anything else attached. Awaited when the task is launched, and by a
+   * composer that wants to show what it is about to send.
+   */
+  resolveAttachments?(): Promise<MessageAttachment[]>;
+  /**
    * What the object is, in the prompt's own terms — a url, a caption, a path.
    * A bookmark has nothing to attach and everything to say; a picture is the
    * other way round, and most objects are worth a line either way.
    */
   text?: string;
+}
+
+/** Where an attachment's bytes are read from: the app's own asset route. */
+export function assetUrl(assetId: string): string {
+  return `/api/assets/${encodeURIComponent(assetId)}`;
 }
 
 /**

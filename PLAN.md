@@ -3,8 +3,8 @@
 Rework of nib from "a canvas of objects the user wires together by hand" into "a project
 mindmap whose source of truth is a directory of real files".
 
-**Status: nothing built.** §2's decisions are settled. §10–§11 are the change surface.
-§15 is what is still open.
+**Status: steps 1–7 of §14 are built; step 8 is not.** §2's decisions are settled. §10–§11 are
+the change surface. §15 is what is still open.
 
 Reads with `NEXT.md` (the Pixi/workstream rework, largely landed) and supersedes its §1.2
 ("No projects. One board per directory. The board is the project") and the README's
@@ -187,18 +187,25 @@ JSONL changes every turn, and committing it makes every diff unreadable.
 
 ## 8. Instructions to the model
 
-The model writes the vault, so the format has to be told, always. Two layers:
+The model writes the vault, so the format has to be told, always. Two layers, **both done**:
 
 1. `systemPrompt: { type: "preset", preset: "claude_code", append: <vault rules> }` — appends
-   rather than replaces, so the prompt-caching prefix survives. Verified available in the
-   installed SDK (`@anthropic-ai/claude-agent-sdk@0.3.238`, `sdk.d.ts` `Options.systemPrompt`).
+   rather than replaces, so the prompt-caching prefix survives. Set unconditionally in
+   `plugins/harness-claude-code/src/adapter.ts`; it is not a caller option, because a session that
+   was never told the format writes a vault nothing can read back.
 2. `.nib/AGENTS.md` — the same rules as a file, so a human, `pi` or `codex` that wanders in finds
-   them with no nib involvement. This is decision 1 doing its job.
+   them with no nib involvement. This is decision 1 doing its job. Seeded by `openVault` on the
+   call that creates the vault — `mkdir` names the first directory it made — so a guide the user
+   rewrote or deleted is never restored.
 
-**Gotcha:** `plugins/harness-claude-code/src/adapter.ts:110` spreads `opts.options` into the SDK
-`Options` but never sets `settingSources`. The SDK does not load project settings unless
-`settingSources` includes `"project"`, so a `.claude/` directory inside the repo is currently
-invisible.
+Both read `packages/vault/src/instructions.ts`, which holds the rules once. Two copies of a format
+spec is the drift this plan is otherwise built to avoid.
+
+**Correction:** an earlier draft recorded that the SDK does not load project settings unless
+`settingSources` includes `"project"`. That is wrong for `@anthropic-ai/claude-agent-sdk@0.3.238`:
+omitting the option defaults to `["user", "project", "local"]` and passes no `--setting-sources`
+flag, so the CLI's own default applies. The adapter now sets it explicitly anyway — the project's
+`.claude/` is part of what the model is being pointed at, and should not ride on an SDK default.
 
 The rules the instructions must cover:
 
@@ -217,55 +224,69 @@ The rules the instructions must cover:
 
 ```
 $XDG_DATA_HOME/nib-ui/
-  placements/<sha256(vaultRoot)>.json   # { board → { path → { id, x, y, w, h, z } } }
-  link-previews/                        # regenerable cache
+  boards/<sha256(cwd)>.json   # { rev, placements, layout }
+  sessions/                   # session logs, until they move into the vault (§14 step 7)
+  link-previews/              # regenerable cache
 ```
 
-One map per vault, keyed by board directory and then by path (§5). A board's own directory is the
-only one it needs entries for, because a topic's contents are laid out on the topic's board and
-never on its parent's. Nothing else lives here: if it cannot be regenerated it is not here.
-Deleting this directory loses layout and camera state, never content.
+One board document per directory, holding the placements map — board directory to path to position
+— and the pane layout. Nothing else: if it cannot be regenerated it is not here. Deleting the
+directory loses layout and camera state, never content.
 
-This replaces `BoardStore`'s one-document-per-cwd model (`boardFileName(cwd)`,
-`apps/web/src/lib/server/board-store.ts:18`) for _objects_; the `rev` guard and SSE push
-(`/api/boards/events`, `Last-Event-ID` = rev) stay as they are, since concurrent windows still
-need last-writer protection.
+**Placements live in the board document, not in a `placements/` file of their own**, which is what
+an earlier draft of this plan called for. The document is already one per directory, which is one
+per vault, and it already carries the `rev` guard, the per-directory write chain, the SSE push and
+the routes (`apps/web/src/lib/server/board-store.ts`). A separate file would reuse none of that and
+buy only a migration.
+
+`objects` stays in the document while the client is on the old model. Item identity and content
+already come from the vault; once the canvas renders from it (§14 step 3), `objects` goes away and
+the document is placements and layout alone.
 
 ## 10. Code changes
 
-| Area         | File                                                          | Change                                                                                                                                                  |
-| ------------ | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Vault scan   | `packages/vault`                                              | **Done.** Walk, frontmatter, `[[name]]`, backlinks, unlinked mentions.                                                                                  |
-| Placements   | new, server + `packages/ui-contracts`                         | Per-vault map keyed by board then path, replacing `BoardDoc.objects` as the storage for item positions.                                                 |
-| Topics       | `plugins/canvas/src/workstream.ts`                            | Topic object kind: a collapsed card, an auto-laid-out preview of its contents, an enter action.                                                         |
-| Navigation   | `plugins/canvas/src/registry.svelte.ts:216`, `dispatch.ts:35` | Single click → preview the contents, double click → replace the canvas with that topic's board.                                                         |
-| Rendering    | `plugins/canvas/src/engine/`                                  | Draw from the scan; the preview reuses the per-kind renderers at app-chosen positions.                                                                  |
-| History      | `plugins/canvas/src/board.svelte.ts`                          | Which board the window is on, and the back stack.                                                                                                       |
-| Liveness     | new, server                                                   | Filesystem watch on `.nib/` → SSE. **Nothing watches the filesystem today.**                                                                            |
-| Move         | new route, `apps/web/src/routes/api/fs/`                      | `mv` + link rewrite + reposition, one undo step. No such route exists.                                                                                  |
-| Transcripts  | `apps/web/src/lib/server/data-dir.ts:15`, `context.ts:35`     | Per-vault `sessionsDirectory()`; `sessionHostPlugin`'s `logDirectory` follows.                                                                          |
-| Assets       | `plugins/assets.ts:31`                                        | Per-vault store; `assetsDirectory()` stops being a singleton.                                                                                           |
-| Instructions | `plugins/harness-claude-code/src/adapter.ts:110`              | `systemPrompt` append; set `settingSources`.                                                                                                            |
-| Deprecations | `plugins/canvas/src/spawn.ts`, `digest.ts`                    | `planSpawn`'s source-picking and the compact/full digest lose their reason to exist once the model reads the vault. Keep until retrieval replaces them. |
+| Area          | File                                                    | Change                                                                                                                                                                                               |
+| ------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Vault scan    | `packages/vault`                                        | **Done.** Walk, frontmatter, `[[name]]`, backlinks, unlinked mentions.                                                                                                                               |
+| Vault service | `apps/web/src/lib/server/vault.ts`                      | **Done.** Creates the vault on open, scans, projects a wire snapshot, `GET /api/vault`.                                                                                                              |
+| Vault files   | `readVaultFile`, `GET /api/vault/file`                  | **Done.** Bytes by vault-relative path, confined to the vault, never served as a document.                                                                                                           |
+| Board view    | `plugins/canvas/src/board-view.ts`                      | **Done.** Which objects one board shows, where they sit, and the preview's own auto-layout.                                                                                                          |
+| Placements    | `packages/vault/src/placements.ts`, `BoardDoc`          | **Done.** Map keyed by board then path, prune, carry-by-id, `flowSlot`, persisted by `BoardDoc.placements` and covered by the undo stack.                                                            |
+| Topics        | `plugins/canvas/src/objects/VaultRenderer.ts`           | **Done.** Topic and file cards, an auto-laid-out preview, an enter action; a drawable file renders its own bytes rather than its extension.                                                          |
+| Navigation    | `plugins/canvas/src/registry.svelte.ts`, `dispatch.ts`  | **Done.** Single click previews, double click enters; `dropOnto` reports a drag released on a card, which is what makes a drop a `mv`.                                                               |
+| Rendering     | `plugins/canvas/src/engine/`                            | **Done for the vault's own cards.** Derived `[[…]]` edges draw through `VaultLinkRenderer`; `syncObjects` culls anything outside the camera.                                                         |
+| History       | `plugins/canvas/src/board.svelte.ts`, `vault.svelte.ts` | **Done.** The trail and the back stack, plus an undo stack over objects, placements and the filesystem action a drag performed.                                                                      |
+| Liveness      | `apps/web/src/lib/server/vault-watch.ts`                | **Done.** One recursive watch per project, shared by every subscriber, debounced; `GET /api/vault/events` pushes "it changed" and the client re-scans.                                               |
+| Move          | `apps/web/src/lib/server/vault-write.ts`                | **Done.** `POST /api/vault/move`: `mv` + link rewrite + reposition in one undo step. Under `/api/vault`, not `/api/fs`: everything here is confined.                                                 |
+| Transcripts   | `apps/web/src/lib/server/session-logs.ts`               | **Done.** `sessionLogDirectory(cwd)` is the project's vault; `sessionHostPlugin` takes a function and restores across every known project.                                                           |
+| Assets        | `plugins/assets.ts:31`                                  | **Superseded.** A dropped file is written into the topic directory now, so the store is left holding prompt attachments and the regenerable preview cache — both of which §9 puts in XDG on purpose. |
+| Instructions  | `packages/vault/src/instructions.ts`, `adapter.ts`      | **Done.** The rules once; `systemPrompt` append, `settingSources`, and the seeded `.nib/AGENTS.md` all read them.                                                                                    |
+| Deprecations  | `plugins/canvas/src/spawn.ts`, `digest.ts`              | `planSpawn`'s source-picking and the compact/full digest lose their reason to exist once the model reads the vault. Keep until retrieval replaces them.                                              |
 
 ## 11. Deletions
 
-- `packages/protocol/src/schema.ts` (`Project`, `Session`, `Asset`, `Edge`), `project.ts`, and the
-  `index.ts:70` re-export. Dead — no consumer — and it competes with `BoardDoc` for the same
-  concepts (`Edge.relation: "branch" | "join" | "ref"` vs the canvas' `EdgeDirection`). Two object
-  models describing one idea is how the design drifts back.
-- The README's "Projects and workstreams" section, and `NEXT.md` §1.2.
+- ~~`packages/protocol/src/schema.ts` (`Project`, `Session`, `Asset`, `Edge`), `project.ts`, and
+  the `index.ts:70` re-export.~~ **Done**, and `assets.ts` and `blobs.ts` went with them: both were
+  reachable only from `schema.ts` and had no consumer either. That removes the second object model
+  competing with `BoardDoc` for the same concepts.
+- ~~The README's "Projects and workstreams" section~~ — **rewritten rather than deleted.** It was
+  accurate about workstreams, which still exist; what it was missing was the vault. It is now two
+  sections, "The vault" and "Workstreams".
 - `EdgeObject.direction`, `EdgeObject.carried`, and the port-drag link-creation gesture.
+  **Blocked on the same thing as `BoardDoc.objects`:** derived edges cover the vault's items, and
+  a workstream is not one yet, so the port drag is still the only way to relate two tasks.
 - `AnnotationObject` as a separate kind: an annotation becomes a note with a source reference,
-  which is a file in the vault like everything else.
+  which is a file in the vault like everything else. **Blocked on the same thing.**
 
 ## 12. Migration
 
 Two one-shot moves, in the shape of `migrateLegacySessionLogs` (idempotent, never overwriting,
 new location authoritative):
 
-1. `$XDG_DATA_HOME/nib-ui/sessions/*.jsonl` → `.nib/<topic>/`. Existing sessions have no topic.
-   Needs a destination rule — see §15.
+1. ~~`$XDG_DATA_HOME/nib-ui/sessions/*.jsonl` → `.nib/<topic>/`.~~ **Done** —
+   `migrateSessionLogsIntoVaults`. Nothing is guessed: a log's own `session.created` event names
+   the directory it was recorded against, so each transcript is filed under its own project, at
+   the vault root (§15 q2). A log whose project is gone is left exactly where it is.
 2. `$XDG_DATA_HOME/nib-ui/boards/<sha256>.json` → materials for the placements map, plus `.nib/`
    files for any object that holds authored content (notes, media). Objects with no content
    (edges) are dropped: the relation is re-derived from the files.
@@ -295,19 +316,47 @@ must run once and delete its source only after the target is written.
 
 1. **Vault scan** — walk `.nib/`, parse frontmatter, resolve `[[name]]`, compute backlinks and
    unlinked mentions. Pure functions over the tree, no UI, fully testable.
-   **Done** — `packages/vault`: `frontmatter.ts`, `links.ts`, `tree.ts`, `scan.ts`, 57 tests.
+   **Done** — `packages/vault`: `frontmatter.ts`, `links.ts`, `tree.ts`, `placements.ts`,
+   `snapshot.ts`, and `scan.ts` on a `./scan` subpath so the browser bundle never reaches `node:fs`.
    Placed in a package rather than the server because `plugins/canvas` needs the item types and
    cannot import from `apps/web`.
-2. **Placements** — per-board position map in XDG, replacing `BoardDoc.objects` as item storage.
-   _Pure half done_ — `packages/vault/placements.ts`: per-board map, prune, carry-by-id, slot
-   chooser, 14 tests. The server store and the one policy call (where an unplaced item lands) are
-   open (§15 q3).
+2. **Placements** — per-board position map in XDG, replacing `BoardDoc.objects` as item
+   storage. **Done** — `packages/vault/placements.ts` (map, prune, carry-by-id, `flowSlot`,
+   `parsePlacements`) and `BoardDoc.placements` persisted by the existing board document, with
+   `BoardWrite` keeping an older window from deleting the map. The one policy call left is where an
+   unplaced item lands (§15 q3): `flowSlot`'s default, swappable without touching the store.
 3. **Canvas from the scan** — topic cards, the auto-laid-out preview, double-click entering a topic.
-   _After this the vault is a working mindmap._
+   **Built, unverified by machine** — `board-view.ts` (which objects a board shows and where, plus
+   the preview's own layout), `VaultStore` (navigation, preview, placement persistence),
+   `objects/VaultRenderer.ts` (`topic` and `file` cards), `activate(object, gesture)`,
+   `GET /api/vault/file`, and `BoardStore` routing vault geometry to placements instead of the
+   board document. The repo tests the pure parts; nothing here tests rendered output.
+   Since closed: a preview card can be dragged (it has no position of its own, so the drag exists
+   to drop it somewhere); a drawable file renders its own bytes; the derived `[[…]]` edges are on
+   screen; and the links and search panes give the board a DOM surface it never had. Still open:
+   there is no breadcrumb — leaving a topic is the palette command or the empty-board menu.
 4. **Instructions** — `systemPrompt` append, `settingSources`, `.nib/AGENTS.md` (§8).
+   **Done** — `packages/vault/src/instructions.ts` holds the rules and the vault's two fixed names;
+   the adapter appends them to the preset prompt with the vault's absolute path, and `openVault`
+   writes the guide into a vault it just created.
 5. **Move** — `mv` route, drop-onto-topic hit test, link rewrite, one undo step.
+   **Done** — `vault-write.ts` does the `mv` and the rewrite and reports which files it touched;
+   `SelectTool` reports the card a drag was released over; `VaultStore.moveInto` performs the move,
+   hangs a `BoardAction` off the drag's open history scope and re-keys the placement, so the whole
+   gesture is one undo step. The reversal is handed back the files the move rewrote, so it cannot
+   touch a link elsewhere that already read the way the move would have produced.
 6. **Liveness** — watcher on `.nib/` → SSE, so a model-created file appears without a reload.
+   **Done** — `vault-watch.ts`, one shared recursive watch per project with a 120 ms settle;
+   `GET /api/vault/events` carries the fact and nothing else, and the client re-scans through the
+   same path a manual refresh takes.
 7. **Transcripts and assets** — relocate to topic directories, per-vault stores, migration.
+   **Transcripts done** — `session-logs.ts`; `sessionHostPlugin` takes `logDirectoryFor(cwd)` and
+   restores from every project the board index knows about. **Assets superseded**, see §10.
+8. **The old model goes** — `BoardDoc.objects` disappears once a workstream, an annotation and an
+   authored edge are vault items like everything else. **Not started, and blocked on a decision
+   this plan does not make:** a launched workstream already has a vault item — its transcript —
+   but an _unlaunched_ one is a goal with no session, no transcript and four launch picks, and
+   nothing here says what file that is. §11's remaining deletions wait on the same answer.
 
 Steps 1–3 are the core. Everything after them is reachable incrementally, and the vault is
 useful at every point.
@@ -316,10 +365,14 @@ useful at every point.
 
 1. ~~**Do boards hide anything?**~~ **Answered:** a board is one directory's canvas, entered by
    replacing the canvas, so a sibling's or ancestor's objects simply are not on it (§5).
-2. **Where do existing sessions land?** They have no topic. An inbox topic, or the vault root?
-   (§12)
-3. **Where does an item with no stored position land** on its board — beside its topic, in a grid
-   row, or in an inbox region? (§14 step 2)
+2. ~~**Where do existing sessions land?**~~ **Answered: the vault root.** A log names the
+   directory it was recorded against, so it is filed under its own project; within that project it
+   has no topic, and the root board _is_ the project. An `inbox/` would be a directory that exists
+   only because the app made one, which is the metadata decision 2 rules out. (§12)
+3. ~~**Where does an item with no stored position land** on its board?~~ **Answered:** at the
+   cursor when the user is putting it there, and in the middle of the canvas otherwise. The
+   board passes both to `reconcileBoard` as its `slot`; the flowed-row default only applies to a
+   caller that supplies neither, which is no longer a case the app hits.
 4. **How do ancestors' items show on a deeper board** — only if explicitly placed there, or
    automatically on entry? The two readings of "it's a symlink" differ here.
 5. **Does a topic's preview expand in place**, with the surrounding board still visible, or **take

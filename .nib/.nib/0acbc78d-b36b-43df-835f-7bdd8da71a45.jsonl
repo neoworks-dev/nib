@@ -1,0 +1,8 @@
+{"id":"6d28fd5b-2193-4a34-adf7-221cb895d540","sessionId":"0acbc78d-b36b-43df-835f-7bdd8da71a45","seq":960,"ts":1789389215005,"type":"session.status","data":{"status":"idle","detail":"harness process is not attached"}}
+{"id":"dc55d2dc-74d0-4e83-a97e-ddbdc42dbc46","sessionId":"0acbc78d-b36b-43df-835f-7bdd8da71a45","seq":960,"ts":1789389620505,"type":"session.status","data":{"status":"idle","detail":"harness process is not attached"}}
+{"id":"f4e851f3-a26a-43d4-ad53-69d1e5b3619a","sessionId":"0acbc78d-b36b-43df-835f-7bdd8da71a45","seq":960,"ts":1789508003994,"type":"session.status","data":{"status":"idle","detail":"harness process is not attached"}}
+{"id":"9cf03f9f-28e5-454d-b19c-aac9d39ae7df","sessionId":"0acbc78d-b36b-43df-835f-7bdd8da71a45","seq":960,"ts":1789511222297,"type":"session.status","data":{"status":"idle","detail":"harness process is not attached"}}
+{"id":"d85cd512-37fe-4a46-ac07-c6e007cd536f","sessionId":"0acbc78d-b36b-43df-835f-7bdd8da71a45","seq":960,"ts":1789511759564,"type":"session.status","data":{"status":"idle","detail":"harness process is not attached"}}
+{"id":"b6e1d26a-ed35-45fc-be51-85f13f96d4dd","sessionId":"0acbc78d-b36b-43df-835f-7bdd8da71a45","seq":960,"ts":1789511839347,"type":"session.status","data":{"status":"idle","detail":"harness process is not attached"}}
+{"id":"3752cfbd-f38d-4831-b216-ab0b1e284bde","sessionId":"0acbc78d-b36b-43df-835f-7bdd8da71a45","seq":960,"ts":1789511888636,"type":"session.status","data":{"status":"idle","detail":"harness process is not attached"}}
+{"id":"a6c9e81d-ca44-4566-b6ff-b588803a70ff","sessionId":"0acbc78d-b36b-43df-835f-7bdd8da71a45","seq":960,"ts":1789548810376,"type":"session.status","data":{"status":"idle","detail":"harness process is not attached"}}

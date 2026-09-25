@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { metaString, parseFrontmatter } from "../src/frontmatter";
+import { metaString, parseFrontmatter, setMetaString } from "../src/frontmatter";
 
 describe("parseFrontmatter", () => {
   it("leaves a file with no block alone", () => {
@@ -71,5 +71,46 @@ describe("metaString", () => {
     expect(metaString({ id: "" }, "id")).toBeNull();
     expect(metaString({ id: [] }, "id")).toBeNull();
     expect(metaString({}, "id")).toBeNull();
+  });
+});
+
+describe("setMetaString", () => {
+  it("opens a block on a file that has none", () => {
+    expect(setMetaString("# Today\n", "color", "red")).toBe("---\ncolor: red\n---\n# Today\n");
+  });
+
+  it("replaces the key and leaves every other line of the block alone", () => {
+    const source = "---\nid: note-1\ncolor: red\ntags: [a, b]\n---\n# Today";
+
+    expect(setMetaString(source, "color", "blue")).toBe(
+      "---\nid: note-1\ncolor: blue\ntags: [a, b]\n---\n# Today",
+    );
+  });
+
+  it("adds a key the block does not carry", () => {
+    expect(setMetaString("---\nid: note-1\n---\nbody", "color", "blue")).toBe(
+      "---\nid: note-1\ncolor: blue\n---\nbody",
+    );
+  });
+
+  it("takes a key back out, and the fence with it when nothing is left", () => {
+    expect(setMetaString("---\nid: note-1\ncolor: red\n---\nbody", "color", null)).toBe(
+      "---\nid: note-1\n---\nbody",
+    );
+    expect(setMetaString("---\ncolor: red\n---\nbody", "color", null)).toBe("body");
+  });
+
+  it("leaves a file with no such key untouched when asked to remove it", () => {
+    expect(setMetaString("# Today", "color", null)).toBe("# Today");
+    expect(setMetaString("---\nid: note-1\n---\nbody", "color", null)).toBe(
+      "---\nid: note-1\n---\nbody",
+    );
+  });
+
+  it("is read back by the parser it is written for", () => {
+    const written = setMetaString("body", "color", "violet");
+
+    expect(metaString(parseFrontmatter(written).meta, "color")).toBe("violet");
+    expect(parseFrontmatter(written).body).toBe("body");
   });
 });

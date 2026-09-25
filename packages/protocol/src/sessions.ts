@@ -1,7 +1,7 @@
 import type { Disposer } from "@nib-ui/kernel";
 import type { SessionCommand } from "./commands";
 import type { AnyAgentEvent } from "./events";
-import type { SessionView } from "./session-view";
+import type { SessionDigest, SessionView } from "./session-view";
 
 /** A session as a list reads it: the projection, folded down to what sorts and filters. */
 export interface SessionSummary {
@@ -21,6 +21,15 @@ export interface SessionSummary {
   live: boolean;
   resumable: boolean;
   nativeSessionId: string | null;
+  /** The session whose agent spawned this one; null for a session the user started. */
+  parentSessionId: string | null;
+  /**
+   * What the chat was asked and where it has got to. Carried on the summary
+   * because the thing that most needs it — a card standing for the transcript —
+   * is on screen for every session at once, and subscribing to each of them to
+   * read two lines would stream every turn of every chat to draw a card.
+   */
+  digest: SessionDigest;
 }
 
 export interface CreateSessionInput {

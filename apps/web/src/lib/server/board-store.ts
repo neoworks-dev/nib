@@ -8,13 +8,19 @@ import {
   type BoardWorkstream,
   type CanvasObject,
   emptyBoard,
-  type PaneFrame,
+  type PaneDock,
+  type PaneEdge,
   type PaneInstance,
   type PaneLayout,
   type PaneNode,
-  type PaneRect,
 } from "@nib-ui/ui-contracts";
-import { parsePlacements, parseStacks } from "@nib-ui/vault";
+import {
+  boardOf,
+  type Placement,
+  type PlacementMap,
+  parsePlacements,
+  parseStacks,
+} from "@nib-ui/vault";
 
 /** Directory names are not portable filenames, and a board is one per directory. */
 export function boardFileName(cwd: string): string {
@@ -78,34 +84,29 @@ export function parseLayout(value: unknown): PaneLayout | undefined {
     );
   }
 
-  // A leaf can only appear once in the layout: two frames claiming one instance
-  // would each render it, and the second claim is the one that loses.
+  // A leaf can only appear once in the layout: two docks claiming one instance
+  // would each render it, and the second claim is the one that loses. So is an
+  // edge: the second dock against it is dropped rather than merged.
   const placed = new Set<string>();
-  const frames: PaneFrame[] = [];
-  for (const entry of Array.isArray(candidate.frames) ? candidate.frames : []) {
+  const docks: PaneDock[] = [];
+  for (const entry of Array.isArray(candidate.docks) ? candidate.docks : []) {
     if (!entry || typeof entry !== "object") continue;
-    const { frameId, rect, root } = entry as Partial<PaneFrame>;
-    const parsedRect = parseRect(rect);
-    // The tree is only read once the frame is known to be keepable: reading it
-    // claims its instances, and a frame that is dropped must claim nothing.
-    if (typeof frameId !== "string" || !parsedRect) continue;
-    if (frames.some((frame) => frame.frameId === frameId)) continue;
+    const { edge, size, root } = entry as Partial<PaneDock>;
+    // The tree is only read once the dock is known to be keepable: reading it
+    // claims its instances, and a dock that is dropped must claim nothing.
+    if (!isEdge(edge) || typeof size !== "number" || !Number.isFinite(size) || size <= 0) continue;
+    if (docks.some((dock) => dock.edge === edge)) continue;
     const parsedRoot = parseNode(root, instances, placed);
     if (!parsedRoot) continue;
-    frames.push({ frameId, rect: parsedRect, root: parsedRoot });
+    docks.push({ edge, size, root: parsedRoot });
   }
 
-  if (frames.length === 0) return undefined;
-  return { frames, instances: [...placed].map((instanceId) => instances.get(instanceId)!) };
+  if (docks.length === 0) return undefined;
+  return { docks, instances: [...placed].map((instanceId) => instances.get(instanceId)!) };
 }
 
-function parseRect(value: unknown): PaneRect | undefined {
-  if (!value || typeof value !== "object") return undefined;
-  const { x, y, width, height } = value as Partial<PaneRect>;
-  const finite = [x, y, width, height].every(
-    (entry) => typeof entry === "number" && Number.isFinite(entry),
-  );
-  return finite ? { x: x!, y: y!, width: width!, height: height! } : undefined;
+function isEdge(value: unknown): value is PaneEdge {
+  return value === "left" || value === "right" || value === "top" || value === "bottom";
 }
 
 function parseNode(
@@ -222,6 +223,71 @@ export async function readBoardFile(directory: string, cwd: string): Promise<Boa
     // are still in their own logs.
     return emptyBoard(cwd);
   }
+}
+
+/** One card's new rectangle. Width and height are optional: moving a card is not resizing it. */
+export interface PlacementWrite {
+  /** Vault-relative path. Its directory is the board it lands on, so this never moves a file. */
+  path: string;
+  x: number;
+  y: number;
+  w?: number;
+  h?: number;
+}
+
+/**
+ * The size a card starts at when the board has never placed it — the same
+ * default `reconcileBoard` is given for an item of no particular kind. A card
+ * the canvas has already placed keeps its own size.
+ */
+const DEFAULT_PLACEMENT_SIZE = { w: 256, h: 300 };
+
+/**
+ * Positions written from outside the canvas — an agent arranging what it wrote.
+ * Each path lands on the board of its own directory, so where a card sits and
+ * which board it sits on stay separate questions: the second one is a `mv`.
+ *
+ * A card that is moved leaves the pile it was in, for the same reason dragging
+ * one out does: a stacked card is drawn at the pile's rectangle, so keeping the
+ * stack would silently ignore the position just asked for.
+ */
+export function applyPlacements(
+  map: PlacementMap,
+  writes: readonly PlacementWrite[],
+): PlacementMap {
+  const next: PlacementMap = { ...map };
+
+  for (const write of writes) {
+    const board = boardOf(write.path);
+    const placements = { ...next[board] };
+    const current = placements[write.path];
+    const depths = Object.values(placements).map((placement) => placement.z);
+    // Built field by field rather than spread over what was there: `stack` is
+    // the one thing a move drops, and `id` the one thing it has to carry.
+    const placed: Placement = {
+      x: write.x,
+      y: write.y,
+      w: dimension(write.w, current?.w, DEFAULT_PLACEMENT_SIZE.w),
+      h: dimension(write.h, current?.h, DEFAULT_PLACEMENT_SIZE.h),
+      z: current?.z ?? Math.max(0, ...depths) + 1,
+    };
+    if (current?.id !== undefined) placed.id = current.id;
+    placements[write.path] = placed;
+    next[board] = placements;
+  }
+
+  return next;
+}
+
+/** What the card is drawn at: what was asked for, else what it already was, else the default. */
+function dimension(
+  asked: number | undefined,
+  current: number | undefined,
+  fallback: number,
+): number {
+  if (asked !== undefined) return asked;
+  if (current !== undefined) return current;
+  return fallback;
 }
 
 /**

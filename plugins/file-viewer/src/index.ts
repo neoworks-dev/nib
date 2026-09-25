@@ -3,7 +3,7 @@ import type { AttachmentsService, FileViewerService, PaneRegistry } from "@nib-u
 import FileCodeIcon from "phosphor-svelte/lib/FileCodeIcon";
 import { planExplorer } from "./explorer";
 import FileViewer from "./FileViewer.svelte";
-import { fileViewerState } from "./state.svelte";
+import { fileViewerState, vaultTabPath } from "./state.svelte";
 
 const paneId = "files.viewer";
 
@@ -47,7 +47,21 @@ function service(panes: PaneRegistry, attachments: AttachmentsService): FileView
       if (activate) openExplorer(panes, attachments, panes.open(paneId));
       await fileViewerState.open(sessionId, path, activate);
     },
+    // No explorer beside it: the tree browses a session's workspace, and a vault
+    // note is browsed on the board it came from.
+    openVaultFile: async (cwd, path, options) => {
+      const activate = options?.activate !== false;
+      if (activate) panes.open(paneId);
+      await fileViewerState.openVault(cwd, path, activate);
+    },
+    // The project explorer is what asked for this, so it needs no tree of its own.
+    openProjectFile: async (cwd, path, options) => {
+      const activate = options?.activate !== false;
+      if (activate) panes.open(paneId);
+      await fileViewerState.openProject(cwd, path, activate);
+    },
     close: (path) => fileViewerState.close(path),
+    closeVaultFile: (path) => fileViewerState.close(vaultTabPath(path)),
   };
 }
 

@@ -212,6 +212,89 @@ export interface Box {
   height: number;
 }
 
+/** Where a leaf sits in its dock, as fractions of the dock's box. */
+export interface LeafPlacement {
+  instanceId: string;
+  box: Box;
+  /** The sides a splitter runs along, which the leaf gives half the splitter to. */
+  gutters: Record<PaneEdge, boolean>;
+}
+
+/** The boundary after one child of a split, and the split it divides. */
+export interface SplitterPlacement {
+  key: string;
+  path: NodePath;
+  index: number;
+  axis: PaneAxis;
+  /** The split's own extent along its axis, as a fraction of the dock. */
+  extent: number;
+  /** A line of no thickness on the boundary, spanning the split across its axis. */
+  box: Box;
+}
+
+export interface TreeLayout {
+  leaves: LeafPlacement[];
+  splitters: SplitterPlacement[];
+}
+
+/**
+ * Flattens the tree into boxes, so a dock is drawn as one list of leaves rather
+ * than as nested splits: a leaf that gains a sibling or moves to another split
+ * keeps its element, and whatever is running in it, instead of being remounted
+ * under a new parent.
+ */
+export function layoutTree(root: PaneNode): TreeLayout {
+  const layout: TreeLayout = { leaves: [], splitters: [] };
+  const none: Record<PaneEdge, boolean> = { left: false, right: false, top: false, bottom: false };
+  place(root, { x: 0, y: 0, width: 1, height: 1 }, none, [], layout);
+  return layout;
+}
+
+function place(
+  node: PaneNode,
+  box: Box,
+  gutters: Record<PaneEdge, boolean>,
+  path: NodePath,
+  layout: TreeLayout,
+): void {
+  if (node.kind === "leaf") {
+    layout.leaves.push({ instanceId: node.instanceId, box, gutters });
+    return;
+  }
+
+  const row = node.axis === "row";
+  const sizes = normalizeSizes(node.sizes, node.children.length);
+  const extent = row ? box.width : box.height;
+  const last = node.children.length - 1;
+  let offset = row ? box.x : box.y;
+
+  for (const [index, child] of node.children.entries()) {
+    const size = sizes[index];
+    if (size === undefined) continue;
+    const share = extent * size;
+    const childBox = row
+      ? { x: offset, y: box.y, width: share, height: box.height }
+      : { x: box.x, y: offset, width: box.width, height: share };
+    const childGutters = row
+      ? { ...gutters, left: gutters.left || index > 0, right: gutters.right || index < last }
+      : { ...gutters, top: gutters.top || index > 0, bottom: gutters.bottom || index < last };
+    place(child, childBox, childGutters, [...path, index], layout);
+    offset += share;
+
+    if (index === last) continue;
+    layout.splitters.push({
+      key: `${path.join(".")}/${index}`,
+      path,
+      index,
+      axis: node.axis,
+      extent,
+      box: row
+        ? { x: offset, y: box.y, width: 0, height: box.height }
+        : { x: box.x, y: offset, width: box.width, height: 0 },
+    });
+  }
+}
+
 export function pointInBox(box: Box, x: number, y: number): boolean {
   return x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;
 }

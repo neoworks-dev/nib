@@ -1,12 +1,20 @@
 import type {
   PaneAttachment,
   PaneDefinition,
+  PaneDock,
   PaneEdge,
-  PaneFrame,
   PaneInstance,
   PaneLayout,
+  PaneNode,
   PaneRegistry,
 } from "@nib-ui/ui-contracts";
+import {
+  type Bounds,
+  clampDockSize,
+  DEFAULT_DOCK_SIZE,
+  EDGE_ORDER,
+  nearestEdge,
+} from "../layout/docks";
 import {
   insertAtEdge,
   insertBeside,
@@ -17,17 +25,20 @@ import {
   removeLeaf,
   retainLeaves,
   setSizes,
-} from "../layout/frames";
-import { type Bounds, cascadeRect, clampRect, type WindowRect } from "../layout/windows";
+} from "../layout/tree";
 
-/** The view the shell is built around: it fills the main area and is never a window. */
+/** The view the shell is built around: it fills what the docks leave, and is never docked. */
 export const rootPaneId = "canvas";
+
+/** Where a pane opens, and which way a second one splits the dock it lands in. */
+const OPENING_EDGE: PaneEdge = "right";
+const OPENING_SPLIT: PaneEdge = "bottom";
 
 let sequence = 0;
 
 function createId(prefix: string): string {
   sequence += 1;
-  return `${prefix}-${sequence.toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${prefix}-${sequence.toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
 /**
@@ -47,17 +58,16 @@ function sameParams(
 }
 
 /**
- * Panes, the instances of them that are open, and the frames those float in.
- * Everything but the root pane opens over it, so the board stays whole
- * underneath: the frame list is the source of truth for what is on screen, and
- * its order is the stacking order.
+ * Panes, the instances of them that are open, and the docks those are attached
+ * to. Nothing floats: a pane is always against an edge of the main area, and the
+ * board keeps the middle — the docks are the only thing that can take space from
+ * it, and they are capped so it never reaches nothing.
  */
 export class ReactivePaneRegistry implements PaneRegistry {
   definitions = $state<PaneDefinition[]>([]);
   openPanes = $state<PaneInstance[]>([]);
-  frames = $state<PaneFrame[]>([]);
+  docks = $state<PaneDock[]>([]);
   bounds = $state<Bounds>({ width: 1280, height: 800 });
-  focusedFrameId = $state<string | null>(null);
   focusedInstanceId = $state<string | null>(null);
 
   register(definition: PaneDefinition) {
@@ -102,17 +112,16 @@ export class ReactivePaneRegistry implements PaneRegistry {
     };
   }
 
-  frameOf(instanceId: string): PaneFrame | undefined {
-    return this.frames.find((frame) => listLeaves(frame.root).includes(instanceId));
+  dock(edge: PaneEdge): PaneDock | undefined {
+    return this.docks.find((entry) => entry.edge === edge);
   }
 
-  frame(frameId: string): PaneFrame | undefined {
-    return this.frames.find((entry) => entry.frameId === frameId);
+  dockOf(instanceId: string): PaneDock | undefined {
+    return this.docks.find((entry) => listLeaves(entry.root).includes(instanceId));
   }
 
   open(paneId: string, params?: Record<string, unknown>): string {
     if (paneId === rootPaneId) {
-      this.focusedFrameId = null;
       this.focusedInstanceId = null;
       return rootPaneId;
     }
@@ -124,26 +133,23 @@ export class ReactivePaneRegistry implements PaneRegistry {
         : candidates.findLast((entry) => sameParams(entry.params, params));
     if (!existing) return this.openInstance(paneId, params);
 
-    this.raiseFrame(this.frameOf(existing.instanceId)?.frameId);
     this.focusedInstanceId = existing.instanceId;
     return existing.instanceId;
   }
 
+  /**
+   * A pane opens against the right edge, and a second one splits that dock below
+   * the first: a window is never dropped over the board for the user to place.
+   */
   openInstance(paneId: string, params?: Record<string, unknown>): string {
     if (paneId === rootPaneId) return rootPaneId;
     const instanceId = createId("pane");
     this.openPanes = [...this.openPanes, { instanceId, paneId, ...(params ? { params } : {}) }];
 
-    const frame: PaneFrame = {
-      frameId: createId("frame"),
-      rect: cascadeRect(
-        this.frames.map((entry) => entry.rect),
-        this.bounds,
-      ),
-      root: leafNode(instanceId),
-    };
-    this.frames = [...this.frames, frame];
-    this.focusedFrameId = frame.frameId;
+    const dock = this.dock(OPENING_EDGE);
+    if (dock) this.replaceDock(dock.edge, insertAtEdge(dock.root, instanceId, OPENING_SPLIT));
+    else this.addDock(OPENING_EDGE, leafNode(instanceId));
+
     this.focusedInstanceId = instanceId;
     return instanceId;
   }
@@ -169,15 +175,10 @@ export class ReactivePaneRegistry implements PaneRegistry {
   }
 
   closeInstance(instanceId: string): void {
-    const frame = this.frameOf(instanceId);
+    const dock = this.dockOf(instanceId);
     this.openPanes = this.openPanes.filter((entry) => entry.instanceId !== instanceId);
-    if (frame) {
-      const root = removeLeaf(frame.root, instanceId);
-      this.frames = root
-        ? this.frames.map((entry) => (entry.frameId === frame.frameId ? { ...entry, root } : entry))
-        : this.frames.filter((entry) => entry.frameId !== frame.frameId);
-    }
-    if (this.focusedInstanceId === instanceId) this.focusTopmost();
+    if (dock) this.replaceDock(dock.edge, removeLeaf(dock.root, instanceId));
+    if (this.focusedInstanceId === instanceId) this.focusFirst();
   }
 
   toggle(paneId: string): void {
@@ -193,123 +194,114 @@ export class ReactivePaneRegistry implements PaneRegistry {
     return this.openPanes.some((entry) => entry.instanceId === instanceId);
   }
 
-  /** Brings a frame to the front by making it the last one drawn. */
-  raiseFrame(frameId: string | undefined): void {
-    const frame = frameId ? this.frame(frameId) : undefined;
-    if (!frame) return;
-    this.focusedFrameId = frame.frameId;
-    if (this.frames.at(-1) !== frame)
-      this.frames = [...this.frames.filter((entry) => entry !== frame), frame];
-  }
-
   focusInstance(instanceId: string): void {
     if (!this.isInstanceOpen(instanceId)) return;
     this.focusedInstanceId = instanceId;
-    this.raiseFrame(this.frameOf(instanceId)?.frameId);
   }
 
-  setFrameRect(frameId: string, rect: WindowRect): void {
-    this.frames = this.frames.map((frame) =>
-      frame.frameId === frameId ? { ...frame, rect: clampRect(rect, this.bounds) } : frame,
+  setDockSize(edge: PaneEdge, size: number): void {
+    this.docks = this.docks.map((dock) =>
+      dock.edge === edge ? { ...dock, size: clampDockSize(edge, size, this.bounds) } : dock,
     );
   }
 
-  setSplitSizes(frameId: string, path: NodePath, sizes: number[]): void {
-    this.frames = this.frames.map((frame) =>
-      frame.frameId === frameId ? { ...frame, root: setSizes(frame.root, path, sizes) } : frame,
+  setSplitSizes(edge: PaneEdge, path: NodePath, sizes: number[]): void {
+    this.docks = this.docks.map((dock) =>
+      dock.edge === edge ? { ...dock, root: setSizes(dock.root, path, sizes) } : dock,
     );
   }
 
   /** Makes the instance a sibling of another one, on the given side of it. */
   attach(instanceId: string, targetInstanceId: string, edge: PaneEdge): void {
-    const target = this.frameOf(targetInstanceId);
+    const target = this.dockOf(targetInstanceId);
     if (!target || instanceId === targetInstanceId) return;
-    this.merge(instanceId, target.frameId, (root) =>
+    this.move(instanceId, target.edge, (root) =>
       insertBeside(root, instanceId, targetInstanceId, edge),
     );
   }
 
-  /** Makes the instance the outermost child of a frame, against one of its edges. */
-  attachToFrame(instanceId: string, frameId: string, edge: PaneEdge): void {
-    const source = this.frameOf(instanceId);
+  /**
+   * Docks the instance against an edge of the area, splitting whatever is already
+   * there along the dock's own axis. A pane that is the whole of the dock it is
+   * dropped back onto stays where it is.
+   */
+  attachToEdge(instanceId: string, edge: PaneEdge): void {
+    const source = this.dockOf(instanceId);
     if (!source) return;
-    if (source.frameId === frameId && listLeaves(source.root).length < 2) return;
-    this.merge(instanceId, frameId, (root) => insertAtEdge(root, instanceId, edge));
+    if (source.edge === edge && listLeaves(source.root).length < 2) return;
+
+    const split = edge === "left" || edge === "right" ? "bottom" : "right";
+    this.move(instanceId, edge, (root) => insertAtEdge(root, instanceId, split));
   }
 
-  private merge(
-    instanceId: string,
-    frameId: string,
-    insert: (root: PaneFrame["root"]) => PaneFrame["root"],
-  ): void {
-    const source = this.frameOf(instanceId);
-    const target = this.frame(frameId);
-    if (!source || !target) return;
+  /** Where a pane let go over the area lands: the edge it was nearest. */
+  dropAt(instanceId: string, x: number, y: number): void {
+    this.attachToEdge(instanceId, nearestEdge(x, y, this.bounds));
+  }
+
+  /** Moves the instance to a dock of its own, on the first edge that has none. */
+  detach(instanceId: string): void {
+    const source = this.dockOf(instanceId);
+    if (!source || listLeaves(source.root).length < 2) return;
+    const free = EDGE_ORDER.find((edge) => this.dock(edge) === undefined);
+    if (free) this.attachToEdge(instanceId, free);
+  }
+
+  private move(instanceId: string, edge: PaneEdge, insert: (root: PaneNode) => PaneNode): void {
+    const source = this.dockOf(instanceId);
+    if (!source) return;
 
     const sourceRoot = removeLeaf(source.root, instanceId);
-    // Rearranging inside one frame: the tree the leaf goes back into is the one
-    // it was just taken out of, not the stale root.
-    const targetRoot = source.frameId === target.frameId ? sourceRoot : target.root;
-    if (!targetRoot) return;
-    const merged = insert(targetRoot);
+    if (source.edge === edge) {
+      // Rearranging inside one dock: the tree the leaf goes back into is the one
+      // it was just taken out of, not the stale root. A leaf that was the whole
+      // dock has nowhere to go back into, and stays where it is.
+      if (!sourceRoot) return;
+      this.replaceDock(edge, insert(sourceRoot));
+      this.focusedInstanceId = instanceId;
+      return;
+    }
 
-    this.frames = this.frames.flatMap((frame) => {
-      if (frame.frameId === target.frameId) return [{ ...frame, root: merged }];
-      if (frame.frameId === source.frameId)
-        return sourceRoot ? [{ ...frame, root: sourceRoot }] : [];
-      return [frame];
-    });
+    const target = this.dock(edge);
+    this.replaceDock(source.edge, sourceRoot);
+    if (target) this.replaceDock(edge, insert(target.root));
+    else this.addDock(edge, leafNode(instanceId));
     this.focusedInstanceId = instanceId;
-    this.raiseFrame(target.frameId);
   }
 
-  /** Moves the instance out of a shared frame into one of its own. */
-  detach(instanceId: string, at?: { x: number; y: number }): void {
-    const source = this.frameOf(instanceId);
-    if (!source || listLeaves(source.root).length < 2) return;
-    const root = removeLeaf(source.root, instanceId);
-    if (!root) return;
+  /** A tree of null is a dock with nothing in it, which is no dock at all. */
+  private replaceDock(edge: PaneEdge, root: PaneNode | null): void {
+    this.docks = root
+      ? this.docks.map((dock) => (dock.edge === edge ? { ...dock, root } : dock))
+      : this.docks.filter((dock) => dock.edge !== edge);
+  }
 
-    const frame: PaneFrame = {
-      frameId: createId("frame"),
-      rect: clampRect(
-        {
-          x: at?.x ?? source.rect.x + 24,
-          y: at?.y ?? source.rect.y + 24,
-          width: source.rect.width,
-          height: source.rect.height,
-        },
-        this.bounds,
-      ),
-      root: leafNode(instanceId),
-    };
-
-    this.frames = [
-      ...this.frames.map((entry) =>
-        entry.frameId === source.frameId ? { ...entry, root } : entry,
-      ),
-      frame,
+  private addDock(edge: PaneEdge, root: PaneNode): void {
+    this.docks = [
+      ...this.docks,
+      { edge, size: clampDockSize(edge, DEFAULT_DOCK_SIZE, this.bounds), root },
     ];
-    this.focusedFrameId = frame.frameId;
-    this.focusedInstanceId = instanceId;
   }
 
-  /** The main area was measured or resized; frames follow it rather than fall off it. */
+  /** The main area was measured or resized; docks follow it rather than crowd it out. */
   setBounds(bounds: Bounds): void {
     if (bounds.width === this.bounds.width && bounds.height === this.bounds.height) return;
     this.bounds = bounds;
-    this.frames = this.frames.map((frame) => ({ ...frame, rect: clampRect(frame.rect, bounds) }));
+    this.docks = this.docks.map((dock) => ({
+      ...dock,
+      size: clampDockSize(dock.edge, dock.size, bounds),
+    }));
   }
 
   /** Plain values, not state proxies: this is what gets written to the board. */
   snapshotLayout(): PaneLayout {
-    return $state.snapshot({ frames: this.frames, instances: this.openPanes }) as PaneLayout;
+    return $state.snapshot({ docks: this.docks, instances: this.openPanes }) as PaneLayout;
   }
 
   /**
    * Takes a stored layout as the current one. An instance whose pane no build
-   * provides is dropped — a frame that could only render an error is worse than
-   * a smaller layout — and the rest of the layout is kept.
+   * provides is dropped — a dock that could only render an error is worse than a
+   * smaller layout — and the rest of the layout is kept.
    */
   restoreLayout(layout: PaneLayout | undefined): void {
     const provided = new Set(this.definitions.map((entry) => entry.id));
@@ -320,29 +312,29 @@ export class ReactivePaneRegistry implements PaneRegistry {
     );
 
     const placed = new Set<string>();
-    const frames: PaneFrame[] = [];
-    for (const frame of layout?.frames ?? []) {
+    const docks: PaneDock[] = [];
+    for (const dock of layout?.docks ?? []) {
+      if (docks.some((entry) => entry.edge === dock.edge)) continue;
       const root = retainLeaves(
-        frame.root,
+        dock.root,
         (instanceId) => known.has(instanceId) && !placed.has(instanceId),
       );
       if (!root) continue;
       for (const instanceId of listLeaves(root)) placed.add(instanceId);
-      frames.push({
-        frameId: frame.frameId,
-        rect: clampRect(frame.rect, this.bounds),
+      docks.push({
+        edge: dock.edge,
+        size: clampDockSize(dock.edge, dock.size, this.bounds),
         root: normalizeNode(root),
       });
     }
 
-    this.frames = frames;
+    this.docks = docks;
     this.openPanes = [...placed].map((instanceId) => known.get(instanceId)!);
-    this.focusTopmost();
+    this.focusFirst();
   }
 
-  private focusTopmost(): void {
-    const frame = this.frames.at(-1);
-    this.focusedFrameId = frame?.frameId ?? null;
-    this.focusedInstanceId = frame ? (listLeaves(frame.root).at(-1) ?? null) : null;
+  private focusFirst(): void {
+    const dock = this.docks[0];
+    this.focusedInstanceId = dock ? (listLeaves(dock.root)[0] ?? null) : null;
   }
 }

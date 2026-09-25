@@ -1,62 +1,71 @@
 <script lang="ts">
   import type { SessionView } from "@nib-ui/protocol";
-  import type { PaneFrame } from "@nib-ui/ui-contracts";
+  import type { PaneEdge } from "@nib-ui/ui-contracts";
   import { kernelContext } from "@nib-ui/ui-contracts/svelte";
   import XIcon from "phosphor-svelte/lib/XIcon";
-  import { dropEdge, frameChrome, pointInRect } from "../layout/frames";
+  import { cubicOut } from "svelte/easing";
+  import { scale } from "svelte/transition";
+  import { nearestEdge } from "../layout/docks";
   import { clearPaneDrag, paneDrag } from "../layout/pane-drag.svelte";
-  import { moveRect, snapAt, snapRect } from "../layout/windows";
+  import { dropEdge } from "../layout/tree";
   import type { ReactivePaneRegistry } from "../registries/panes.svelte";
 
-  const {
-    frame,
-    instanceId,
-    session,
-  }: { frame: PaneFrame; instanceId: string; session: SessionView | null } = $props();
+  const { instanceId, session }: { instanceId: string; session: SessionView | null } = $props();
 
   const panes = kernelContext().require("panes") as ReactivePaneRegistry;
 
   const instance = $derived(panes.instance(instanceId));
   const definition = $derived(instance ? panes.definition(instance.paneId) : undefined);
   const focused = $derived(panes.focusedInstanceId === instanceId);
+  const quiet = $derived(definition?.chrome === "quiet");
+  const title = $derived.by(() => {
+    if (!definition) return instance?.paneId ?? instanceId;
+    if (definition.label) return definition.label(instance?.params);
+    return definition.title;
+  });
+  /** Exactly one edge, or none: where a pane dropped on this one would go. */
+  const hint = $derived<PaneEdge | null>(
+    paneDrag.hint?.instanceId === instanceId ? paneDrag.hint.edge : null,
+  );
+
+  const hintClass: Record<PaneEdge, string> = {
+    left: "inset-y-0 left-0 w-1/3",
+    right: "inset-y-0 right-0 w-1/3",
+    top: "inset-x-0 top-0 h-1/3",
+    bottom: "inset-x-0 bottom-0 h-1/3",
+  };
+
   /**
-   * The only leaf in its frame: dragging its title bar moves the frame itself,
-   * because there is no other pane it could be taken away from.
+   * A pane settles in rather than appearing. Scale, not size: the box the pane is
+   * laid out in never changes, so whatever is inside it — a canvas, an editor —
+   * measures itself once against its final width instead of on every frame.
+   *
+   * `|global` on the element, because the pane arriving is usually the dock around
+   * it arriving, and a local transition sits out its own parent's creation.
    */
-  const moves = $derived(frameChrome(frame.root).leafDrag === "move");
+  const settling = { duration: 160, start: 0.985, opacity: 0, easing: cubicOut };
 
   /** Below this the gesture is a click on the title bar, not a drag of the pane. */
   const dragThreshold = 6;
 
-  let header = $state<HTMLElement>();
-  let drag = $state<{
-    startX: number;
-    startY: number;
-    pointerX: number;
-    pointerY: number;
-    moved: boolean;
-  } | null>(null);
+  let element = $state<HTMLElement>();
+  let drag = $state<{ startX: number; startY: number; moved: boolean } | null>(null);
 
-  /** Frame rects are in the pane host's box, which is what the drop test needs. */
-  function hostPoint(event: PointerEvent): { x: number; y: number } | null {
-    const host = header?.closest("[data-pane-host]")?.getBoundingClientRect();
-    return host ? { x: event.clientX - host.left, y: event.clientY - host.top } : null;
+  /**
+   * The pane under the pointer, read off the document rather than off geometry
+   * the registry would have to keep: a dock is laid out by the browser, and the
+   * boxes it gives are the ones the user is looking at.
+   */
+  function leafUnder(event: PointerEvent): HTMLElement | null {
+    const under = document.elementFromPoint(event.clientX, event.clientY);
+    return under?.closest<HTMLElement>("[data-pane-leaf]") ?? null;
   }
 
-  function hintAt(
-    event: PointerEvent,
-  ): { frameId: string; edge: "left" | "right" | "top" | "bottom" } | null {
-    const point = hostPoint(event);
-    if (!point) return null;
-    // Topmost first, and never the frame being dragged whole — it follows the
-    // pointer, so it would swallow every drop.
-    for (let index = panes.frames.length - 1; index >= 0; index -= 1) {
-      const candidate = panes.frames[index]!;
-      if (moves && candidate.frameId === frame.frameId) continue;
-      if (!pointInRect(candidate.rect, point.x, point.y)) continue;
-      return { frameId: candidate.frameId, edge: dropEdge(candidate.rect, point.x, point.y) };
-    }
-    return null;
+  /** Which edge of the area the pointer is nearest, in the host's own coordinates. */
+  function edgeAt(event: PointerEvent): PaneEdge | null {
+    const host = element?.closest("[data-pane-host]")?.getBoundingClientRect();
+    if (!host) return null;
+    return nearestEdge(event.clientX - host.left, event.clientY - host.top, panes.bounds);
   }
 
   function start(event: PointerEvent) {
@@ -64,66 +73,74 @@
     event.preventDefault();
     event.stopPropagation();
     panes.focusInstance(instanceId);
-    drag = {
-      startX: event.clientX,
-      startY: event.clientY,
-      pointerX: event.clientX,
-      pointerY: event.clientY,
-      moved: false,
-    };
+    drag = { startX: event.clientX, startY: event.clientY, moved: false };
     paneDrag.instanceId = instanceId;
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   }
 
   function track(event: PointerEvent) {
     if (!drag) return;
-    const dx = event.clientX - drag.pointerX;
-    const dy = event.clientY - drag.pointerY;
     const moved =
       drag.moved ||
       Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >= dragThreshold;
-    if (moves) panes.setFrameRect(frame.frameId, moveRect(frame.rect, dx, dy, panes.bounds));
-    drag = { ...drag, pointerX: event.clientX, pointerY: event.clientY, moved };
+    drag = { ...drag, moved };
+    if (!moved) return;
 
-    // Against the area's own edge the window takes that edge; the drop hint is
-    // suppressed there, because a frame's third is wide enough to cover a margin
-    // the pointer has plainly been driven into.
-    const point = moved && moves ? hostPoint(event) : null;
-    paneDrag.snap = point ? snapAt(point.x, point.y, panes.bounds) : null;
-    paneDrag.hint = moved && !paneDrag.snap ? hintAt(event) : null;
+    const under = leafUnder(event);
+    const target = under?.dataset.paneLeaf;
+    if (under && target && target !== instanceId) {
+      const box = under.getBoundingClientRect();
+      paneDrag.hint = {
+        instanceId: target,
+        edge: dropEdge(
+          { x: box.left, y: box.top, width: box.width, height: box.height },
+          event.clientX,
+          event.clientY,
+        ),
+      };
+      paneDrag.edgeHint = null;
+      return;
+    }
+
+    // Over the board, or over nothing: the pane docks against the edge it is
+    // nearest, because there is nowhere in this shell for it to float. Over its
+    // own pane it is not a drop at all, and nothing is armed.
+    paneDrag.hint = null;
+    paneDrag.edgeHint = target ? null : edgeAt(event);
   }
 
-  function finish(event: PointerEvent) {
+  function finish() {
     const gesture = drag;
-    const hint = paneDrag.hint;
-    const snap = paneDrag.snap;
+    const target = paneDrag.hint;
+    const edge = paneDrag.edgeHint;
     drag = null;
     clearPaneDrag();
     if (!gesture?.moved) return;
-    if (snap) {
-      panes.setFrameRect(frame.frameId, snapRect(snap, panes.bounds));
-      return;
-    }
-    if (hint) {
-      panes.attachToFrame(instanceId, hint.frameId, hint.edge);
-      return;
-    }
-    // Dropped on nothing: a shared frame gives the pane up, a whole frame has
-    // already followed the pointer there.
-    if (!moves) {
-      const point = hostPoint(event);
-      panes.detach(instanceId, point ?? undefined);
-    }
+    if (target) panes.attach(instanceId, target.instanceId, target.edge);
+    else if (edge) panes.attachToEdge(instanceId, edge);
   }
 </script>
 
-<div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+<div
+  bind:this={element}
+  data-pane-leaf={instanceId}
+  class="group relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+  transition:scale|global={settling}
+>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <header
-    bind:this={header}
-    class="flex h-8 shrink-0 cursor-grab items-center gap-1.5 border-b border-line px-2.5 select-none {focused
-      ? 'bg-raised'
-      : ''}"
+    class="flex h-8 shrink-0 cursor-grab items-center gap-1.5 px-2.5 select-none"
+    class:border-b={!quiet}
+    class:border-line={!quiet}
+    class:bg-raised={!quiet && focused}
+    class:absolute={quiet}
+    class:inset-x-0={quiet}
+    class:top-0={quiet}
+    class:z-raised={quiet}
+    class:opacity-0={quiet}
+    class:transition-opacity={quiet}
+    class:group-hover:opacity-100={quiet}
+    class:focus-within:opacity-100={quiet}
     onpointerdown={start}
     onpointermove={track}
     onpointerup={finish}
@@ -137,12 +154,12 @@
       <span class="text-faint"><Icon size={12} /></span>
     {/if}
     <span class="min-w-0 flex-1 truncate text-2xs tracking-caps text-faint uppercase">
-      {definition?.title ?? instance?.paneId ?? instanceId}
+      {title}
     </span>
     <button
       type="button"
       class="rounded-md p-1 text-faint hover:bg-hover hover:text-default"
-      aria-label="Close the {definition?.title ?? instance?.paneId ?? 'pane'} pane"
+      aria-label="Close the {title} pane"
       onpointerdown={(event) => event.stopPropagation()}
       onclick={() => panes.closeInstance(instanceId)}
     >
@@ -167,4 +184,12 @@
       </p>
     {/if}
   </div>
+
+  {#if hint}
+    <div
+      class="pointer-events-none absolute z-raised border-2 border-action bg-action/20 {hintClass[
+        hint
+      ]}"
+    ></div>
+  {/if}
 </div>

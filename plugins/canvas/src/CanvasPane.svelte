@@ -5,14 +5,12 @@
     parseWorkspaceFileRefs,
     workspaceFileTransferType,
   } from "@nib-ui/ui-contracts";
-  import ArrowsMergeIcon from "phosphor-svelte/lib/ArrowsMergeIcon";
   import CornersOutIcon from "phosphor-svelte/lib/CornersOutIcon";
-  import TrashIcon from "phosphor-svelte/lib/TrashIcon";
   import { onMount, untrack } from "svelte";
   import { CanvasEngine } from "./engine/CanvasEngine";
   import { cameraFitting, clampZoom, zoomAt } from "./engine/utils/camera";
   import { unionRects } from "./engine/utils/geometry";
-  import SheetOverlay from "./SheetOverlay.svelte";
+  import SpawnPrompt from "./SpawnPrompt.svelte";
   import StickyOverlay from "./StickyOverlay.svelte";
   import { canvasState } from "./state.svelte";
   import { boardTheme, refreshBoardTheme } from "./theme";
@@ -29,8 +27,8 @@
   let menuHeight = $state(0);
   let engine: CanvasEngine | null = null;
 
-  const selection = $derived(registry.selection);
   const menu = $derived(registry.menu);
+  const prompt = $derived(registry.prompt);
   const boardBackground = `#${boardTheme().background.toString(16).padStart(6, "0")}`;
   /** Anything a plugin placed counts: a board of images is not an empty board. */
   const empty = $derived(canvasState.objects.length === 0);
@@ -68,10 +66,11 @@
   }
 
   /**
-   * The board's own composer. It is the one a session gets, driven by a target
-   * with no session behind it: the picks are held on the board, and sending is
-   * what puts a workstream on it. Keyed by directory so a draft survives the pane
-   * being closed and belongs to the project it was written for.
+   * The board's own composer, docked at the foot of the pane. It is the one a
+   * session gets, driven by a target with no session behind it: the picks are
+   * held on the board, and sending is what puts a workstream on it. Keyed by
+   * directory so a draft survives the pane being closed and belongs to the
+   * project it was written for.
    */
   const boardComposer = $derived.by((): PendingComposer => {
     const settings = canvasState.boardSettings;
@@ -187,12 +186,6 @@
     );
   }
 
-  /** The joined card carries its sources as context; its chat is where it is written. */
-  function joinSelection() {
-    const id = canvasState.join(selection);
-    if (id) canvasState.open(id);
-  }
-
   /** A paste aimed at the composer or any other field is not a paste onto the board. */
   function pasteTargetsBoard(target: EventTarget | null) {
     const element = target instanceof HTMLElement ? target : null;
@@ -221,12 +214,22 @@
     const transfer = event.dataTransfer;
     if (!transfer) return;
     const workspaceFiles = parseWorkspaceFileRefs(transfer.getData(workspaceFileTransferType));
+    // Read here rather than in the handlers: a `DataTransfer` is only readable
+    // during the event, and a handler that awaits anything is already too late.
+    const data: Record<string, string> = {};
+    for (const type of transfer.types) {
+      if (type === "Files") continue;
+      const value = transfer.getData(type);
+      if (value.length > 0) data[type] = value;
+    }
+
     await registry.drop(
       {
         files: [...transfer.files],
         text: transfer.getData("text/plain") || undefined,
         uri: transfer.getData("text/uri-list") || undefined,
         ...(workspaceFiles.length > 0 && { workspaceFiles }),
+        data,
       },
       boardPoint(event),
     );
@@ -270,7 +273,7 @@
     <p
       class="pointer-events-none absolute inset-0 z-raised flex items-center justify-center text-sm text-dim"
     >
-      Nothing on this board yet — say what to do below and it starts here.
+      Nothing on this board yet — say what to do below.
     </p>
   {/if}
 
@@ -298,38 +301,15 @@
     </nav>
   {/if}
 
-  <div class="pointer-events-none absolute top-2 left-2 z-raised flex items-center gap-1.5">
-    {#if selection.length >= 2}
-      <button
-        type="button"
-        class="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-violet/40 bg-violet-soft px-2 py-1 text-2xs text-violet"
-        onclick={joinSelection}
-      >
-        <ArrowsMergeIcon size={12} /> Join {selection.length}
-      </button>
-    {/if}
-
-    {#if selection.length > 0}
-      <button
-        type="button"
-        class="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-line bg-elevated px-2 py-1 text-2xs text-faint hover:text-red"
-        aria-label="Remove the selection from the board"
-        onclick={() => registry.removeObjects([...selection])}
-      >
-        <TrashIcon size={12} />
-      </button>
-    {/if}
-  </div>
-
   {#if status}
     <p
-      class="absolute bottom-16 left-1/2 z-raised max-w-[32rem] -translate-x-1/2 rounded-lg border border-red/40 bg-red-soft px-2 py-1 text-2xs text-red"
+      class="absolute bottom-40 left-1/2 z-raised max-w-[32rem] -translate-x-1/2 rounded-lg border border-red/40 bg-red-soft px-2 py-1 text-2xs text-red"
     >
       {status}
     </p>
   {/if}
 
-  <!-- Top right, opposite the board's own tools: the composer owns the bottom edge. -->
+  <!-- Top right, opposite the shell's own bar in the bottom-right corner. -->
   <div class="absolute top-2 right-2 z-raised flex items-center gap-1.5">
     <button
       type="button"
@@ -364,25 +344,57 @@
       onclick={() => registry.closeMenu()}
       oncontextmenu={(event) => event.preventDefault()}
     >
+      <!--
+        The dark pill the selection bars used to be. The menu replaced them, so it
+        keeps their look: the board is a light table, and the actions read as one
+        object floating over it rather than as a panel cut out of the chrome.
+      -->
       <div
         bind:clientWidth={menuWidth}
         bind:clientHeight={menuHeight}
-        class="absolute w-52 rounded-lg border border-line bg-elevated py-1 shadow-lg"
-        style="left:{menuPosition.left}px; top:{menuPosition.top}px;"
+        class="absolute w-56 rounded-xl bg-neutral-900 p-1 shadow-lg"
+        style:left="{menuPosition.left}px"
+        style:top="{menuPosition.top}px"
+        role="menu"
+        aria-label="What can be done with the selection"
       >
         {#each menu.items as item (item.id)}
           {#if item.kind === "separator"}
-            <div class="my-1 h-px bg-line"></div>
+            <div class="my-1 h-px bg-white/10"></div>
+          {:else if item.kind === "swatches"}
+            <div class="flex items-center gap-0.5 px-1 py-1">
+              {#each item.swatches as swatch (swatch.id)}
+                <button
+                  type="button"
+                  class="flex size-7 items-center justify-center rounded-lg hover:bg-white/10"
+                  aria-label={swatch.label}
+                  title={swatch.label}
+                  onclick={() => {
+                    registry.closeMenu();
+                    item.run(swatch.id);
+                  }}
+                >
+                  <span
+                    class="size-4 rounded-full ring-1 ring-white/25"
+                    style:background-color={swatch.css}
+                  ></span>
+                </button>
+              {/each}
+            </div>
           {:else}
             <button
               type="button"
-              class="block w-full truncate px-2.5 py-1 text-left text-2xs text-muted hover:bg-hover hover:text-default"
+              class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-2xs text-neutral-300 transition-colors hover:bg-white/10 hover:text-white"
+              class:hover:text-red-400={item.danger}
               onclick={() => {
                 registry.closeMenu();
                 void item.run();
               }}
             >
-              {item.label}
+              {#if item.icon}
+                <item.icon size={15} />
+              {/if}
+              <span class="truncate">{item.label}</span>
             </button>
           {/if}
         {/each}
@@ -390,13 +402,22 @@
     </div>
   {/if}
 
-  <!-- The chat composer, floating over the board: what it sends is a workstream. -->
-  <div class="pointer-events-none absolute inset-x-0 bottom-0 z-raised flex justify-center">
-    <div class="pointer-events-auto w-[56rem] max-w-full">
-      <Composer pending={boardComposer} />
-    </div>
-  </div>
+  {#if prompt}
+    <SpawnPrompt {prompt} paneWidth={boardWidth} paneHeight={boardHeight} />
+  {/if}
 
-  <SheetOverlay />
+  <!--
+    The board's input, docked at the foot of the pane: the table has one place to
+    say what to do, and it is in the same spot whatever is selected. The wrapper
+    only places and lifts it — the composer draws its own box.
+  -->
+  {#if opened}
+    <div class="pointer-events-none absolute inset-x-0 bottom-0 z-raised flex justify-center">
+      <div class="pointer-events-auto w-[46rem] max-w-full drop-shadow-xl">
+        <Composer pending={boardComposer} />
+      </div>
+    </div>
+  {/if}
+
   <StickyOverlay />
 </div>

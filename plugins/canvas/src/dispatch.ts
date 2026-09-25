@@ -26,11 +26,11 @@ export async function dispatch<TPayload, TAt>(
 }
 
 /**
- * Opening a card. A kind that knows how to open its own object takes both
- * gestures but acts only on the double-click, so a single click still just
- * selects it; everything else — an unregistered kind included, since a stored
- * object outlives the plugin that drew it — is left to the board's own handler,
- * which has always answered a plain click.
+ * Opening a card. A kind that knows how to open its own object answers **both**
+ * gestures and decides what each means: a topic previews its contents on a single
+ * click and enters on a double. Everything else, an unregistered kind included,
+ * since a stored object outlives the plugin that drew it, is left to the board's
+ * own handler, which has always answered a plain click.
  */
 export function activateObject(
   kind: CanvasObjectKind | undefined,
@@ -40,7 +40,7 @@ export function activateObject(
 ): void {
   const parsed = kind?.activate ? kind.parse(object) : null;
   if (kind?.activate && parsed) {
-    if (gesture === "doubleClick") kind.activate(parsed);
+    kind.activate(parsed, gesture);
     return;
   }
   fallback?.(object);

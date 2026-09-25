@@ -26,6 +26,8 @@ export interface VaultItem extends VaultEntry {
   meta: Record<string, string | string[]>;
   id: string | null;
   title: string | null;
+  /** The colour the item asked for, as the name it wrote; the board owns the palette. */
+  color: string | null;
   links: RawLink[];
   /** The body with code spans and fences blanked, for mention scanning. */
   text: string;
@@ -190,6 +192,7 @@ function itemFor(entry: VaultEntry, body: string | undefined): VaultItem {
     meta: frontmatter.meta,
     id: metaString(frontmatter.meta, "id"),
     title: metaString(frontmatter.meta, "title"),
+    color: metaString(frontmatter.meta, "color"),
     links: extractLinks(source),
     text: stripCode(frontmatter.body),
   };

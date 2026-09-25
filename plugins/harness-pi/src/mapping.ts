@@ -56,6 +56,12 @@ export interface PiStreamState {
   /** Id this mount registered under; `session.created` has to name it, not the vocabulary. */
   readonly harnessId: string;
   readonly nativeSessionId: string | null;
+  /**
+   * What message ids start with. The count restarts with every attach, so a
+   * session resumed onto a log that already holds `msg-1` needs a prefix of
+   * its own or its turns collide with the ones written before.
+   */
+  readonly messagePrefix: string;
   /** Id of the message currently open, assistant or user. */
   readonly messageId: string | null;
   readonly messages: number;
@@ -83,11 +89,13 @@ export function createPiStreamState(
   cwd: string,
   nativeSessionId: string | null = null,
   harnessId: string = piHarnessId,
+  messagePrefix = "msg-",
 ): PiStreamState {
   return {
     cwd,
     harnessId,
     nativeSessionId,
+    messagePrefix,
     messageId: null,
     messages: 0,
     openBlocks: [],
@@ -229,7 +237,7 @@ function startMessage(state: PiStreamState, event: Record<string, unknown>): PiM
   const role = isRecord(message) ? message.role : undefined;
   if (role !== "user" && role !== "assistant") return { state, events: [] };
 
-  const messageId = `msg-${state.messages + 1}`;
+  const messageId = `${state.messagePrefix}${state.messages + 1}`;
   const next: PiStreamState = {
     ...state,
     messages: state.messages + 1,
@@ -448,7 +456,7 @@ function ensureMessage(state: PiStreamState): {
   messageId: string;
 } {
   if (state.messageId) return { state, events: [], messageId: state.messageId };
-  const messageId = `msg-${state.messages + 1}`;
+  const messageId = `${state.messagePrefix}${state.messages + 1}`;
   return {
     state: { ...state, messages: state.messages + 1, messageId, openBlocks: [] },
     events: [{ type: "message.started", data: { messageId, role: "assistant" } }],

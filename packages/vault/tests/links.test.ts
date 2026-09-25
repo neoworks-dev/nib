@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { extractLinks, stripCode } from "../src/links";
+import { extractLinks, movedLinkTarget, rewriteLinks, stripCode } from "../src/links";
 
 describe("extractLinks", () => {
   it("reads a bare name", () => {
@@ -57,5 +57,49 @@ describe("stripCode", () => {
 
   it("blanks an inline span without joining its neighbours", () => {
     expect(stripCode("a `x` b")).toBe("a   b");
+  });
+});
+
+describe("rewriteLinks", () => {
+  const toTopicB = movedLinkTarget("topic-a/note.md", "topic-b/note.md");
+
+  it("rewrites a path-qualified reference and leaves the bare name alone", () => {
+    expect(rewriteLinks("[[topic-a/note]] and [[note]]", toTopicB)).toBe(
+      "[[topic-b/note]] and [[note]]",
+    );
+  });
+
+  it("keeps the alias and the heading", () => {
+    expect(rewriteLinks("[[topic-a/note#why|the note]]", toTopicB)).toBe(
+      "[[topic-b/note#why|the note]]",
+    );
+  });
+
+  it("matches the reference with its extension written out", () => {
+    expect(rewriteLinks("[[topic-a/note.md]]", toTopicB)).toBe("[[topic-b/note.md]]");
+  });
+
+  it("carries a topic's contents with it, and leaves the topic's own name alone", () => {
+    const moved = movedLinkTarget("topic-a", "archive/topic-a");
+    expect(rewriteLinks("[[topic-a]] [[topic-a/deep/note]]", moved)).toBe(
+      "[[topic-a]] [[archive/topic-a/deep/note]]",
+    );
+  });
+
+  it("leaves a bare name alone even when the moved item is the one it names", () => {
+    const moved = movedLinkTarget("note.md", "topic-x/note.md");
+    expect(rewriteLinks("[[note]]", moved)).toBe("[[note]]");
+  });
+
+  it("never touches code, which is where the guide spells the syntax out", () => {
+    const body = "`[[topic-a/note]]`\n```\n[[topic-a/note]]\n```\n[[topic-a/note]]";
+    expect(rewriteLinks(body, toTopicB)).toBe(
+      "`[[topic-a/note]]`\n```\n[[topic-a/note]]\n```\n[[topic-b/note]]",
+    );
+  });
+
+  it("returns the body unchanged when nothing points at the moved item", () => {
+    const body = "[[other]] and [[topic-c/note]]\n";
+    expect(rewriteLinks(body, toTopicB)).toBe(body);
   });
 });

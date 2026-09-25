@@ -24,6 +24,7 @@
     "@neoworks-dev/ui": "link:@neoworks-dev/ui",
     "@nib-ui/kernel": "workspace:*",
     "@nib-ui/protocol": "workspace:*",
+    "@nib-ui/vault": "workspace:*",
     "phosphor-svelte": "^3.1.0",
     "pixi.js": "8.14.2"
   },

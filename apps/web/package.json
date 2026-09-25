@@ -11,6 +11,7 @@
     "smoke": "bun scripts/smoke.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@neoworks-dev/ui": "link:@neoworks-dev/ui",
     "@nib-ui/file-icons": "workspace:*",
     "@nib-ui/kernel": "workspace:*",
@@ -24,12 +25,13 @@
     "@nib-ui/plugin-desktop-agent": "workspace:*",
     "@nib-ui/plugin-file-browser": "workspace:*",
     "@nib-ui/plugin-file-viewer": "workspace:*",
-    "@nib-ui/plugin-gauntlet-loop": "workspace:*",
     "@nib-ui/plugin-git-graph": "workspace:*",
     "@nib-ui/plugin-git-panel": "workspace:*",
     "@nib-ui/plugin-harness-claude-code": "workspace:*",
     "@nib-ui/plugin-harness-codex": "workspace:*",
     "@nib-ui/plugin-harness-pi": "workspace:*",
+    "@nib-ui/plugin-pinterest": "workspace:*",
+    "@nib-ui/plugin-project-explorer": "workspace:*",
     "@nib-ui/plugin-renderer-diff": "workspace:*",
     "@nib-ui/plugin-renderer-terminal": "workspace:*",
     "@nib-ui/plugin-settings": "workspace:*",
@@ -39,6 +41,7 @@
     "@nib-ui/plugin-web-browser": "workspace:*",
     "@nib-ui/protocol": "workspace:*",
     "@nib-ui/ui-contracts": "workspace:*",
+    "@nib-ui/vault": "workspace:*",
     "phosphor-svelte": "^3.1.0",
     "pixi.js": "8.14.2",
     "zod": "^4.4.3"

@@ -8,9 +8,10 @@ import { costTrackerPlugin } from "@nib-ui/plugin-cost-tracker";
 import { desktopAgentPlugin } from "@nib-ui/plugin-desktop-agent";
 import { fileBrowserPlugin } from "@nib-ui/plugin-file-browser";
 import { fileViewerPlugin } from "@nib-ui/plugin-file-viewer";
-import { gauntletLoopPlugin } from "@nib-ui/plugin-gauntlet-loop";
 import { gitGraphPlugin } from "@nib-ui/plugin-git-graph";
 import { gitPanelPlugin } from "@nib-ui/plugin-git-panel";
+import { pinterestPlugin } from "@nib-ui/plugin-pinterest";
+import { projectExplorerPlugin } from "@nib-ui/plugin-project-explorer";
 import { rendererDiffPlugin } from "@nib-ui/plugin-renderer-diff";
 import { rendererTerminalPlugin } from "@nib-ui/plugin-renderer-terminal";
 import { settingsPlugin } from "@nib-ui/plugin-settings";
@@ -59,8 +60,9 @@ const featurePlugins: Plugin[] = [
   gitGraphPlugin,
   fileViewerPlugin,
   fileBrowserPlugin,
-  gauntletLoopPlugin,
+  projectExplorerPlugin,
   webBrowserPlugin,
+  pinterestPlugin,
   settingsPlugin,
   readRoutingPlugin,
   workspaceDropsPlugin,

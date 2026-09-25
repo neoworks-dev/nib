@@ -6,7 +6,7 @@
  * of every one of these types, and it compiles without the DOM lib, so pulling in the
  * package root — which reaches `pixi.js`, `svelte` and `@nib-ui/protocol` — is not
  * something a main-process tsconfig should have to resolve. `DesktopRect` is declared
- * here rather than imported for the same reason `PaneRect` is.
+ * here rather than imported for that reason.
  */
 
 /** Structurally the canvas `Rect`; see the note above. */
