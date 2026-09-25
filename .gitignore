@@ -5,5 +5,6 @@ dist/
 out/
 .nib-ui/
 .nib-debug/
+.worktrees/
 *.log
 .DS_Store
