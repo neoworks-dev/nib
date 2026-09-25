@@ -137,6 +137,11 @@ export const canvasPlugin: Plugin = {
     registry.onInterceptActivate = (id) => canvasState.spreadStackAt(id);
     // What the board draws at full strength; everything else falls to the dim.
     registry.focusSource = () => canvasState.vault.focus;
+    registry.boardSource = () => {
+      const topic = canvasState.vault.topic;
+      if (topic === null) return "";
+      return topic;
+    };
 
     // A card released on a topic is a real `mv` into that directory; on empty
     // board space it is a `mv` into the board's own (PLAN §5). Anything that is
@@ -162,6 +167,7 @@ export const canvasPlugin: Plugin = {
       registry.onInterceptActivate = null;
       registry.onClearFocus = null;
       registry.focusSource = null;
+      registry.boardSource = null;
       registry.onDropOnto = null;
       registry.onBeginDrag = null;
       registry.onOpenBoard = null;

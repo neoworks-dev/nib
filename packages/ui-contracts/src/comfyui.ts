@@ -50,6 +50,8 @@ export interface ComfyQueueInput {
   cwd: string;
   workflow: ComfyWorkflow;
   uploads?: ComfyUpload[];
+  /** What is being run, shown while it runs; see `ComfyRun.label`. */
+  label?: string;
   /**
    * Vault directory the outputs are written into. Left out, they go beside the
    * first upload, or into `comfyui` when there is none.
@@ -65,11 +67,30 @@ export interface ComfyRunError {
   nodeType: string | null;
 }
 
+/**
+ * Where a run's result will sit once it is in the vault, chosen when the run is
+ * queued so the board can hold the spot while it runs.
+ */
+export interface ComfyResultSlot {
+  /** The board directory the result lands on; `""` is the vault root. */
+  board: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /** One queued workflow, from `POST /prompt` until its outputs are in the vault. */
 export interface ComfyRun {
   /** ComfyUI's `prompt_id`. */
   id: string;
   cwd: string;
+  /** What was run, e.g. the library workflow's name; null for a bare graph. */
+  label: string | null;
+  /** Vault paths of the pictures the run was given. */
+  inputs: string[];
+  /** Where the result will be placed; null when no board could be read. */
+  slot: ComfyResultSlot | null;
   status: ComfyRunStatus;
   queuedAt: number;
   finishedAt: number | null;

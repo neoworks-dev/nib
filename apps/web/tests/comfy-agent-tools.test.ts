@@ -34,6 +34,9 @@ function runState(id: string, status: ComfyRun["status"], outputs: string[] = []
   return {
     id,
     cwd: project,
+    label: null,
+    inputs: [],
+    slot: null,
     status,
     queuedAt: 1,
     finishedAt: null,

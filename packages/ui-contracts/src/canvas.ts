@@ -337,6 +337,12 @@ export interface CanvasRegistry {
   /** Directory whose board is on screen; empty until one is opened. */
   readonly cwd: string;
   /**
+   * The vault directory whose board is on screen — the topic entered, `""` at the
+   * vault root. Placements are per board, so anything drawn at a placement's
+   * position is only meaningful on this one.
+   */
+  readonly boardDirectory: string;
+  /**
    * Shows the board of a directory, with no task of its own. This is how a
    * project is entered: the board is the project, so opening one is opening it.
    */
