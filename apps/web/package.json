@@ -20,6 +20,7 @@
     "@nib-ui/plugin-canvas-links": "workspace:*",
     "@nib-ui/plugin-canvas-media": "workspace:*",
     "@nib-ui/plugin-chat": "workspace:*",
+    "@nib-ui/plugin-comfyui": "workspace:*",
     "@nib-ui/plugin-core-renderers": "workspace:*",
     "@nib-ui/plugin-cost-tracker": "workspace:*",
     "@nib-ui/plugin-desktop-agent": "workspace:*",

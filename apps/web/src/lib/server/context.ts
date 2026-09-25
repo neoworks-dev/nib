@@ -12,6 +12,7 @@ import {
 import { agentControlPlugin } from "./plugins/agent-control";
 import { assetsPlugin } from "./plugins/assets";
 import { boardsPlugin } from "./plugins/boards";
+import { comfyuiPlugin } from "./plugins/comfyui";
 import { gitPlugin } from "./plugins/git";
 import { harnessRegistryPlugin } from "./plugins/harness-registry";
 import { linkPreviewsPlugin } from "./plugins/link-previews";
@@ -22,6 +23,7 @@ import { workspacePlugin } from "./plugins/workspace";
 import type {
   AssetService,
   BoardService,
+  ComfyUIService,
   GitService,
   HarnessRegistry,
   LinkPreviewService,
@@ -64,6 +66,8 @@ export function serverContext(): Context {
   context.use(agentControlPlugin);
   context.use(linkPreviewsPlugin);
   context.use(pinterestPlugin);
+  // After the vault, which finished runs write their outputs into.
+  context.use(comfyuiPlugin);
   return context;
 }
 
@@ -101,4 +105,9 @@ export function linkPreviews(): LinkPreviewService {
 
 export function pinterest(): PinterestService {
   return serverContext().require("pinterest");
+}
+
+/** The ComfyUI service: status, node definitions and runs. */
+export function comfyui(): ComfyUIService {
+  return serverContext().require("comfyui");
 }

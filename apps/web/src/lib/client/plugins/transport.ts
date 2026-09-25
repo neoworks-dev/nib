@@ -10,6 +10,10 @@ import type {
   BoardDoc,
   BoardSummary,
   BoardWrite,
+  ComfyNodeDefinitions,
+  ComfyQueueInput,
+  ComfyRun,
+  ComfyStatus,
   CreateSessionInput,
   DirectoryEntry,
   SessionSummary,
@@ -204,6 +208,44 @@ class SseTransport implements TransportService {
   subscribeVault(cwd: string, onChange: () => void) {
     const source = new EventSource(`/api/vault/events?cwd=${encodeURIComponent(cwd)}`);
     source.addEventListener("vault", () => onChange());
+    return () => source.close();
+  }
+
+  comfyStatus(): Promise<ComfyStatus> {
+    return requestJson("/api/comfyui");
+  }
+
+  configureComfy(baseUrl: string): Promise<ComfyStatus> {
+    return requestJson("/api/comfyui", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ baseUrl }),
+    });
+  }
+
+  comfyNodeDefinitions(refresh: boolean): Promise<ComfyNodeDefinitions> {
+    if (refresh) return requestJson("/api/comfyui/nodes?refresh=1");
+    return requestJson("/api/comfyui/nodes");
+  }
+
+  queueComfy(input: ComfyQueueInput): Promise<ComfyRun> {
+    return requestJson("/api/comfyui/runs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  }
+
+  async cancelComfyRun(runId: string): Promise<void> {
+    await requestJson(`/api/comfyui/runs/${encodeURIComponent(runId)}`, { method: "DELETE" });
+  }
+
+  subscribeComfyRuns(onRun: (run: ComfyRun) => void) {
+    const source = new EventSource("/api/comfyui/events");
+    source.addEventListener("run", (message: MessageEvent<string>) => {
+      const run: ComfyRun = JSON.parse(message.data);
+      onRun(run);
+    });
     return () => source.close();
   }
 

@@ -15,6 +15,13 @@ import type {
 import type { Component } from "svelte";
 import type { TrashEntry, VaultDoc } from "@nib-ui/vault";
 import type { BoardDoc, BoardSummary, BoardWrite, CanvasRegistry } from "./canvas";
+import type {
+  ComfyNodeDefinitions,
+  ComfyQueueInput,
+  ComfyRun,
+  ComfyService,
+  ComfyStatus,
+} from "./comfyui";
 import type { DesktopAgentService } from "./desktop-agent";
 import type { AttachmentsService, PaneRegistry } from "./panes";
 
@@ -139,6 +146,16 @@ export interface TransportService {
   purgeTrash(cwd: string, id?: string): Promise<void>;
   /** The vault changed on disk. A file the model wrote arrives through here. */
   subscribeVault(cwd: string, onChange: () => void): Disposer;
+  /** Whether the configured ComfyUI answers, and where it is. */
+  comfyStatus(): Promise<ComfyStatus>;
+  /** Saves the ComfyUI address and answers with the status there. */
+  configureComfy(baseUrl: string): Promise<ComfyStatus>;
+  comfyNodeDefinitions(refresh: boolean): Promise<ComfyNodeDefinitions>;
+  /** Uploads the inputs, queues the workflow and answers with the run as queued. */
+  queueComfy(input: ComfyQueueInput): Promise<ComfyRun>;
+  cancelComfyRun(runId: string): Promise<void>;
+  /** Every run the server holds, then each change to one as it happens. */
+  subscribeComfyRuns(onRun: (run: ComfyRun) => void): Disposer;
 }
 
 export interface VaultLoadOptions {
@@ -247,6 +264,7 @@ export interface RendererRegistry {
 
 export * from "./agent-tabs";
 export * from "./canvas";
+export * from "./comfyui";
 export * from "./desktop";
 export * from "./desktop-agent";
 export * from "./display";
@@ -393,6 +411,7 @@ declare module "@nib-ui/kernel" {
     browser: BrowserService;
     canvas: CanvasRegistry;
     desktopAgent: DesktopAgentService;
+    comfy: ComfyService;
   }
   interface Events {
     "session/opened"(sessionId: string): void;

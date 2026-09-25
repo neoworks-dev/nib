@@ -52,6 +52,7 @@
         "@nib-ui/plugin-canvas-links": "workspace:*",
         "@nib-ui/plugin-canvas-media": "workspace:*",
         "@nib-ui/plugin-chat": "workspace:*",
+        "@nib-ui/plugin-comfyui": "workspace:*",
         "@nib-ui/plugin-core-renderers": "workspace:*",
         "@nib-ui/plugin-cost-tracker": "workspace:*",
         "@nib-ui/plugin-desktop-agent": "workspace:*",
@@ -226,6 +227,22 @@
         "@nib-ui/file-icons": "workspace:*",
         "@nib-ui/kernel": "workspace:*",
         "@nib-ui/protocol": "workspace:*",
+        "@nib-ui/ui-contracts": "workspace:*",
+        "phosphor-svelte": "^3.1.0",
+      },
+      "devDependencies": {
+        "svelte": "^5.56.4",
+      },
+      "peerDependencies": {
+        "svelte": "^5.56.4",
+      },
+    },
+    "plugins/comfyui": {
+      "name": "@nib-ui/plugin-comfyui",
+      "version": "0.0.0",
+      "dependencies": {
+        "@neoworks-dev/ui": "link:@neoworks-dev/ui",
+        "@nib-ui/kernel": "workspace:*",
         "@nib-ui/ui-contracts": "workspace:*",
         "phosphor-svelte": "^3.1.0",
       },
@@ -888,6 +905,8 @@
     "@nib-ui/plugin-canvas-media": ["@nib-ui/plugin-canvas-media@workspace:plugins/canvas-media"],
 
     "@nib-ui/plugin-chat": ["@nib-ui/plugin-chat@workspace:plugins/chat"],
+
+    "@nib-ui/plugin-comfyui": ["@nib-ui/plugin-comfyui@workspace:plugins/comfyui"],
 
     "@nib-ui/plugin-core-renderers": ["@nib-ui/plugin-core-renderers@workspace:plugins/core-renderers"],
 
