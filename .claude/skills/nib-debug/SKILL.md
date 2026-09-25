@@ -105,12 +105,29 @@ bun run debug rightclick c1 --screenshot folder-menu
 
 The driver connects per command, and a menu **closes when it disconnects**.
 
+What only exists mid-gesture or mid-animation has its own forms:
+
+```bash
+bun run debug drag at=720,565 at=800,565 --hold --screenshot resizing   # before the release
+bun run debug hover at=745,560 --screenshot plus --frames 5 --every 40  # a strip, left to right
+```
+
+`--hold` photographs a drag with the button still down: a resize, a line
+following the pointer, a folder reacting to a card over it. `--frames` works on
+any picture and joins the frames into one file.
+
+Pictures are read off the X display, not taken by Chromium — Chromium's own
+capture fires `mouseleave` and wipes every hover state. The pointer is drawn in
+as a black arrow where the app last saw it.
+
 ## Acting
 
 ```bash
 bun run debug click "Open settings"        # also dblclick, rightclick
 bun run debug drag c3 at=900,400            # move a card
 bun run debug drag "Resize the right dock" at=900,400
+bun run debug hover at=745,560              # rest the pointer: plus buttons, grips
+bun run debug paste ./picture.png --at at=600,400   # clipboard, then Ctrl+V
 bun run debug type "some text"              # into whatever has focus
 bun run debug press Escape                  # chords: Control+k, Shift+Tab
 bun run debug scroll -400 --at c2           # wheel over the board zooms/pans
@@ -128,8 +145,13 @@ bun run debug wait "Send" --gone
 | `text=Skip` / `testid=composer` / `css=.thing` | when nothing else fits                            |
 
 Refs and cards are valid until the screen changes; a stale one is an error
-telling you to probe again. A drag moves in steps, so the board sees the whole
-gesture.
+telling you to probe again. A drag rests on its start first, so a plus button
+or a grip that shows under the pointer is there to be grabbed, then moves in
+steps, so the board sees the whole gesture. A card's resize grips are the bars
+on its edge midpoints, not its corners.
+
+`paste` writes the file to the real clipboard — pictures as PNG, anything else
+as text — so the Ctrl+V that follows is the paste a person makes.
 
 ### Opening a pane
 

@@ -1,6 +1,7 @@
 // Everything that looks at or acts on the running app, each forwarded to the
 // node driver as one action.
 
+import { resolve } from "node:path";
 import type { Command } from "commander";
 import { drive } from "../drive.ts";
 import { noteAction, notePicture, readPace, refusePicture, writePace } from "../pace.ts";
@@ -13,6 +14,8 @@ interface PictureOptions {
   screenshot?: string;
   crop?: string;
   of?: string;
+  frames?: string;
+  every?: string;
 }
 
 /** Register probe, panes, pane, the pointer and keyboard actions, wait, eval and screenshot. */
@@ -49,8 +52,25 @@ export function registerActionCommands(program: Command): void {
 
   pictured(program.command("drag <from> <to>"))
     .description("press, move in steps, release — cards, dock dividers, anything")
-    .action((from: string, to: string, options: PictureOptions) =>
-      act("drag", { action: "drag", from, to }, options),
+    .option("--hold", "take the --screenshot at the end of the move, before releasing")
+    .action((from: string, to: string, options: PictureOptions & { hold?: boolean }) => {
+      if (options.hold === true && options.screenshot === undefined) {
+        throw new Error("--hold photographs the drag in progress, so it needs --screenshot");
+      }
+      act("drag", { action: "drag", from, to, hold: options.hold === true }, options);
+    });
+
+  pictured(program.command("hover <target>"))
+    .description("move the pointer onto a target and leave it there")
+    .action((target: string, options: PictureOptions) =>
+      act("hover", { action: "hover", target }, options),
+    );
+
+  pictured(program.command("paste <file>"))
+    .description("put a file on the clipboard (pictures as PNG, else text) and press Ctrl+V")
+    .option("--at <target>", "where the pointer is when pasting")
+    .action((file: string, options: PictureOptions & { at?: string }) =>
+      act("paste", { action: "paste", file: resolve(file), target: options.at }, options),
     );
 
   pictured(program.command("type <text>"))
@@ -85,30 +105,49 @@ export function registerActionCommands(program: Command): void {
     .description("one expression in the renderer; window.__nib_debug has context, panes, canvas")
     .action((expression: string) => act("eval", { action: "eval", expression }, {}));
 
-  program
-    .command("screenshot [label]")
-    .description("a picture, for what only a picture shows; refused when nothing has changed")
-    .option("--of <target>", "photograph one element, pane or card")
-    .option("--crop <x,y,w,h>", "photograph one region of the window")
-    .action((label: string | undefined, options: PictureOptions) => {
-      const crop = cropOf(options);
-      refuseRepeatPicture(options, crop);
-      const output = drive(requireSession(), {
-        action: "shot",
-        path: nextShotPath(label),
-        target: options.of,
-        crop,
-      });
-      console.log(printable("screenshot", output));
-      recordPace("screenshot", true, framing(options, crop));
+  framed(
+    program
+      .command("screenshot [label]")
+      .description("a picture, for what only a picture shows; refused when nothing has changed")
+      .option("--of <target>", "photograph one element, pane or card")
+      .option("--crop <x,y,w,h>", "photograph one region of the window"),
+  ).action((label: string | undefined, options: PictureOptions) => {
+    const crop = cropOf(options);
+    refuseRepeatPicture(options, crop);
+    const output = drive(requireSession(), {
+      action: "shot",
+      path: nextShotPath(label),
+      target: options.of,
+      crop,
+      ...frameCount(options),
     });
+    console.log(printable("screenshot", output));
+    recordPace("screenshot", true, framing(options, crop));
+  });
 }
 
 /** Add `--screenshot` and `--crop` to an action, for a picture of what it left behind. */
 function pictured(command: Command): Command {
+  return framed(
+    command
+      .option("--screenshot <label>", "photograph the result in the same connection")
+      .option("--crop <x,y,w,h>", "only this region of the window, with --screenshot"),
+  );
+}
+
+/** Add `--frames` and `--every`, for a strip of pictures of something that moves. */
+function framed(command: Command): Command {
   return command
-    .option("--screenshot <label>", "photograph the result in the same connection")
-    .option("--crop <x,y,w,h>", "only this region of the window, with --screenshot");
+    .option("--frames <count>", "take this many frames, joined left to right in one picture")
+    .option("--every <ms>", "milliseconds between frames (at least; default 50)");
+}
+
+/** The frame count and spacing a picture was asked for, as the driver reads them. */
+function frameCount(options: PictureOptions): { frames?: number; every?: number } {
+  const frames: { frames?: number; every?: number } = {};
+  if (options.frames !== undefined) frames.frames = Number(options.frames);
+  if (options.every !== undefined) frames.every = Number(options.every);
+  return frames;
 }
 
 /** Which commands change the app, and so make a new picture worth taking. */
@@ -117,6 +156,8 @@ const ACTING_COMMANDS = [
   "dblclick",
   "rightclick",
   "drag",
+  "hover",
+  "paste",
   "type",
   "press",
   "scroll",
@@ -136,8 +177,14 @@ function act(name: string, command: Record<string, unknown>, options: PictureOpt
     refuseRepeatPicture(options, crop);
     screenshot = nextShotPath(options.screenshot);
   }
-  const output = drive(session, { ...command, screenshot, crop });
+  const output = drive(session, { ...command, screenshot, crop, ...frameCount(options) });
   console.log(printable(name, output));
+  // A held drag is photographed before it lets go, so the release that follows
+  // is what the next picture is of: the action is noted after the picture.
+  if (command.hold === true) {
+    writePace(noteAction(notePicture(readPace(), framing(options, crop), latestShot())));
+    return;
+  }
   recordPace(name, screenshot !== undefined, framing(options, crop));
 }
 

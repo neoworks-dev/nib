@@ -11,10 +11,13 @@ import type { Page } from "playwright-core";
 import {
   type Command,
   click,
-  cropOf,
   drag,
   evaluate,
+  hover,
   key,
+  paste,
+  type Photographer,
+  pictureRequest,
   scroll,
   shot,
   type,
@@ -23,6 +26,7 @@ import {
 import { connect, rendererPage } from "./connect.ts";
 import { attachErrorDrain, consoleLog, installConsoleCapture } from "./console.ts";
 import { pane, paneTypes } from "./panes.ts";
+import { installPointerTracking, photograph as takePicture } from "./pictures.ts";
 import { probe, snapshot } from "./probe.ts";
 import type { NibWindow } from "./window.ts";
 
@@ -52,19 +56,30 @@ async function main(): Promise<void> {
 async function run(page: Page, refsPath: string, command: Command): Promise<unknown> {
   // Before the action: the errors worth catching are the ones it causes.
   await installConsoleCapture(page);
+  await installPointerTracking(page);
   const drain = await attachErrorDrain(page);
 
-  const result = await perform(page, refsPath, command);
-  if (typeof command.screenshot === "string") {
-    await page.screenshot({ path: command.screenshot, clip: cropOf(command) });
+  const screenshot = command.screenshot;
+  let photograph: Photographer = () => Promise.resolve();
+  if (typeof screenshot === "string") {
+    photograph = () => takePicture(page, screenshot, pictureRequest(command));
   }
+
+  const result = await perform(page, refsPath, command, photograph);
+  // A held drag has already been photographed, with the button still down.
+  if (command.hold !== true) await photograph();
   await drain.detach().catch(() => undefined);
-  if (typeof command.screenshot !== "string") return result;
-  return { ...(result as Record<string, unknown>), screenshot: command.screenshot };
+  if (typeof screenshot !== "string") return result;
+  return { ...(result as Record<string, unknown>), screenshot };
 }
 
 /** Dispatch a command to the action that carries it out. */
-function perform(page: Page, refsPath: string, command: Command): Promise<unknown> {
+function perform(
+  page: Page,
+  refsPath: string,
+  command: Command,
+  photograph: Photographer,
+): Promise<unknown> {
   if (command.action === "ready") return ready(page, refsPath, Number(command.timeout ?? 60_000));
   if (command.action === "console") return consoleLog(page);
   if (command.action === "probe") return probe(page, refsPath, command.filter);
@@ -72,7 +87,9 @@ function perform(page: Page, refsPath: string, command: Command): Promise<unknow
   if (command.action === "pane") return pane(page, refsPath, command);
   if (command.action === "shot") return shot(page, refsPath, command);
   if (command.action === "click") return click(page, refsPath, command);
-  if (command.action === "drag") return drag(page, refsPath, command);
+  if (command.action === "drag") return drag(page, refsPath, command, photograph);
+  if (command.action === "hover") return hover(page, refsPath, command);
+  if (command.action === "paste") return paste(page, refsPath, command);
   if (command.action === "type") return type(page, command);
   if (command.action === "key") return key(page, command);
   if (command.action === "scroll") return scroll(page, refsPath, command);

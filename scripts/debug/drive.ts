@@ -15,7 +15,13 @@ import type { Session } from "./session.ts";
 export function drive(session: Session, command: Record<string, unknown>): string {
   const result = spawnSync(
     "node",
-    [paths.driver, String(session.port), paths.refs, JSON.stringify(command)],
+    // The display goes along so pictures are read off it rather than taken by Chromium.
+    [
+      paths.driver,
+      String(session.port),
+      paths.refs,
+      JSON.stringify({ display: session.display, ...command }),
+    ],
     { cwd: repoRoot, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
   );
   if (result.status !== 0) {
