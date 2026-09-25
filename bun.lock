@@ -45,6 +45,7 @@
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.30.0",
         "@neoworks-dev/ui": "link:@neoworks-dev/ui",
+        "@nib-ui/comfy": "workspace:*",
         "@nib-ui/file-icons": "workspace:*",
         "@nib-ui/kernel": "workspace:*",
         "@nib-ui/plugin-canvas": "workspace:*",
@@ -87,6 +88,14 @@
         "svelte-check": "^4.4.1",
         "tailwindcss": "^4.2.2",
         "vite": "^7.3.6",
+      },
+    },
+    "packages/comfy": {
+      "name": "@nib-ui/comfy",
+      "version": "0.0.0",
+      "dependencies": {
+        "@nib-ui/ui-contracts": "workspace:*",
+        "zod": "^4.4.3",
       },
     },
     "packages/file-icons": {
@@ -241,7 +250,9 @@
       "name": "@nib-ui/plugin-comfyui",
       "version": "0.0.0",
       "dependencies": {
+        "@comfyorg/litegraph": "0.17.2",
         "@neoworks-dev/ui": "link:@neoworks-dev/ui",
+        "@nib-ui/comfy": "workspace:*",
         "@nib-ui/kernel": "workspace:*",
         "@nib-ui/ui-contracts": "workspace:*",
         "phosphor-svelte": "^3.1.0",
@@ -710,6 +721,8 @@
 
     "@codemirror/view": ["@codemirror/view@6.43.11", "", { "dependencies": { "@codemirror/state": "^6.7.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-2+esucbQX6wB2JYi1eDvdCPFTA31BN8oSy6xCmk3G6CloV11yOvEjYk+gH7kLrP0MuHG94E8WDhjs5oMiu3+Wg=="],
 
+    "@comfyorg/litegraph": ["@comfyorg/litegraph@0.17.2", "", {}, "sha512-6O+PSu80Tycj4NkYyLv/r7tS5V1JDVnSZLUglXCwDTPDJbjqyyNWjSUuLTFpvNOMuK+iPYMmuOWazBcYx/Rd6w=="],
+
     "@dimforge/rapier3d-compat": ["@dimforge/rapier3d-compat@0.12.0", "", {}, "sha512-uekIGetywIgopfD97oDL5PfeezkFpNhwlzlaEYNOA0N6ghdsOvh/HYjSMek5Q2O1PYvRSDFcqFVJl4r4ZBwOow=="],
 
     "@earendil-works/pi-agent-core": ["@earendil-works/pi-agent-core@0.84.4", "", { "dependencies": { "@earendil-works/pi-ai": "^0.84.4", "@earendil-works/pi-telemetry": "^0.84.4", "diff": "8.0.4", "ignore": "7.0.5", "typebox": "1.3.7", "yaml": "2.9.0" } }, "sha512-HyUnjaOXj6oN/6SNcr8A1J/ElRQA50FtIE0XUTSKAQVqmdlb9qdojOyUQwF/jULE5+yOEtGuVgi/N1RnBiNG+g=="],
@@ -889,6 +902,8 @@
     "@napi-rs/lzma-linux-x64-gnu": ["@napi-rs/lzma-linux-x64-gnu@1.5.1", "", { "os": "linux", "cpu": "x64" }, "sha512-oTXEIha4SsuXdTA4Iyskj0kpdx2yVXdhd75c2v3xGrHFfVMsbhTPZU/nMPL4sWKo4pBHm3aucLaqGlF696dTyQ=="],
 
     "@neoworks-dev/ui": ["@neoworks-dev/ui@link:@neoworks-dev/ui", {}],
+
+    "@nib-ui/comfy": ["@nib-ui/comfy@workspace:packages/comfy"],
 
     "@nib-ui/desktop": ["@nib-ui/desktop@workspace:apps/desktop"],
 

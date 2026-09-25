@@ -14,7 +14,9 @@
     }
   },
   "dependencies": {
+    "@comfyorg/litegraph": "0.17.2",
     "@neoworks-dev/ui": "link:@neoworks-dev/ui",
+    "@nib-ui/comfy": "workspace:*",
     "@nib-ui/kernel": "workspace:*",
     "@nib-ui/ui-contracts": "workspace:*",
     "phosphor-svelte": "^3.1.0"

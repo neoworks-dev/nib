@@ -17,6 +17,7 @@ import type {
 } from "@nib-ui/ui-contracts";
 import type { TrashEntry } from "@nib-ui/vault";
 import type { StoreAssetOptions, StoredAsset } from "./asset-store";
+import type { ComfyLibrary } from "./comfyui-library";
 import type { PlacementWrite } from "./board-store";
 import type { GitCommitResult, GitLogEntry, GitStatus } from "./git-cli";
 import type { LinkPreview } from "./link-preview";
@@ -232,6 +233,7 @@ declare module "@nib-ui/kernel" {
     linkPreviews: LinkPreviewService;
     pinterest: PinterestService;
     comfyui: ComfyUIService;
+    comfyWorkflows: ComfyLibrary;
   }
   interface Events {
     "session/event"(sessionId: string, event: AnyAgentEvent): void;

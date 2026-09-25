@@ -13,6 +13,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@neoworks-dev/ui": "link:@neoworks-dev/ui",
+    "@nib-ui/comfy": "workspace:*",
     "@nib-ui/file-icons": "workspace:*",
     "@nib-ui/kernel": "workspace:*",
     "@nib-ui/plugin-canvas": "workspace:*",

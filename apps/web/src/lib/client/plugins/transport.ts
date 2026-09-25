@@ -10,9 +10,13 @@ import type {
   BoardDoc,
   BoardSummary,
   BoardWrite,
+  ComfyEditorRequest,
+  ComfyLibraryEntry,
   ComfyNodeDefinitions,
   ComfyQueueInput,
   ComfyRun,
+  ComfyRunWorkflowInput,
+  ComfySaveWorkflowInput,
   ComfyStatus,
   CreateSessionInput,
   DirectoryEntry,
@@ -205,6 +209,16 @@ class SseTransport implements TransportService {
     await requestJson(`/api/vault/trash?${params.toString()}`, { method: "DELETE" });
   }
 
+  vaultFileUrl(cwd: string, path: string): string {
+    return `/api/vault/file?${new URLSearchParams({ cwd, path }).toString()}`;
+  }
+
+  async readVaultFile(cwd: string, path: string): Promise<Uint8Array> {
+    const response = await fetch(this.vaultFileUrl(cwd, path));
+    if (!response.ok) throw new Error(await response.text());
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
   subscribeVault(cwd: string, onChange: () => void) {
     const source = new EventSource(`/api/vault/events?cwd=${encodeURIComponent(cwd)}`);
     source.addEventListener("vault", () => onChange());
@@ -240,13 +254,61 @@ class SseTransport implements TransportService {
     await requestJson(`/api/comfyui/runs/${encodeURIComponent(runId)}`, { method: "DELETE" });
   }
 
-  subscribeComfyRuns(onRun: (run: ComfyRun) => void) {
+  subscribeComfy(
+    onRun: (run: ComfyRun) => void,
+    onEditorRequest: (request: ComfyEditorRequest) => void,
+  ) {
     const source = new EventSource("/api/comfyui/events");
     source.addEventListener("run", (message: MessageEvent<string>) => {
       const run: ComfyRun = JSON.parse(message.data);
       onRun(run);
     });
+    source.addEventListener("editor", (message: MessageEvent<string>) => {
+      const request: ComfyEditorRequest = JSON.parse(message.data);
+      onEditorRequest(request);
+    });
     return () => source.close();
+  }
+
+  async comfyLibrary(cwd: string | null): Promise<ComfyLibraryEntry[]> {
+    let url = "/api/comfyui/workflows";
+    if (cwd !== null) url = `${url}?cwd=${encodeURIComponent(cwd)}`;
+    const { workflows } = await requestJson<{ workflows: ComfyLibraryEntry[] }>(url);
+    return workflows;
+  }
+
+  runComfyWorkflow(input: ComfyRunWorkflowInput): Promise<ComfyRun> {
+    return requestJson("/api/comfyui/workflows/run", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  }
+
+  saveComfyWorkflow(input: ComfySaveWorkflowInput): Promise<ComfyLibraryEntry> {
+    return requestJson("/api/comfyui/workflows", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  }
+
+  async deleteComfyWorkflow(
+    source: "user" | "project",
+    id: string,
+    cwd: string | null,
+  ): Promise<void> {
+    let url = `/api/comfyui/workflows/${source}/${encodeURIComponent(id)}`;
+    if (cwd !== null) url = `${url}?cwd=${encodeURIComponent(cwd)}`;
+    await requestJson(url, { method: "DELETE" });
+  }
+
+  async openComfyEditor(request: ComfyEditorRequest): Promise<void> {
+    await requestJson("/api/comfyui/editor", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+    });
   }
 
   subscribeBoard(cwd: string, fromRev: number, onBoard: (board: BoardDoc) => void) {

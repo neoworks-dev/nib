@@ -1,0 +1,114 @@
+{
+  "id": "image-to-3d",
+  "name": "Image to 3D model",
+  "description": "A mesh (.glb) from a single picture of an object, with Hunyuan3D 2.1. The background is removed first; the mesh is untextured.",
+  "category": "3d",
+  "parameters": [
+    {
+      "id": "image",
+      "label": "Object",
+      "kind": "image",
+      "targets": [{ "nodeId": "2", "input": "image" }]
+    },
+    {
+      "id": "seed",
+      "label": "Seed",
+      "kind": "seed",
+      "targets": [{ "nodeId": "10", "input": "seed" }]
+    },
+    {
+      "id": "steps",
+      "label": "Steps",
+      "kind": "integer",
+      "default": 30,
+      "min": 10,
+      "max": 100,
+      "targets": [{ "nodeId": "10", "input": "steps" }]
+    },
+    {
+      "id": "detail",
+      "label": "Detail",
+      "kind": "integer",
+      "description": "Octree resolution of the mesh: 256 is quick, 384 finer, 512 slow.",
+      "default": 256,
+      "min": 128,
+      "max": 512,
+      "step": 64,
+      "targets": [{ "nodeId": "11", "input": "octree_resolution" }]
+    }
+  ],
+  "workflow": {
+    "1": {
+      "class_type": "ImageOnlyCheckpointLoader",
+      "inputs": { "ckpt_name": "hunyuan_3d_v2.1.safetensors" }
+    },
+    "2": { "class_type": "LoadImage", "inputs": { "image": "" }, "_meta": { "title": "Object" } },
+    "3": {
+      "class_type": "LoadBackgroundRemovalModel",
+      "inputs": { "bg_removal_name": "birefnet.safetensors" }
+    },
+    "4": {
+      "class_type": "RemoveBackground",
+      "inputs": { "bg_removal_model": ["3", 0], "image": ["2", 0] }
+    },
+    "5": { "class_type": "GetImageSize", "inputs": { "image": ["2", 0] } },
+    "6": {
+      "class_type": "EmptyImage",
+      "inputs": { "width": ["5", 0], "height": ["5", 1], "batch_size": 1, "color": 16777215 },
+      "_meta": { "title": "White backdrop" }
+    },
+    "7": {
+      "class_type": "ImageCompositeMasked",
+      "inputs": {
+        "destination": ["6", 0],
+        "source": ["2", 0],
+        "x": 0,
+        "y": 0,
+        "resize_source": false,
+        "mask": ["4", 0]
+      }
+    },
+    "8": {
+      "class_type": "CLIPVisionEncode",
+      "inputs": { "clip_vision": ["1", 1], "image": ["7", 0], "crop": "center" }
+    },
+    "9": { "class_type": "Hunyuan3Dv2Conditioning", "inputs": { "clip_vision_output": ["8", 0] } },
+    "10": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": ["12", 0],
+        "seed": 0,
+        "steps": 30,
+        "cfg": 5,
+        "sampler_name": "euler",
+        "scheduler": "normal",
+        "positive": ["9", 0],
+        "negative": ["9", 1],
+        "latent_image": ["13", 0],
+        "denoise": 1
+      }
+    },
+    "11": {
+      "class_type": "VAEDecodeHunyuan3D",
+      "inputs": {
+        "samples": ["10", 0],
+        "vae": ["1", 2],
+        "num_chunks": 8000,
+        "octree_resolution": 256
+      }
+    },
+    "12": { "class_type": "ModelSamplingAuraFlow", "inputs": { "model": ["1", 0], "shift": 1 } },
+    "13": {
+      "class_type": "EmptyLatentHunyuan3Dv2",
+      "inputs": { "resolution": 4096, "batch_size": 1 }
+    },
+    "14": {
+      "class_type": "VoxelToMesh",
+      "inputs": { "voxel": ["11", 0], "algorithm": "surface net", "threshold": 0.6 }
+    },
+    "15": {
+      "class_type": "SaveGLB",
+      "inputs": { "mesh": ["14", 0], "filename_prefix": "mesh/model" }
+    }
+  }
+}

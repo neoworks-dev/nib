@@ -12,7 +12,8 @@ import {
 import { agentControlPlugin } from "./plugins/agent-control";
 import { assetsPlugin } from "./plugins/assets";
 import { boardsPlugin } from "./plugins/boards";
-import { comfyuiPlugin } from "./plugins/comfyui";
+import { comfyuiPlugin, comfyWorkflowsPlugin } from "./plugins/comfyui";
+import type { ComfyLibrary } from "./comfyui-library";
 import { gitPlugin } from "./plugins/git";
 import { harnessRegistryPlugin } from "./plugins/harness-registry";
 import { linkPreviewsPlugin } from "./plugins/link-previews";
@@ -68,6 +69,7 @@ export function serverContext(): Context {
   context.use(pinterestPlugin);
   // After the vault, which finished runs write their outputs into.
   context.use(comfyuiPlugin);
+  context.use(comfyWorkflowsPlugin);
   return context;
 }
 
@@ -110,4 +112,9 @@ export function pinterest(): PinterestService {
 /** The ComfyUI service: status, node definitions and runs. */
 export function comfyui(): ComfyUIService {
   return serverContext().require("comfyui");
+}
+
+/** The ComfyUI workflow library: bundled, user and project workflows. */
+export function comfyWorkflows(): ComfyLibrary {
+  return serverContext().require("comfyWorkflows");
 }

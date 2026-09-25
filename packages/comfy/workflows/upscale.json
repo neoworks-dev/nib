@@ -1,0 +1,41 @@
+{
+  "id": "upscale",
+  "name": "Upscale",
+  "description": "Enlarges an image with the 4x-UltraSharp model, then scales the result to the size asked for.",
+  "category": "image",
+  "parameters": [
+    {
+      "id": "image",
+      "label": "Image",
+      "kind": "image",
+      "targets": [{ "nodeId": "1", "input": "image" }]
+    },
+    {
+      "id": "scale",
+      "label": "Final size",
+      "kind": "number",
+      "description": "Of the model's 4× result: 0.5 gives twice the input, 1 four times.",
+      "default": 0.5,
+      "min": 0.25,
+      "max": 1,
+      "step": 0.25,
+      "targets": [{ "nodeId": "4", "input": "scale_by" }]
+    }
+  ],
+  "workflow": {
+    "1": { "class_type": "LoadImage", "inputs": { "image": "" }, "_meta": { "title": "Image" } },
+    "2": { "class_type": "UpscaleModelLoader", "inputs": { "model_name": "4x-UltraSharp.pth" } },
+    "3": {
+      "class_type": "ImageUpscaleWithModel",
+      "inputs": { "upscale_model": ["2", 0], "image": ["1", 0] }
+    },
+    "4": {
+      "class_type": "ImageScaleBy",
+      "inputs": { "image": ["3", 0], "upscale_method": "lanczos", "scale_by": 0.5 }
+    },
+    "5": {
+      "class_type": "SaveImage",
+      "inputs": { "images": ["4", 0], "filename_prefix": "upscaled" }
+    }
+  }
+}
