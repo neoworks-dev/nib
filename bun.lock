@@ -257,6 +257,7 @@
         "@nib-ui/kernel": "workspace:*",
         "@nib-ui/ui-contracts": "workspace:*",
         "phosphor-svelte": "^3.1.0",
+        "pixi.js": "8.14.2",
       },
       "devDependencies": {
         "svelte": "^5.56.4",

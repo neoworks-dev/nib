@@ -3,8 +3,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join, posix } from "node:path";
 import type { Disposer, Plugin } from "@nib-ui/kernel";
 import {
+  type BoardDoc,
   type ComfyNodeDefinitions,
   type ComfyQueueInput,
+  type ComfyResultSlot,
   type ComfyRun,
   type ComfyStatus,
   type ComfyWorkflow,
@@ -23,8 +25,17 @@ import {
 } from "../comfyui";
 import { createComfyTools } from "../comfy-agent-tools";
 import { ComfyLibrary, userWorkflowDirectory } from "../comfyui-library";
-import { applyEvent, cancelRun, failRun, isFinished, queuedRun, succeedRun } from "../comfyui-runs";
-import type { ComfyUIService, VaultService } from "../services";
+import {
+  applyEvent,
+  cancelRun,
+  failRun,
+  isFinished,
+  type QueuedRunDetails,
+  queuedRun,
+  succeedRun,
+} from "../comfyui-runs";
+import { resultSlot, slotPlacements } from "../comfyui-slot";
+import type { BoardService, ComfyUIService, VaultService } from "../services";
 import { userConfigPath } from "../user-config";
 
 /** Where a run's outputs land when neither the caller nor a reference picture names a directory. */
@@ -52,6 +63,8 @@ export type SocketFactory = (url: string, handlers: SocketHandlers) => { close()
 /** What the host needs from the world, so a test can hand over fakes. */
 export interface ComfyHostOptions {
   vault: Pick<VaultService, "readFile" | "write">;
+  /** Read to choose where a result goes, and written to put it there. */
+  boards: Pick<BoardService, "read" | "place">;
   settingsPath: string;
   fetchImpl: FetchImpl;
   openSocket: SocketFactory;
@@ -106,6 +119,18 @@ function outputDirectoryFor(input: ComfyQueueInput): string {
   const directory = posix.dirname(reference.path);
   if (directory === ".") return "";
   return directory;
+}
+
+/** What a queued run is shown as: the name the caller gave it, or null for a bare graph. */
+function labelOf(input: ComfyQueueInput): string | null {
+  if (input.label === undefined) return null;
+  return input.label;
+}
+
+/** The vault paths of the pictures a run is given, in upload order. */
+function inputPaths(input: ComfyQueueInput): string[] {
+  if (!input.uploads) return [];
+  return input.uploads.map((upload) => upload.path);
 }
 
 /** Waits the given time. */
@@ -179,13 +204,19 @@ export class ComfyHost implements ComfyUIService {
     const client = await this.client();
     const assignments = await this.uploadInputs(client, input);
     const workflow = withInputs(input.workflow, assignments);
+    const outputDirectory = outputDirectoryFor(input);
+    const details: QueuedRunDetails = {
+      label: labelOf(input),
+      inputs: inputPaths(input),
+      slot: await this.chooseSlot(input, outputDirectory),
+    };
     await this.connectWithin(CONNECT_TIMEOUT_MS);
     const promptId = await client.queue(workflow, this.clientId);
 
     const tracked: Tracked = {
-      run: queuedRun(promptId, input.cwd, Date.now()),
+      run: queuedRun(promptId, input.cwd, Date.now(), details),
       workflow,
-      outputDirectory: outputDirectoryFor(input),
+      outputDirectory,
       client,
       files: [],
       delivering: false,
@@ -262,6 +293,38 @@ export class ComfyHost implements ComfyUIService {
       assignments.push({ nodeId: upload.nodeId, input: upload.input, value: name });
     }
     return assignments;
+  }
+
+  /**
+   * Where the result will sit: beside the first input on the board the outputs
+   * land on, clear of the spots held for runs still going. Null when the board
+   * cannot be read — the run goes ahead, and the scan places its outputs.
+   */
+  private async chooseSlot(
+    input: ComfyQueueInput,
+    outputDirectory: string,
+  ): Promise<ComfyResultSlot | null> {
+    let board: BoardDoc;
+    try {
+      board = await this.options.boards.read(input.cwd);
+    } catch {
+      return null;
+    }
+    let reference: string | null = null;
+    const first = input.uploads?.[0];
+    if (first) reference = first.path;
+    return resultSlot(board.placements, outputDirectory, reference, this.reservedSlots(input.cwd));
+  }
+
+  /** The spots held for this project's runs that have not finished. */
+  private reservedSlots(cwd: string): ComfyResultSlot[] {
+    const slots: ComfyResultSlot[] = [];
+    for (const tracked of this.tracked.values()) {
+      const { run } = tracked;
+      if (run.cwd !== cwd || isFinished(run) || run.slot === null) continue;
+      slots.push(run.slot);
+    }
+    return slots;
   }
 
   /** Opens the socket, giving up on waiting after a while; queueing goes ahead either way. */
@@ -403,6 +466,7 @@ export class ComfyHost implements ComfyUIService {
       if (saved.length === 0) saved = await this.historyFiles(tracked);
       const paths: string[] = [];
       for (const file of saved) paths.push(await this.writeOutput(tracked, file));
+      await this.placeOutputs(tracked.run, paths);
       this.update(tracked, succeedRun(tracked.run, paths, Date.now()));
     } catch (cause) {
       this.update(tracked, failRun(tracked.run, messageOf(cause), Date.now()));
@@ -433,6 +497,20 @@ export class ComfyHost implements ComfyUIService {
     return written.path;
   }
 
+  /**
+   * Puts the outputs where the run's placeholder stood. A board that cannot be
+   * written costs only the spot: the files are in the vault, and the scan places
+   * them wherever the board has room.
+   */
+  private async placeOutputs(run: ComfyRun, paths: string[]): Promise<void> {
+    if (run.slot === null || paths.length === 0) return;
+    try {
+      await this.options.boards.place(run.cwd, slotPlacements(run.slot, paths));
+    } catch {
+      // Placed by the scan instead; see above.
+    }
+  }
+
   /** Records a run's new state and tells the listeners, if it changed. */
   private update(tracked: Tracked, run: ComfyRun): void {
     if (run === tracked.run) return;
@@ -457,10 +535,11 @@ export class ComfyHost implements ComfyUIService {
 
 export const comfyuiPlugin: Plugin = {
   name: "comfyui",
-  inject: ["vault"],
+  inject: ["vault", "boards"],
   apply(ctx) {
     const host = new ComfyHost({
       vault: ctx.require("vault"),
+      boards: ctx.require("boards"),
       settingsPath: comfySettingsPath(),
       fetchImpl: fetch,
       openSocket: openWebSocket,

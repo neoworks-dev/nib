@@ -7,6 +7,7 @@ import { manifestFromImport, readImport } from "./editor/document";
 import EditorPane from "./editor/EditorPane.svelte";
 import { errorMessage } from "./form";
 import { comfyMenuItems } from "./menu";
+import { mountPlaceholders } from "./placeholders.svelte";
 import { ComfyStore, comfyPluginState } from "./store.svelte";
 import WorkflowsPane from "./WorkflowsPane.svelte";
 
@@ -30,6 +31,7 @@ export const comfyuiPlugin: Plugin = {
     const store = new ComfyStore(transport);
     ctx.effect(() => store.connect());
     ctx.provide("comfy", store);
+    ctx.effect(() => mountPlaceholders(canvas, store));
 
     ctx.effect(() => {
       comfyPluginState.store = store;

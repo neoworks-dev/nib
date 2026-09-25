@@ -37,6 +37,9 @@ function library(): ComfyLibrary {
         return Promise.resolve({
           id: "run-1",
           cwd: input.cwd,
+          label: null,
+          inputs: [],
+          slot: null,
           status: "queued",
           queuedAt: 1,
           finishedAt: null,

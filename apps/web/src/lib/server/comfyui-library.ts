@@ -115,6 +115,7 @@ export class ComfyLibrary {
       cwd: input.cwd,
       workflow: applied.workflow,
       uploads: applied.uploads,
+      label: manifest.name,
       outputDirectory: input.outputDirectory,
     });
   }
