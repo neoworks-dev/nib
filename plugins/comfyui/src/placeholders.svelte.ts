@@ -1,8 +1,9 @@
 import type { Disposer } from "@nib-ui/kernel";
-import type { CanvasRegistry, ComfyRun } from "@nib-ui/ui-contracts";
+import type { CanvasObject, CanvasRegistry, ComfyRun, Rect } from "@nib-ui/ui-contracts";
 import { PlaceholderLayer } from "./PlaceholderLayer";
 import {
   awaitingResult,
+  deliveredRuns,
   type PlaceholderScene,
   placeholdersFor,
   SWAP_GRACE_MS,
@@ -23,22 +24,28 @@ export function mountPlaceholders(
   const layer = new PlaceholderLayer();
   const unregister = canvas.registerLayer({ id: LAYER_ID, container: layer.container, order: 1 });
   let graceTimer: ReturnType<typeof setTimeout> | null = null;
-  // Only the grace timer moves this. Between its ticks a finished run is judged
-  // against an earlier time, which can only keep a placeholder a little longer.
+  // Ticked by the grace timer so the effect runs again when time is the only
+  // thing that changed; the scene itself reads the real time.
   let clock = $state(Date.now());
+  // Not reactive: written by the effect that reads it, from what it just saw.
+  let delivered = new Set<string>();
 
-  /** The runs and the board as they stand, at the clock's last tick. */
+  /** The runs and the board as they stand now. */
   const scene = (): PlaceholderScene => ({
     runs: store.runs,
     cwd: canvas.cwd,
     boardDirectory: canvas.boardDirectory,
     shownIds: new Set(canvas.objects.map((object) => object.id)),
-    now: clock,
+    cardBounds: cardBounds(canvas.objects),
+    delivered,
+    now: Math.max(clock, Date.now()),
   });
 
   const stopEffect = $effect.root(() => {
     $effect(() => {
-      const current = scene();
+      let current = scene();
+      delivered = deliveredRuns(current);
+      current = { ...current, delivered };
       layer.draw(placeholdersFor(current));
       if (graceTimer !== null || !awaitingResult(current)) return;
       graceTimer = setTimeout(() => {
@@ -54,4 +61,16 @@ export function mountPlaceholders(
     unregister();
     layer.destroy();
   };
+}
+
+/** Where each placed card sits, by id; objects without a placement are left out. */
+function cardBounds(objects: readonly CanvasObject[]): Map<string, Rect> {
+  const bounds = new Map<string, Rect>();
+  for (const object of objects) {
+    const { x, y, w, h } = object;
+    if (typeof x !== "number" || typeof y !== "number") continue;
+    if (typeof w !== "number" || typeof h !== "number") continue;
+    bounds.set(object.id, { x, y, width: w, height: h });
+  }
+  return bounds;
 }
