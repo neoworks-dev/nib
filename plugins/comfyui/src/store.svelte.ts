@@ -18,9 +18,15 @@ import { upsertRun } from "./runs";
  * The loaded plugin's store, for the settings section: slot components are
  * handed a session, not the kernel.
  */
-export const comfyPluginState = $state<{ store: ComfyStore | null; host: ComfyPaneHost | null }>({
+export const comfyPluginState = $state<{
+  store: ComfyStore | null;
+  host: ComfyPaneHost | null;
+  /** The last workflow asked to open in the editor; `serial` tells two requests for the same apart. */
+  editorRequest: (ComfyEditorRequest & { serial: number }) | null;
+}>({
   store: null,
   host: null,
+  editorRequest: null,
 });
 
 /** What the plugin's panes need from the rest of the app, handed over by the plugin. */
