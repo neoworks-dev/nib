@@ -6,7 +6,15 @@ import type {
   SessionSummary,
   SessionView,
 } from "@nib-ui/protocol";
-import type { BoardDoc, BoardSummary, BoardWrite } from "@nib-ui/ui-contracts";
+import type {
+  BoardDoc,
+  BoardSummary,
+  BoardWrite,
+  ComfyNodeDefinitions,
+  ComfyQueueInput,
+  ComfyRun,
+  ComfyStatus,
+} from "@nib-ui/ui-contracts";
 import type { TrashEntry } from "@nib-ui/vault";
 import type { StoreAssetOptions, StoredAsset } from "./asset-store";
 import type { PlacementWrite } from "./board-store";
@@ -158,6 +166,23 @@ export interface PinterestService {
 }
 
 /**
+ * The local ComfyUI server. Runs are followed over one socket and their outputs
+ * are written into the vault of the project that queued them, so they reach the
+ * board the way any other file does.
+ */
+export interface ComfyUIService {
+  status(): Promise<ComfyStatus>;
+  /** Saves the address; runs on the previous server stop being followed. */
+  configure(baseUrl: string): Promise<ComfyStatus>;
+  nodeDefinitions(refresh: boolean): Promise<ComfyNodeDefinitions>;
+  queue(input: ComfyQueueInput): Promise<ComfyRun>;
+  cancel(runId: string): Promise<void>;
+  /** Newest first. */
+  runs(): ComfyRun[];
+  subscribe(listener: (run: ComfyRun) => void): Disposer;
+}
+
+/**
  * The `.nib` vault in a project directory: what a board draws. Reading is off disk
  * every time, because the vault is the source of truth and nothing caches it yet.
  */
@@ -206,6 +231,7 @@ declare module "@nib-ui/kernel" {
     assets: AssetService;
     linkPreviews: LinkPreviewService;
     pinterest: PinterestService;
+    comfyui: ComfyUIService;
   }
   interface Events {
     "session/event"(sessionId: string, event: AnyAgentEvent): void;

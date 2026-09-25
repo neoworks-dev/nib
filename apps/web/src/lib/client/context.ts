@@ -3,6 +3,7 @@ import { canvasPlugin } from "@nib-ui/plugin-canvas";
 import { canvas3dPlugin } from "@nib-ui/plugin-canvas-3d";
 import { canvasLinksPlugin } from "@nib-ui/plugin-canvas-links";
 import { canvasMediaPlugin } from "@nib-ui/plugin-canvas-media";
+import { comfyuiPlugin } from "@nib-ui/plugin-comfyui";
 import { coreRenderersPlugin } from "@nib-ui/plugin-core-renderers";
 import { costTrackerPlugin } from "@nib-ui/plugin-cost-tracker";
 import { desktopAgentPlugin } from "@nib-ui/plugin-desktop-agent";
@@ -64,6 +65,7 @@ const featurePlugins: Plugin[] = [
   projectExplorerPlugin,
   webBrowserPlugin,
   pinterestPlugin,
+  comfyuiPlugin,
   settingsPlugin,
   readRoutingPlugin,
   workspaceDropsPlugin,
