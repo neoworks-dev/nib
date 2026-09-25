@@ -1,10 +1,16 @@
 /**
- * Where a ComfyUI run's result goes on the board. The spot is chosen when the
- * run is queued, so the board can hold it with a placeholder while the run goes,
- * and the outputs are placed into it once they are in the vault.
+ * Where a ComfyUI run's result goes on the board, and how it stays tied to what
+ * it was made from. The spot is chosen when the run is queued, so the board can
+ * hold it with a placeholder while the run goes; the outputs are placed into it
+ * once they are in the vault, and linked to the pictures the run was given.
  */
 
-import type { ComfyResultSlot } from "@nib-ui/ui-contracts";
+import {
+  COMFY_LINEAGE_KIND,
+  type ComfyLineageObject,
+  type ComfyResultSlot,
+  type ComfyRun,
+} from "@nib-ui/ui-contracts";
 import {
   flowSlot,
   overlaps,
@@ -58,6 +64,25 @@ export function slotPlacements(slot: ComfyResultSlot, paths: readonly string[]):
     w: slot.w,
     h: slot.h,
   }));
+}
+
+/**
+ * A link from every picture the run was given to every output it wrote. The id
+ * is made from the run and the pair, so linking the same run twice adds nothing.
+ */
+export function lineageObjects(run: ComfyRun, outputs: readonly string[]): ComfyLineageObject[] {
+  const links: ComfyLineageObject[] = [];
+  for (const from of run.inputs) {
+    for (const to of outputs) {
+      links.push({
+        kind: COMFY_LINEAGE_KIND,
+        id: `comfy-lineage:${run.id}:${from}:${to}`,
+        from,
+        to,
+      });
+    }
+  }
+  return links;
 }
 
 /** The reference's rectangle, when it sits on the board the outputs land on. */

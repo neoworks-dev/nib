@@ -279,6 +279,25 @@ export function applyPlacements(
   return next;
 }
 
+/**
+ * Authored objects written from outside the canvas, appended after what the
+ * board holds. One whose id the board already has is skipped, so writing the
+ * same objects twice leaves one of each.
+ */
+export function withObjects(
+  existing: readonly CanvasObject[],
+  added: readonly CanvasObject[],
+): CanvasObject[] {
+  const ids = new Set(existing.map((object) => object.id));
+  const next = [...existing];
+  for (const object of added) {
+    if (ids.has(object.id)) continue;
+    ids.add(object.id);
+    next.push(object);
+  }
+  return next;
+}
+
 /** What the card is drawn at: what was asked for, else what it already was, else the default. */
 function dimension(
   asked: number | undefined,

@@ -6,9 +6,23 @@
  */
 
 import type { Disposer } from "@nib-ui/kernel";
+import type { CanvasObject } from "./canvas";
 
 /** Where ComfyUI listens unless the user says otherwise. */
 export const DEFAULT_COMFY_URL = "http://127.0.0.1:8188";
+
+export const COMFY_LINEAGE_KIND = "comfy-lineage";
+
+/**
+ * A board object linking a picture a run was given to one it made from it, drawn
+ * as a line between the two cards. Stored in the board document, so the link
+ * outlives the run; it names the cards by vault path, which is a file card's id.
+ */
+export interface ComfyLineageObject extends CanvasObject {
+  kind: typeof COMFY_LINEAGE_KIND;
+  from: string;
+  to: string;
+}
 
 /** One node of an API-format workflow: what `POST /prompt` takes. */
 export interface ComfyWorkflowNode {

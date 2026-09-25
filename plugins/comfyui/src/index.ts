@@ -6,6 +6,7 @@ import ComfySettings from "./ComfySettings.svelte";
 import { manifestFromImport, readImport } from "./editor/document";
 import EditorPane from "./editor/EditorPane.svelte";
 import { errorMessage } from "./form";
+import { lineageKind } from "./lineage";
 import { comfyMenuItems } from "./menu";
 import { mountPlaceholders } from "./placeholders.svelte";
 import { ComfyStore, comfyPluginState } from "./store.svelte";
@@ -32,6 +33,7 @@ export const comfyuiPlugin: Plugin = {
     ctx.effect(() => store.connect());
     ctx.provide("comfy", store);
     ctx.effect(() => mountPlaceholders(canvas, store));
+    ctx.effect(() => canvas.registerKind(lineageKind()));
 
     ctx.effect(() => {
       comfyPluginState.store = store;
