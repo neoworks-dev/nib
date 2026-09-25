@@ -36,8 +36,14 @@ export interface OpenMenu {
  * space, so the popup stays with the table when the board pans under it.
  */
 export interface OpenPrompt {
-  /** The card the question is about; the board's own input is the docked composer. */
+  /** The card the plus was dragged off; the board's own input is the docked composer. */
   sourceId: string;
+  /**
+   * Every card the question is about: the one dragged from first, then the rest
+   * of the selection it was part of — dragging off one of several selected
+   * pictures asks about all of them.
+   */
+  sourceIds: string[];
   at: Point;
 }
 
@@ -291,7 +297,13 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
   }
 
   spawnFrom(id: string, at: Point): void {
-    this.prompt = { sourceId: id, at };
+    this.prompt = { sourceId: id, sourceIds: this.spawnSources(id), at };
+  }
+
+  /** The dragged card and, when it is part of the selection, the rest of the selection. */
+  private spawnSources(id: string): string[] {
+    if (!this.selection.includes(id)) return [id];
+    return [id, ...this.selection.filter((selected) => selected !== id)];
   }
 
   closePrompt(): void {

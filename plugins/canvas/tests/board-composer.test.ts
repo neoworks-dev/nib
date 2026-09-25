@@ -257,8 +257,30 @@ describe("where the composer comes from", () => {
 
     registry.spawnFrom("c1", { x: 40, y: 60 });
 
-    expect(registry.prompt).toEqual({ sourceId: "c1", at: { x: 40, y: 60 } });
+    expect(registry.prompt).toEqual({ sourceId: "c1", sourceIds: ["c1"], at: { x: 40, y: 60 } });
     registry.closePrompt();
+  });
+
+  test("a plus dragged off one of several selected cards asks about all of them", () => {
+    const registry = canvasState.registry;
+    registry.select(["c2", "c1", "c3"]);
+
+    registry.spawnFrom("c1", { x: 40, y: 60 });
+
+    expect(registry.prompt?.sourceIds).toEqual(["c1", "c2", "c3"]);
+    registry.closePrompt();
+    registry.select([]);
+  });
+
+  test("a plus dragged off a card outside the selection asks about that card alone", () => {
+    const registry = canvasState.registry;
+    registry.select(["c2", "c3"]);
+
+    registry.spawnFrom("c1", { x: 40, y: 60 });
+
+    expect(registry.prompt?.sourceIds).toEqual(["c1"]);
+    registry.closePrompt();
+    registry.select([]);
   });
 
   test("the right button on a card is still that card's menu", () => {

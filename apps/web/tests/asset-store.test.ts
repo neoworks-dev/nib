@@ -120,6 +120,13 @@ describe("storeAsset", () => {
     expect(readdirSync(directory)).toHaveLength(1);
   });
 
+  it("stores the same bytes asked for several times at once", async () => {
+    const stored = await Promise.all([1, 2, 3, 4].map(() => storeAsset(directory, png)));
+
+    expect(new Set(stored.map((asset) => asset.assetId)).size).toBe(1);
+    expect(readdirSync(directory)).toHaveLength(1);
+  });
+
   it("leaves no temp file behind", async () => {
     await storeAsset(directory, mp4);
 

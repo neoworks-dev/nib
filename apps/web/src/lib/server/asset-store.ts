@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -221,8 +221,10 @@ export async function storeAsset(
 
   await mkdir(directory, { recursive: true });
   // Written beside the target and renamed: a crash mid-write must not leave a
-  // truncated file under a hash that says the bytes are complete.
-  const temporary = `${path}.${process.pid}.tmp`;
+  // truncated file under a hash that says the bytes are complete. The temporary
+  // name is this call's own: two requests storing the same picture at once would
+  // otherwise share it, and the second rename finds the first already took it.
+  const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
   await writeFile(temporary, bytes);
   await rename(temporary, path);
 

@@ -15,6 +15,7 @@
    */
   import { Composer, type PendingComposer } from "@nib-ui/plugin-chat";
   import type { MessageAttachment } from "@nib-ui/protocol";
+  import { untrack } from "svelte";
   import type { OpenPrompt } from "./registry.svelte";
   import { canvasState } from "./state.svelte";
 
@@ -37,25 +38,45 @@
     canvasState.objects.find((object) => object.id === prompt.sourceId) ?? null,
   );
 
-  /** What the card would send: shown before the question is asked. */
+  /** Every card asked about that is still on the board, the dragged one first. */
+  const sources = $derived(
+    prompt.sourceIds.flatMap((id) => {
+      const found = canvasState.objects.find((object) => object.id === id);
+      if (!found) return [];
+      return [found];
+    }),
+  );
+
+  /**
+   * Which cards those are, as a value that only changes when the cards do. The
+   * board hands out new objects on every sync, and resolving the attachments
+   * again for each would upload the same pictures over and over.
+   */
+  const sourceKey = $derived(sources.map((object) => object.id).join("\n"));
+
+  /** What the cards would send: shown before the question is asked. */
   let attachments = $state<MessageAttachment[]>([]);
 
   $effect(() => {
-    const target = source;
-    if (!target) return;
-    const context = registry.contextFor(target);
-    attachments = [];
-    if (context?.attachments) attachments = context.attachments;
-    if (!context?.resolveAttachments) return;
-
+    void sourceKey;
+    const targets = untrack(() => sources);
+    // Collected before it is assigned: reading `attachments` here would make the
+    // effect depend on what it writes.
+    const immediate: MessageAttachment[] = [];
     let current = true;
-    context
-      .resolveAttachments()
-      .then((resolved) => {
-        if (current) attachments = [...attachments, ...resolved];
-      })
-      // A preview that cannot be made is not worth an error: the launch will say.
-      .catch(() => undefined);
+    for (const target of targets) {
+      const context = registry.contextFor(target);
+      if (context?.attachments) immediate.push(...context.attachments);
+      if (!context?.resolveAttachments) continue;
+      context
+        .resolveAttachments()
+        .then((resolved) => {
+          if (current) attachments = [...attachments, ...resolved];
+        })
+        // A preview that cannot be made is not worth an error: the launch will say.
+        .catch(() => undefined);
+    }
+    attachments = immediate;
     return () => {
       current = false;
     };
@@ -71,10 +92,10 @@
 
   const composer = $derived.by((): PendingComposer => {
     const settings = canvasState.boardSettings;
-    const sourceId = prompt.sourceId;
+    const sourceIds = sources.map((object) => object.id);
     return {
-      // Keyed by the card, so a draft survives the popup being dismissed.
-      id: `spawn:${sourceId}`,
+      // Keyed by the cards, so a draft survives the popup being dismissed.
+      id: `spawn:${sourceIds.join(",")}`,
       harnessId: settings.harnessId,
       model: settings.model,
       permissionMode: settings.permissionMode,
@@ -87,7 +108,7 @@
       start: async (text) => {
         const at = prompt.at;
         registry.closePrompt();
-        await canvasState.startFromAsset([sourceId], text, at);
+        await canvasState.startFromAsset(sourceIds, text, at);
       },
       target: {
         cwd: registry.cwd,
@@ -99,10 +120,12 @@
     };
   });
 
-  /** The vault path of the card asked from, which a workflow's image input takes. */
+  /** The vault paths of the cards asked from, which a workflow's image inputs take. */
   function sourcePaths(): string[] {
-    if (!source || typeof source.path !== "string") return [];
-    return [source.path];
+    return sources.flatMap((object) => {
+      if (typeof object.path !== "string") return [];
+      return [object.path];
+    });
   }
 
   // The card the question was about has gone — moved off the board, deleted —
