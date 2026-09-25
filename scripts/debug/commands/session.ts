@@ -5,7 +5,7 @@ import { mkdirSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import type { Command } from "commander";
 import { build, launchApp, requireBuild, waitForDebugPort } from "../app.ts";
-import { hasCommand, startDisplay, stopDisplay } from "../display.ts";
+import { hasCommand, startDisplay, stopDisplay, viewerAddress } from "../display.ts";
 import { drive } from "../drive.ts";
 import { paths } from "../paths.ts";
 import { freePort, killByEnvironment } from "../processes.ts";
@@ -66,7 +66,7 @@ async function start(options: { fresh?: boolean; build?: boolean }): Promise<voi
   const ready = drive(session, { action: "ready", timeout: 90_000 });
 
   console.log(
-    `display:  ${display.display}  (watch it: vncviewer ${display.display}, or "bun run debug view")`,
+    `display:  ${display.display}  (watch it: vncviewer ${viewerAddress(display.display)}, or "bun run debug view")`,
   );
   console.log(`profile:  ${paths.profile}`);
   console.log(`project:  ${target.project}`);
@@ -89,7 +89,8 @@ function view(): void {
   const session = requireSession();
   if (!hasCommand("vncviewer"))
     throw new Error("vncviewer is not installed — sudo pacman -S tigervnc");
-  const viewer = spawn("vncviewer", [session.display], { stdio: "ignore", detached: true });
+  const address = viewerAddress(session.display);
+  const viewer = spawn("vncviewer", [address], { stdio: "ignore", detached: true });
   viewer.unref();
-  console.log(`vncviewer ${session.display}`);
+  console.log(`vncviewer ${address}`);
 }

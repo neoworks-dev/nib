@@ -4,7 +4,7 @@
 // window cannot simply stay hidden: an unmapped window has a hidden document,
 // Chromium stops requestAnimationFrame, and the Pixi board never gets a frame.
 // So it needs a real X display somewhere else. Xvnc (tigervnc) is that display
-// and a VNC server in one, so `vncviewer :90` shows the run as it happens.
+// and a VNC server in one, so a VNC viewer shows the run as it happens.
 
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
@@ -19,9 +19,19 @@ export const GEOMETRY = { width: 1440, height: 900, depth: 24 };
 const DISPLAY_RANGE = { first: 100, last: 109 };
 
 export interface VirtualDisplay {
-  /** What to put in DISPLAY, and what to hand vncviewer. */
+  /** What to put in DISPLAY. */
   display: string;
   pid: number;
+}
+
+/**
+ * What to hand vncviewer for a display. TigerVNC reads `:N` as a display only
+ * below 100 and as a raw port from 100 up, so `vncviewer :100` dials port 100;
+ * the port form reaches Xvnc's 5900 + N on every display number.
+ */
+export function viewerAddress(display: string): string {
+  const number = Number(display.replace(":", ""));
+  return `localhost::${5900 + number}`;
 }
 
 /** Bring up an Xvnc display that outlives this process, or throw why not. */
