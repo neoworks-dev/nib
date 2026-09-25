@@ -192,6 +192,30 @@ export function placementsFor(map: PlacementMap, board: string): Record<string, 
   return map[board] ?? {};
 }
 
+/**
+ * The map after an entry moved from one path to another: its own placement in
+ * the board it sits on, the board inside it and every board nested in that are
+ * all keyed by path, and all follow it. Nothing else changes.
+ */
+export function renamePlacements(map: PlacementMap, from: string, to: string): PlacementMap {
+  const renamed: PlacementMap = {};
+  for (const [board, slice] of Object.entries(map)) {
+    const entries: Record<string, Placement> = {};
+    for (const [path, placement] of Object.entries(slice)) {
+      entries[rebasePath(path, from, to)] = placement;
+    }
+    renamed[rebasePath(board, from, to)] = entries;
+  }
+  return renamed;
+}
+
+/** A path under `from`, or `from` itself, moved to the same place under `to`. */
+function rebasePath(path: string, from: string, to: string): string {
+  if (path === from) return to;
+  if (path.startsWith(`${from}/`)) return `${to}${path.slice(from.length)}`;
+  return path;
+}
+
 /** The board a vault-relative path belongs to: its directory. */
 export function boardOf(path: string): string {
   const slash = path.lastIndexOf("/");

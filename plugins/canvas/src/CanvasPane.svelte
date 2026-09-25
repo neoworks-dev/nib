@@ -11,6 +11,7 @@
   import { CanvasEngine } from "./engine/CanvasEngine";
   import { cameraFitting, clampZoom, zoomAt } from "./engine/utils/camera";
   import { unionRects } from "./engine/utils/geometry";
+  import FolderRenameField from "./FolderRenameField.svelte";
   import SpawnPrompt from "./SpawnPrompt.svelte";
   import StickyOverlay from "./StickyOverlay.svelte";
   import { canvasState } from "./state.svelte";
@@ -30,6 +31,7 @@
 
   const menu = $derived(registry.menu);
   const prompt = $derived(registry.prompt);
+  const renaming = $derived(registry.renaming);
   const boardBackground = `#${boardTheme().background.toString(16).padStart(6, "0")}`;
   /** Anything a plugin placed counts: a board of images is not an empty board. */
   const empty = $derived(canvasState.objects.length === 0);
@@ -418,6 +420,12 @@
 
   {#if prompt}
     <SpawnPrompt {prompt} paneWidth={boardWidth} paneHeight={boardHeight} />
+  {/if}
+
+  {#if renaming}
+    {#key renaming}
+      <FolderRenameField rename={renaming} />
+    {/key}
   {/if}
 
   <!--

@@ -8,6 +8,7 @@ import {
   parseStacks,
   placementsFor,
   reconcileBoard,
+  renamePlacements,
   type Placement,
   type PlacementEntry,
   type Rect,
@@ -504,5 +505,25 @@ describe("packSlot", () => {
     const slot = packSlot({ maxWidth: 300, gap: 24 });
     const placed: Rect = { x: 0, y: 0, w: 300, h: 100 };
     expect(slot([placed], { w: 400, h: 100 })).toEqual({ x: 0, y: 124 });
+  });
+});
+
+describe("renamePlacements", () => {
+  const at: Placement = { x: 1, y: 2, w: 3, h: 4, z: 1 };
+
+  it("moves the entry's own placement, the board inside it and those nested in it", () => {
+    const map = {
+      "": { notes: at, other: at },
+      notes: { "notes/a.md": at },
+      "notes/deep": { "notes/deep/b.md": at },
+      notebook: { "notebook/c.md": at },
+    };
+
+    expect(renamePlacements(map, "notes", "journal")).toEqual({
+      "": { journal: at, other: at },
+      journal: { "journal/a.md": at },
+      "journal/deep": { "journal/deep/b.md": at },
+      notebook: { "notebook/c.md": at },
+    });
   });
 });

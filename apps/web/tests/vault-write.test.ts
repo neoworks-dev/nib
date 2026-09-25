@@ -14,6 +14,7 @@ import { VAULT_DIRECTORY } from "../src/lib/server/vault";
 import {
   deleteVaultEntry,
   moveVaultEntry,
+  renameVaultEntry,
   VaultWriteError,
   writeVaultFile,
   writeVaultText,
@@ -132,6 +133,67 @@ describe("moveVaultEntry", () => {
   it("reports a source that is gone rather than creating one", async () => {
     const root = project();
     await expect(moveVaultEntry(root, "nope.md", "topic-x")).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe("renameVaultEntry", () => {
+  it("renames a folder where it is and carries its links, bare names included", async () => {
+    const root = project({
+      "notes/ideas.md": "body",
+      "index.md": "[[notes]] and [[notes/ideas]] and [[notebook]]",
+    });
+
+    const result = await renameVaultEntry(root, "notes", "journal");
+
+    expect(result).toEqual({ from: "notes", to: "journal", rewritten: ["index.md"] });
+    expect(existsSync(join(root, VAULT_DIRECTORY, "journal/ideas.md"))).toBe(true);
+    expect(existsSync(join(root, VAULT_DIRECTORY, "notes"))).toBe(false);
+    expect(read(root, "index.md")).toBe("[[journal]] and [[journal/ideas]] and [[notebook]]");
+  });
+
+  it("keeps a nested entry in its own directory", async () => {
+    const root = project({ "topic/old/a.md": "body" });
+
+    const result = await renameVaultEntry(root, "topic/old", "new");
+
+    expect(result.to).toBe("topic/new");
+    expect(existsSync(join(root, VAULT_DIRECTORY, "topic/new/a.md"))).toBe(true);
+  });
+
+  it("cleans the name the way a written file's is cleaned", async () => {
+    const root = project({ "notes/a.md": "body" });
+
+    const result = await renameVaultEntry(root, "notes", "  a/b  ");
+
+    expect(result.to).toBe("b");
+  });
+
+  it("does nothing when the name is unchanged", async () => {
+    const root = project({ "notes/a.md": "body" });
+
+    expect(await renameVaultEntry(root, "notes", "notes")).toEqual({
+      from: "notes",
+      to: "notes",
+      rewritten: [],
+    });
+  });
+
+  it("refuses a name already taken, and an entry that is gone", async () => {
+    const root = project({ "notes/a.md": "body", "journal/b.md": "body" });
+
+    await expect(renameVaultEntry(root, "notes", "journal")).rejects.toMatchObject({ status: 409 });
+    await expect(renameVaultEntry(root, "gone", "x")).rejects.toMatchObject({ status: 404 });
+    await expect(renameVaultEntry(root, "notes", "   ")).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("undoes exactly: renaming back with the reported rewrites restores the links", async () => {
+    const root = project({ "notes/a.md": "body", "index.md": "[[notes]]" });
+
+    const result = await renameVaultEntry(root, "notes", "journal");
+    await renameVaultEntry(root, result.to, "notes", { rewrite: result.rewritten });
+
+    expect(existsSync(join(root, VAULT_DIRECTORY, "notes/a.md"))).toBe(true);
+    expect(read(root, "index.md")).toBe("[[notes]]");
   });
 });
 

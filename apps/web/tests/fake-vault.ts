@@ -93,6 +93,10 @@ export class FakeVault implements VaultService {
     throw new Error("the fake vault does not move");
   }
 
+  rename(): Promise<never> {
+    throw new Error("the fake vault does not rename");
+  }
+
   write(): Promise<never> {
     throw new Error("the fake vault does not write");
   }

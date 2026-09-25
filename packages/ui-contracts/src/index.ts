@@ -124,6 +124,16 @@ export interface TransportService {
     toDirectory: string,
     options?: VaultMoveOptions,
   ): Promise<VaultMoveResult>;
+  /**
+   * Renames an item where it is and rewrites the links to it — bare names too,
+   * since the name is what changed. Refused when the name is taken.
+   */
+  renameVaultEntry(
+    cwd: string,
+    from: string,
+    name: string,
+    options?: VaultMoveOptions,
+  ): Promise<VaultMoveResult>;
   /** Writes bytes into a topic directory, answering with where they landed. */
   writeVaultFile(
     cwd: string,

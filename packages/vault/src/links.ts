@@ -126,6 +126,38 @@ export function movedLinkTarget(from: string, to: string): LinkRename {
   };
 }
 
+/**
+ * What a rename does to links. Unlike a move, the name itself changed, so a
+ * **bare-name** reference to the entry is rewritten as well as a path-qualified
+ * one: `[[old]]` becomes `[[new]]`, written with or without its extension the
+ * way it was. A bare name another entry of the same name also answers to is
+ * rewritten too — names are how the vault links, and the rename is of that name.
+ *
+ * `from` and `to` are vault-relative paths of the entry itself, extension and all.
+ */
+export function renamedLinkTarget(from: string, to: string): LinkRename {
+  const moved = movedLinkTarget(from, to);
+  const fromName = baseOf(normalizeTarget(from));
+  const toName = baseOf(normalizeTarget(to));
+  const fromStem = withoutExtension(fromName);
+  const toStem = withoutExtension(toName);
+
+  return (target: string): string | null => {
+    const reference = normalizeTarget(target);
+    if (reference.includes("/")) return moved(target);
+    if (reference === fromName) return toName;
+    if (reference === fromStem) return toStem;
+    return null;
+  };
+}
+
+/** The last segment of a vault path. */
+function baseOf(path: string): string {
+  const slash = path.lastIndexOf("/");
+  if (slash === -1) return path;
+  return path.slice(slash + 1);
+}
+
 const CODE_SPAN = /(`[^`]*`)/g;
 
 function replaceTargets(text: string, rename: LinkRename): string {

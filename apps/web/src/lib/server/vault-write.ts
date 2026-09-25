@@ -15,7 +15,7 @@
 import type { Dirent } from "node:fs";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join, posix } from "node:path";
-import { movedLinkTarget, rewriteLinks } from "@nib-ui/vault";
+import { type LinkRename, movedLinkTarget, renamedLinkTarget, rewriteLinks } from "@nib-ui/vault";
 import { confineToVault, vaultRoot } from "./vault";
 
 /** Carries the status a route should answer with, so the handler does not guess. */
@@ -82,7 +82,52 @@ export async function moveVaultEntry(
   await mkdir(absoluteDirectory, { recursive: true });
   await rename(absoluteSource, absoluteTarget);
 
-  const rewritten = await rewriteVaultLinks(root, source, target, options.rewrite);
+  const rewritten = await rewriteVaultLinks(root, movedLinkTarget(source, target), options.rewrite);
+  return { from: source, to: target, rewritten };
+}
+
+/**
+ * Renames an entry where it is. The name goes through the same cleaning a
+ * written file's does, and a name already taken is refused rather than merged
+ * into. Links to it follow — bare names too, since the name is what changed.
+ */
+export async function renameVaultEntry(
+  cwd: string,
+  from: string,
+  newName: string,
+  options: VaultMoveOptions = {},
+): Promise<VaultMoveResult> {
+  const root = vaultRoot(cwd);
+  const source = cleanVaultPath(from);
+  if (source.length === 0) throw new VaultWriteError("nothing to rename", 400);
+  if (newName.trim().length === 0) throw new VaultWriteError("a name is required", 400);
+
+  const directory = parentOf(source);
+  const name = safeName(newName);
+  let target = name;
+  if (directory.length > 0) target = `${directory}/${name}`;
+  if (target === source) return { from: source, to: source, rewritten: [] };
+
+  const absoluteSource = confineToVault(root, source);
+  const absoluteTarget = confineToVault(root, target);
+  if (!absoluteSource || !absoluteTarget)
+    throw new VaultWriteError("path is outside the vault", 400);
+
+  if (!(await exists(absoluteSource))) throw new VaultWriteError(`${source} is gone`, 404);
+  // A change of case alone is the same entry on a case-insensitive filesystem,
+  // so only a different name is checked for being taken.
+  const caseOnly = target.toLowerCase() === source.toLowerCase();
+  if (!caseOnly && (await exists(absoluteTarget))) {
+    throw new VaultWriteError(`${target} already exists`, 409);
+  }
+
+  await rename(absoluteSource, absoluteTarget);
+
+  const rewritten = await rewriteVaultLinks(
+    root,
+    renamedLinkTarget(source, target),
+    options.rewrite,
+  );
   return { from: source, to: target, rewritten };
 }
 
@@ -170,11 +215,9 @@ export async function deleteVaultEntry(cwd: string, path: string): Promise<void>
  */
 async function rewriteVaultLinks(
   root: string,
-  from: string,
-  to: string,
+  rename: LinkRename,
   only: readonly string[] | undefined,
 ): Promise<string[]> {
-  const rename = movedLinkTarget(from, to);
   const candidates = only ? [...only] : await markdownPaths(root, "");
   const rewritten: string[] = [];
 
@@ -289,4 +332,11 @@ function baseName(path: string): string {
   const slash = path.lastIndexOf("/");
   if (slash === -1) return path;
   return path.slice(slash + 1);
+}
+
+/** The directory holding a vault path, `""` at the vault root. */
+function parentOf(path: string): string {
+  const slash = path.lastIndexOf("/");
+  if (slash === -1) return "";
+  return path.slice(0, slash);
 }

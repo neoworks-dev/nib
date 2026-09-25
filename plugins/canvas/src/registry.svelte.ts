@@ -16,6 +16,7 @@ import type {
   CanvasRegistry,
   CanvasTool,
   Point,
+  Rect,
 } from "@nib-ui/ui-contracts";
 import type { BoardStore } from "./board.svelte";
 import { activateObject, byOrder, dispatch } from "./dispatch";
@@ -48,6 +49,16 @@ export interface OpenPrompt {
 }
 
 /**
+ * A folder's name being edited on its card. The rectangle is where the name is
+ * drawn, in world units, so the field sits over it and follows the camera.
+ */
+export interface OpenRename {
+  path: string;
+  name: string;
+  rect: Rect;
+}
+
+/**
  * The `canvas` service. It holds what plugins contribute and what a window is
  * looking at, and outlives any mounted engine — closing the board pane must not
  * cost a plugin its registrations.
@@ -58,6 +69,7 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
   activeTool = $state("select");
   menu = $state<OpenMenu | null>(null);
   prompt = $state<OpenPrompt | null>(null);
+  renaming = $state<OpenRename | null>(null);
   engine = $state<CanvasEngine | null>(null);
 
   /** Set by the plugin: what opening an object means is not the engine's business. */
@@ -310,6 +322,15 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
     this.prompt = null;
   }
 
+  /** Opens the name field over a folder's card. */
+  startRename(rename: OpenRename): void {
+    this.renaming = rename;
+  }
+
+  closeRename(): void {
+    this.renaming = null;
+  }
+
   /** Ordered, first claim wins; a disposed handler is simply no longer in the set. */
   paste(payload: CanvasPastePayload, at: Point): Promise<boolean> {
     return dispatch(this.pasteHandlers, payload, at);
@@ -330,6 +351,7 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
     this.selection = [];
     this.menu = null;
     this.prompt = null;
+    this.renaming = null;
     this.camera = { x: 0, y: 0, zoom: 1 };
     this.activeTool = "select";
     this.engine = null;

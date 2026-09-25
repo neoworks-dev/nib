@@ -1,5 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import { extractLinks, movedLinkTarget, rewriteLinks, stripCode } from "../src/links";
+import {
+  extractLinks,
+  movedLinkTarget,
+  renamedLinkTarget,
+  rewriteLinks,
+  stripCode,
+} from "../src/links";
 
 describe("extractLinks", () => {
   it("reads a bare name", () => {
@@ -101,5 +107,29 @@ describe("rewriteLinks", () => {
   it("returns the body unchanged when nothing points at the moved item", () => {
     const body = "[[other]] and [[topic-c/note]]\n";
     expect(rewriteLinks(body, toTopicB)).toBe(body);
+  });
+});
+
+describe("renamedLinkTarget", () => {
+  it("rewrites a bare name, since the name is what changed", () => {
+    const renamed = renamedLinkTarget("notes", "journal");
+    expect(rewriteLinks("[[notes]] and [[notes|the notes]]", renamed)).toBe(
+      "[[journal]] and [[journal|the notes]]",
+    );
+  });
+
+  it("carries a topic's contents and keeps an extension where one was written", () => {
+    expect(rewriteLinks("[[notes/ideas]]", renamedLinkTarget("notes", "journal"))).toBe(
+      "[[journal/ideas]]",
+    );
+    const file = renamedLinkTarget("topic/a.md", "topic/b.md");
+    expect(rewriteLinks("[[a]] [[a.md]] [[topic/a]]", file)).toBe("[[b]] [[b.md]] [[topic/b]]");
+  });
+
+  it("leaves other names alone", () => {
+    const renamed = renamedLinkTarget("notes", "journal");
+    expect(rewriteLinks("[[notebook]] [[other/notes-x]]", renamed)).toBe(
+      "[[notebook]] [[other/notes-x]]",
+    );
   });
 });

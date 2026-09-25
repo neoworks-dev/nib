@@ -6,6 +6,7 @@ export {
   type LinkRename,
   movedLinkTarget,
   type RawLink,
+  renamedLinkTarget,
   rewriteLinks,
   stripCode,
 } from "./links";
@@ -18,6 +19,7 @@ export {
   parseStacks,
   placementsFor,
   reconcileBoard,
+  renamePlacements,
   type FlowOptions,
   type Placement,
   type PlacementEntry,

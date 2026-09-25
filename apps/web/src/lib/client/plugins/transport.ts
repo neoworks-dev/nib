@@ -161,6 +161,19 @@ class SseTransport implements TransportService {
     });
   }
 
+  renameVaultEntry(
+    cwd: string,
+    from: string,
+    name: string,
+    options: VaultMoveOptions = {},
+  ): Promise<VaultMoveResult> {
+    return requestJson("/api/vault/rename", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ cwd, from, name, rewrite: options.rewrite }),
+    });
+  }
+
   writeVaultFile(
     cwd: string,
     directory: string,

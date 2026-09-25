@@ -77,6 +77,8 @@ export interface FolderDeps {
   preview(folder: FolderObject): void;
   /** A double click enters it: its board replaces the canvas. */
   enter(folder: FolderObject): void;
+  /** A click on its name edits the name, over the world rectangle the name is drawn in. */
+  rename(folder: FolderObject, nameRect: Rect): void;
 }
 
 /**
@@ -106,6 +108,8 @@ class FolderCardRenderer extends CardRenderer<FolderObject> {
   private readonly front = new Graphics();
   private readonly badge = new Graphics();
   private readonly label = new Sprite();
+  /** Where the name is drawn, card-local, set by each draw of the label. */
+  private nameRect: Rect | null = null;
   /** Whether the pointer is on the badge, which is the one thing that lights up. */
   private badgeHot = false;
   /** Where they are heading, which is not where they are while turns are pending. */
@@ -507,12 +511,29 @@ class FolderCardRenderer extends CardRenderer<FolderObject> {
     return hot;
   }
 
-  /** Pressing the badge goes into the folder; pressing the card itself does not. */
+  /**
+   * Pressing the badge goes into the folder, and pressing the name edits it;
+   * pressing anywhere else on the card is the card's own click, which opens it.
+   */
   pressAt(worldX: number, worldY: number): boolean {
     const data = this.data;
-    if (!data || !this.onBadge(worldX, worldY)) return false;
-    this.deps.enter(data);
+    if (!data) return false;
+    if (this.onBadge(worldX, worldY)) {
+      this.deps.enter(data);
+      return true;
+    }
+    const name = this.nameRectInWorld();
+    if (!name || !rectContains(name, worldX, worldY)) return false;
+    this.deps.rename(data, name);
     return true;
+  }
+
+  /** Where the folder's name is drawn, in world units, or null before the first draw. */
+  private nameRectInWorld(): Rect | null {
+    const name = this.nameRect;
+    if (!name) return null;
+    const bounds = this.bounds();
+    return { x: bounds.x + name.x, y: bounds.y + name.y, width: name.width, height: name.height };
   }
 
   private onBadge(worldX: number, worldY: number): boolean {
@@ -576,11 +597,24 @@ class FolderCardRenderer extends CardRenderer<FolderObject> {
     this.label.texture = baked.texture;
     this.label.setSize(baked.width, baked.height);
     this.label.position.set(pad, this.height - pad - baked.height);
+    // The name is the label less the count line under it, and as wide as the
+    // column it may wrap in: a short name is still easy to hit.
+    this.nameRect = {
+      x: pad,
+      y: this.height - pad - baked.height,
+      width: column,
+      height: Math.max(1, baked.height - gap),
+    };
   }
 
   private bake(key: string, runs: TextRun[], width: number): BakedText {
     return this.deps.textures.get(`${themeRevision()}:${key}`, runs, width, this.resolution);
   }
+}
+
+/** Whether a point lies inside a rectangle, edges included. */
+function rectContains(rect: Rect, x: number, y: number): boolean {
+  return x >= rect.x && y >= rect.y && x <= rect.x + rect.width && y <= rect.y + rect.height;
 }
 
 /**

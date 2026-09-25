@@ -260,6 +260,8 @@ export const canvasPlugin: Plugin = {
           fileUrl: (path) => canvasState.vault.fileUrl(path),
           preview: (folder) => canvasState.vault.togglePreview(folder),
           enter: (folder) => canvasState.vault.enter(folder),
+          rename: (folder, nameRect) =>
+            registry.startRename({ path: folder.path, name: folder.name, rect: nameRect }),
         }),
       ),
     );

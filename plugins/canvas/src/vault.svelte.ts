@@ -17,8 +17,16 @@ import type {
   TransportService,
   VaultMoveResult,
 } from "@nib-ui/ui-contracts";
-import { setMetaString } from "@nib-ui/vault";
-import type { Placement, Rect, Size, TrashEntry, VaultDoc, VaultSnapshotItem } from "@nib-ui/vault";
+import { renamePlacements, setMetaString } from "@nib-ui/vault";
+import type {
+  Placement,
+  PlacementMap,
+  Rect,
+  Size,
+  TrashEntry,
+  VaultDoc,
+  VaultSnapshotItem,
+} from "@nib-ui/vault";
 import { untrack } from "svelte";
 import { STICKY_DEFAULT_COLOR, type StickyColor } from "./theme";
 import type { BoardStore } from "./board.svelte";
@@ -1022,6 +1030,69 @@ export class VaultStore {
   }
 
   /**
+   * Renames an entry where it is — the folder name edited on its card. The card
+   * keeps its place: its placement follows the new path, and so does the board
+   * inside a folder and every board nested in it, which are stored by directory.
+   * One undo step renames it back, with exactly the links the rename rewrote.
+   * Answers with the new path, or null when nothing was renamed.
+   */
+  async renameEntry(path: string, name: string): Promise<string | null> {
+    const transport = this.transport;
+    const cwd = this.board.cwd;
+    if (!transport || cwd.length === 0) return null;
+    if (name.trim().length === 0) return null;
+
+    let result: VaultMoveResult;
+    try {
+      result = await transport.renameVaultEntry(cwd, path, name);
+    } catch (cause) {
+      this.error = describe(cause);
+      return null;
+    }
+    if (result.to === result.from) return null;
+
+    // What the board held under the old path, for the undo to put back: the board
+    // restores its snapshot while the scan still has the new name, and a derive in
+    // between drops those placements as stale.
+    const placementsBefore = this.board.doc.placements;
+    this.board.attachAction({
+      revert: async () => {
+        await transport.renameVaultEntry(cwd, result.to, baseName(result.from), {
+          rewrite: result.rewritten,
+        });
+        this.followRename(result.to, result.from);
+        this.board.setPlacements(
+          restoredPlacements(this.board.doc.placements, placementsBefore, result.from),
+        );
+        await this.refresh();
+      },
+      reapply: async () => {
+        await transport.renameVaultEntry(cwd, result.from, baseName(result.to));
+        this.followRename(result.from, result.to);
+        await this.refresh();
+      },
+    });
+
+    this.followRename(result.from, result.to);
+    await this.refresh();
+    return result.to;
+  }
+
+  /**
+   * Moves what the board keeps by path from an entry's old path to its new one:
+   * its placement in the board it sits on, the boards inside it, and the folder
+   * the board has open.
+   */
+  private followRename(from: string, to: string): void {
+    // The scan is renamed with them, ahead of the rescan: a derive against a scan
+    // that still lists the old path would drop the moved placements as stale and
+    // flow the old name back in, and one can run before the rescan returns.
+    if (this.doc) this.doc = { ...this.doc, items: renamedItems(this.doc.items, from, to) };
+    this.board.setPlacements(renamePlacements(this.board.doc.placements, from, to));
+    if (this.preview === from) this.preview = to;
+  }
+
+  /**
    * Bytes dropped or pasted onto the board become files in the board's own
    * directory (PLAN §7), placed where they landed rather than flowed in with the
    * rest. Answers with the vault paths that were written.
@@ -1527,6 +1598,58 @@ function directoryOf(path: string): string {
   const slash = path.lastIndexOf("/");
   if (slash === -1) return "";
   return path.slice(0, slash);
+}
+
+/** The last segment of a vault path: the entry's own name. */
+function baseName(path: string): string {
+  const slash = path.lastIndexOf("/");
+  if (slash === -1) return path;
+  return path.slice(slash + 1);
+}
+
+/** A path under `from`, or `from` itself, moved to the same place under `to`. */
+function rebasedPath(path: string, from: string, to: string): string {
+  if (path === from) return to;
+  if (path.startsWith(`${from}/`)) return `${to}${path.slice(from.length)}`;
+  return path;
+}
+
+/**
+ * The placements with everything stored under `path` taken from `before`: the
+ * entry's own placement on its board, and the boards inside it. The rest of the
+ * map is left as it is now.
+ */
+function restoredPlacements(
+  current: PlacementMap,
+  before: PlacementMap,
+  path: string,
+): PlacementMap {
+  const restored: PlacementMap = {};
+  for (const [board, slice] of Object.entries(current)) {
+    if (rebasedPath(board, path, "") !== board) continue;
+    restored[board] = { ...slice };
+  }
+  for (const [board, slice] of Object.entries(before)) {
+    if (rebasedPath(board, path, "") === board) continue;
+    restored[board] = slice;
+  }
+  const parent = directoryOf(path);
+  const own = before[parent]?.[path];
+  if (own !== undefined) restored[parent] = { ...restored[parent], [path]: own };
+  return restored;
+}
+
+/** Scanned items with an entry renamed, and everything inside it with it. */
+function renamedItems(
+  items: readonly VaultSnapshotItem[],
+  from: string,
+  to: string,
+): VaultSnapshotItem[] {
+  return items.map((item) => {
+    const path = rebasedPath(item.path, from, to);
+    if (path === item.path) return item;
+    return { ...item, path, dir: directoryOf(path), name: baseName(path) };
+  });
 }
 
 function describe(cause: unknown): string {

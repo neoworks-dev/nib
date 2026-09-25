@@ -217,6 +217,13 @@ export interface VaultService {
     toDirectory: string,
     options?: VaultMoveOptions,
   ): Promise<VaultMoveResult>;
+  /** Renames an entry where it is, with its links — bare names included — following it. */
+  rename(
+    cwd: string,
+    from: string,
+    newName: string,
+    options?: VaultMoveOptions,
+  ): Promise<VaultMoveResult>;
   /** Bytes into a topic directory, under a name that is free. */
   write(cwd: string, directory: string, name: string, bytes: Uint8Array): Promise<VaultWriteResult>;
   /** A note's body back, in place. Never renames, so links to it survive the save. */
