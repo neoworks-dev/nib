@@ -1,5 +1,36 @@
 import { describe, expect, it } from "bun:test";
-import { nearEdge, onPlus, plusAnchor, plusPoint } from "../src/engine/spawn";
+import {
+  nearEdge,
+  onPlus,
+  plusAnchor,
+  plusPoint,
+  tetherCurve,
+} from "../src/engine/spawn";
+
+describe("the tether", () => {
+  it("leaves the button straight out of the card's edge", () => {
+    const curve = tetherCurve({ x: 100, y: 50 }, { x: 300, y: 250 }, "e", 1);
+    expect(curve.start).toEqual({ x: 100, y: 50 });
+    expect(curve.control1.y).toBe(50);
+    expect(curve.control1.x).toBeGreaterThan(100);
+    expect(curve.end).toEqual({ x: 300, y: 250 });
+  });
+
+  it("bends rather than running straight to the pointer", () => {
+    const anchor = { x: 0, y: 0 };
+    const pointer = { x: 200, y: 200 };
+    const curve = tetherCurve(anchor, pointer, "s", 1);
+    // A straight line would put the handle on the diagonal; this one points down.
+    expect(curve.control1.x).toBe(0);
+    expect(curve.control1.y).toBeGreaterThan(0);
+  });
+
+  it("keeps its handle the same size on screen at any zoom", () => {
+    const near = tetherCurve({ x: 0, y: 0 }, { x: 1, y: 0 }, "e", 2);
+    const far = tetherCurve({ x: 0, y: 0 }, { x: 1, y: 0 }, "e", 1);
+    expect(near.control1.x * 2).toBeCloseTo(far.control1.x);
+  });
+});
 
 describe("which edge is near", () => {
   it("is none over the card itself", () => {

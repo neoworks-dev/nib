@@ -11,7 +11,15 @@ import {
   type ResizeHandle,
 } from "../resize";
 import { type SnapGuide, type SnapResult, snapToNeighbours } from "../snap";
-import { isSpawnable, nearEdge, onPlus, PLUS, plusAnchor, type SpawnEdge } from "../spawn";
+import {
+  isSpawnable,
+  nearEdge,
+  onPlus,
+  PLUS,
+  plusAnchor,
+  type SpawnEdge,
+  tetherCurve,
+} from "../spawn";
 import { rectFromCorners, rectsIntersect, unionRects } from "../utils/geometry";
 import { CARD_RADIUS, GUIDE, MARQUEE, SELECTION } from "../../theme";
 
@@ -409,9 +417,19 @@ export class SelectTool implements CanvasTool {
     if (!engine || !band || this.state.kind !== "spawning") return;
 
     const zoom = Math.max(0.2, engine.camera.zoom);
-    const { anchor, pointer } = this.state;
+    const { anchor, pointer, edge } = this.state;
+    const curve = tetherCurve(anchor, pointer, edge, zoom);
     band.clear();
-    band.moveTo(anchor.x, anchor.y).lineTo(pointer.x, pointer.y);
+    band
+      .moveTo(curve.start.x, curve.start.y)
+      .bezierCurveTo(
+        curve.control1.x,
+        curve.control1.y,
+        curve.control2.x,
+        curve.control2.y,
+        curve.end.x,
+        curve.end.y,
+      );
     band.stroke({ width: 1.5 / zoom, color: PLUS.ring });
     band.circle(pointer.x, pointer.y, PLUS.radius / zoom);
     band.fill({ color: PLUS.fill });

@@ -123,6 +123,53 @@ export function plusAnchor(bounds: Rect, edge: SpawnEdge, zoom: number): Point {
   return { x: bounds.x + point.x, y: bounds.y + point.y };
 }
 
+/** The outward direction of each edge, which is the way a tether leaves the card. */
+const EDGE_NORMALS: Record<SpawnEdge, Point> = {
+  n: { x: 0, y: -1 },
+  e: { x: 1, y: 0 },
+  s: { x: 0, y: 1 },
+  w: { x: -1, y: 0 },
+};
+
+/** Screen pixels the tether's leaving handle may be at its shortest and longest. */
+const TETHER_HANDLE = { min: 40, max: 180 } as const;
+
+/** The control points of the tether's cubic curve, from the button to the pointer. */
+export interface TetherCurve {
+  start: Point;
+  control1: Point;
+  control2: Point;
+  end: Point;
+}
+
+/**
+ * The line a plus drag draws, as a cubic curve: it leaves the button straight out
+ * of the card's edge and bends round to the pointer, the way a cable leaves a
+ * socket. The leaving handle grows with the distance, so a short drag is nearly
+ * straight and a drag back past the card swings wide of it instead of cutting
+ * through it.
+ */
+export function tetherCurve(
+  anchor: Point,
+  pointer: Point,
+  edge: SpawnEdge,
+  zoom: number,
+): TetherCurve {
+  const scale = Math.max(0.2, zoom);
+  const distance = Math.hypot(pointer.x - anchor.x, pointer.y - anchor.y);
+  const handle = Math.min(
+    TETHER_HANDLE.max / scale,
+    Math.max(TETHER_HANDLE.min / scale, distance / 2),
+  );
+  const normal = EDGE_NORMALS[edge];
+  return {
+    start: anchor,
+    control1: { x: anchor.x + normal.x * handle, y: anchor.y + normal.y * handle },
+    control2: pointer,
+    end: pointer,
+  };
+}
+
 /** A white disc with a grey ring and a plus in it; solid while aimed at. */
 export function drawPlusButton(
   graphics: Graphics,
