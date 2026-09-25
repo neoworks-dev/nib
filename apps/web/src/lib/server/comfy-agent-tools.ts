@@ -13,8 +13,11 @@ import {
 } from "@nib-ui/comfy";
 import {
   type AgentControlTool,
+  comfyCancelRunInputSchema,
+  comfyDeleteWorkflowInputSchema,
   comfyDescribeNodesInputSchema,
   comfyListModelsInputSchema,
+  comfyListRunsInputSchema,
   comfyListWorkflowsInputSchema,
   comfyProposeInputSchema,
   comfyReadRunInputSchema,
@@ -35,14 +38,21 @@ const DEFAULT_SEARCH_LIMIT = 25;
 const RUN_WAIT_MS = 15 * 60 * 1000;
 
 export interface ComfyToolServices {
-  comfyui: Pick<ComfyUIService, "nodeDefinitions" | "queue" | "runs" | "subscribe">;
-  library: Pick<ComfyLibrary, "list" | "get" | "run" | "save" | "openInEditor">;
+  comfyui: Pick<ComfyUIService, "nodeDefinitions" | "queue" | "cancel" | "runs" | "subscribe">;
+  library: Pick<ComfyLibrary, "list" | "get" | "run" | "save" | "delete" | "openInEditor">;
 }
 
 /** A run as an agent reads it. */
 interface RunReport {
   runId: string;
+  /** The library workflow's name, or null for a graph of the agent's own. */
+  label: string | null;
   status: ComfyRun["status"];
+  /** Vault paths of the pictures it was given. */
+  inputs: string[];
+  /** The node executing, and its steps when it reports them. */
+  node: string | null;
+  progress: ComfyRun["progress"];
   /** Vault paths the outputs were written to. */
   outputs: string[];
   error: ComfyRun["error"];
@@ -187,6 +197,33 @@ export function createComfyTools(
       },
     },
     {
+      name: comfyToolNames.listRuns,
+      description:
+        "This project's runs, newest first: what is queued, running (with the node and its steps) " +
+        "and finished (with output vault paths or the error). Includes runs the person started " +
+        "from the Workflows pane.",
+      inputSchema: comfyListRunsInputSchema,
+      handler: (input) => {
+        const { status } = comfyListRunsInputSchema.parse(input);
+        const cwd = requireCwd();
+        const runs = comfyui.runs().filter((run) => run.cwd === cwd && matchesStatus(run, status));
+        return Promise.resolve({ runs: runs.map(report) });
+      },
+    },
+    {
+      name: comfyToolNames.cancelRun,
+      description:
+        "Stop a run: a queued one is taken off the queue, a running one is interrupted. Returns " +
+        "the run as it stands; a running one reads cancelled once ComfyUI confirms.",
+      inputSchema: comfyCancelRunInputSchema,
+      handler: async (input) => {
+        const { runId } = comfyCancelRunInputSchema.parse(input);
+        const run = projectRun(comfyui, runId, requireCwd());
+        await comfyui.cancel(run.id);
+        return report(projectRun(comfyui, runId, run.cwd));
+      },
+    },
+    {
       name: comfyToolNames.propose,
       description:
         "Open a workflow in nib's node editor for the person to review, change and save into the " +
@@ -216,7 +253,38 @@ export function createComfyTools(
         return summariseEntry(entry);
       },
     },
+    {
+      name: comfyToolNames.deleteWorkflow,
+      description:
+        "Delete a saved workflow: a project one goes to the vault's bin, where the person can " +
+        "restore it; one from the person's own library is removed. Bundled workflows cannot be " +
+        "deleted.",
+      inputSchema: comfyDeleteWorkflowInputSchema,
+      handler: async (input) => {
+        const { source, id } = comfyDeleteWorkflowInputSchema.parse(input);
+        const cwd = requireCwd();
+        if (!(await library.get(source, id, cwd))) {
+          throw new Error(`no ${source} workflow ${id}; comfy_list_workflows lists them`);
+        }
+        await library.delete(source, id, cwd);
+        return { deleted: true };
+      },
+    },
   ];
+}
+
+/** Whether a run is in the group `comfy_list_runs` was asked for. */
+function matchesStatus(run: ComfyRun, status: "active" | "finished" | "all" | undefined): boolean {
+  if (status === "active") return !isFinished(run);
+  if (status === "finished") return isFinished(run);
+  return true;
+}
+
+/** A run of this project by id; another project's runs are not the agent's to see. */
+function projectRun(comfyui: ComfyToolServices["comfyui"], runId: string, cwd: string): ComfyRun {
+  const run = comfyui.runs().find((candidate) => candidate.id === runId);
+  if (!run || run.cwd !== cwd) throw new Error(`no run ${runId}; comfy_list_runs lists them`);
+  return run;
 }
 
 /** A library workflow as an agent chooses among them: no graph, no parameter targets. */
@@ -248,7 +316,11 @@ function summariseEntry(entry: ComfyLibraryEntry): WorkflowSummary {
 function report(run: ComfyRun): RunReport {
   const result: RunReport = {
     runId: run.id,
+    label: run.label,
     status: run.status,
+    inputs: run.inputs,
+    node: run.nodeType,
+    progress: run.progress,
     outputs: run.outputs,
     error: run.error,
   };

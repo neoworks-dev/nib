@@ -24,6 +24,8 @@ let root: string;
 let project: string;
 let definitions: ComfyNodeDefinitions;
 let queued: ComfyQueueInput[];
+let cancelled: string[];
+let trashed: string[];
 let runs: ComfyRun[];
 let listeners: Set<(run: ComfyRun) => void>;
 let editorRequests: ComfyEditorRequest[];
@@ -78,6 +80,8 @@ beforeEach(async () => {
   await mkdir(join(project, ".nib"), { recursive: true });
   definitions = JSON.parse(await readFile(DEFINITIONS_FILE, "utf8"));
   queued = [];
+  cancelled = [];
+  trashed = [];
   runs = [];
   listeners = new Set();
   editorRequests = [];
@@ -88,6 +92,10 @@ beforeEach(async () => {
       const run = runState(`run-${queued.length}`, "queued");
       advance(run);
       return Promise.resolve(run);
+    },
+    cancel: (runId: string) => {
+      cancelled.push(runId);
+      return Promise.resolve();
     },
     runs: () => runs,
     subscribe: (listener: (run: ComfyRun) => void) => {
@@ -100,7 +108,10 @@ beforeEach(async () => {
     vault: {
       write: writeVaultFile,
       writeText: writeVaultText,
-      trash: () => Promise.resolve({ id: "t", path: "", name: "", kind: "file", deletedAt: 0 }),
+      trash: (_cwd, path) => {
+        trashed.push(path);
+        return Promise.resolve({ id: "t", path, name: path, kind: "file", deletedAt: 0 });
+      },
     },
     userDirectory: join(root, "user-workflows"),
   });
@@ -191,13 +202,58 @@ describe("the ComfyUI agent tools", () => {
     advance(runState("run-1", "succeeded", ["comfyui/upscaled_00001_.png"]));
     expect(await pending).toEqual({
       runId: "run-1",
+      label: null,
       status: "succeeded",
+      inputs: [],
+      node: null,
+      progress: null,
       outputs: ["comfyui/upscaled_00001_.png"],
       error: null,
     });
     expect(await call(comfyToolNames.readRun, { runId: "run-1" })).toMatchObject({
       status: "succeeded",
     });
+  });
+
+  it("list this project's runs by status, and cancel one", async () => {
+    advance({ ...runState("run-1", "succeeded", ["art/a_00001_.png"]), label: "Upscale" });
+    advance({
+      ...runState("run-2", "running"),
+      nodeType: "KSampler",
+      progress: { value: 3, max: 20 },
+      inputs: ["art/sprite.png"],
+    });
+    advance({ ...runState("run-3", "queued"), cwd: "/another-project" });
+
+    const active = (await call(comfyToolNames.listRuns, { status: "active" })) as {
+      runs: Record<string, unknown>[];
+    };
+    expect(active.runs).toEqual([
+      expect.objectContaining({
+        runId: "run-2",
+        node: "KSampler",
+        progress: { value: 3, max: 20 },
+        inputs: ["art/sprite.png"],
+      }),
+    ]);
+    const all = (await call(comfyToolNames.listRuns, {})) as { runs: { runId: string }[] };
+    expect(all.runs.map((run) => run.runId)).toEqual(["run-2", "run-1"]);
+
+    await call(comfyToolNames.cancelRun, { runId: "run-2" });
+    expect(cancelled).toEqual(["run-2"]);
+    expect(call(comfyToolNames.cancelRun, { runId: "run-3" })).rejects.toThrow("no run run-3");
+  });
+
+  it("delete a saved workflow, and refuse one that is not there", async () => {
+    const manifest = { ...bundled("upscale"), id: "sprite-upscale", name: "Sprite upscale" };
+    await call(comfyToolNames.save, { manifest });
+    expect(
+      await call(comfyToolNames.deleteWorkflow, { source: "project", id: "sprite-upscale" }),
+    ).toEqual({ deleted: true });
+    expect(trashed).toEqual([".comfyui/workflows/sprite-upscale.json"]);
+    expect(call(comfyToolNames.deleteWorkflow, { source: "user", id: "nope" })).rejects.toThrow(
+      "no user workflow nope",
+    );
   });
 
   it("propose a workflow in the editor, and save one into the project", async () => {

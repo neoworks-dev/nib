@@ -66,8 +66,11 @@ export const comfyToolNames = {
   validate: "comfy_validate_workflow",
   run: "comfy_run_workflow",
   readRun: "comfy_read_run",
+  listRuns: "comfy_list_runs",
+  cancelRun: "comfy_cancel_run",
   propose: "comfy_propose_workflow",
   save: "comfy_save_workflow",
+  deleteWorkflow: "comfy_delete_workflow",
 } as const;
 
 export type ComfyToolName = (typeof comfyToolNames)[keyof typeof comfyToolNames];
@@ -122,6 +125,15 @@ export const comfyReadRunInputSchema = z.object({
   wait: z.boolean().optional().describe("Wait for the run to finish; false by default"),
 });
 
+export const comfyListRunsInputSchema = z.object({
+  status: z
+    .enum(["active", "finished", "all"])
+    .optional()
+    .describe("Queued and running, finished, or every run; all by default"),
+});
+
+export const comfyCancelRunInputSchema = z.object({ runId: z.string() });
+
 export const comfyProposeInputSchema = z.object({ manifest: manifestSchema });
 
 export const comfySaveInputSchema = z.object({
@@ -130,6 +142,11 @@ export const comfySaveInputSchema = z.object({
     .enum(["project", "user"])
     .optional()
     .describe("The project's library (default) or the person's own, across projects"),
+});
+
+export const comfyDeleteWorkflowInputSchema = z.object({
+  source: z.enum(["project", "user"]),
+  id: z.string(),
 });
 
 /**
@@ -148,4 +165,6 @@ export const comfyInstructions = [
     "appear on the board. To offer a new workflow " +
     "for reuse, comfy_propose_workflow opens it in the node editor for the person to review and save; " +
     "comfy_save_workflow saves it straight away when you are asked to.",
+  "comfy_list_runs shows what is queued, running and finished in this project — runs the person " +
+    "started too — and comfy_cancel_run stops one.",
 ].join("\n\n");
