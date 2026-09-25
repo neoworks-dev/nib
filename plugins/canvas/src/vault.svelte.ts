@@ -457,15 +457,15 @@ export class VaultStore {
   }
 
   /**
-   * A drag has begun on these cards. Whatever they were laid out as part of is
-   * put away before they move: an opened folder closes and a spread pile folds
-   * back, so the drag crosses a board showing where the cards can land rather
-   * than one still covered by the block they came out of.
+   * A drag has begun on these cards. A spread pile they were part of folds back,
+   * so the drag crosses a board showing where the cards can land.
    *
-   * A card dragged out of a preview is given a placement on this board first. It
-   * is a card on the table from that moment — its file is still in the topic, and
-   * a board shows what is placed on it wherever the file lives — so the drag has
-   * something to carry once the block it was part of is gone. Dropping it is
+   * An opened folder stays open: moving several things out of a folder is one
+   * card after another, and a folder that closed under each of them had to be
+   * opened again every time. A card dragged out of it is given a placement on
+   * this board first. It is a card on the table from that moment — its file is
+   * still in the topic, and a board shows what is placed on it wherever the file
+   * lives — and the folder's block leaves a gap where it was. Dropping it is
    * what moves the file; letting go decides where.
    */
   beginDrag(ids: readonly string[]): void {
@@ -494,7 +494,6 @@ export class VaultStore {
       slice[object.id] = { x: object.x, y: object.y, w: object.w, h: object.h, z: 1 };
       this.detached.add(object.id);
     }
-    this.preview = null;
     this.writeSlice(slice);
     this.derive();
   }
@@ -1335,6 +1334,9 @@ export class VaultStore {
         this.cards = this.cards.map((object) =>
           object === card ? { ...card, opened: true } : object,
         );
+        // A card being dragged out is on the table now, not in the block. It is
+        // left out after the block is laid out, so the rest keep their places
+        // and the gap it leaves shows where it came from.
         this.contents = previewObjects(doc, path, {
           origin: { x: card.x + card.w + PREVIEW_OFFSET, y: card.y },
           maxWidth: PREVIEW_WIDTH,
@@ -1343,15 +1345,15 @@ export class VaultStore {
           // folder, so opening a topic reads as the folder spilling rather than
           // as a second board appearing beside it.
           from: { x: card.x, y: card.y, w: card.w, h: card.h },
-        });
+        }).filter((object) => !this.detached.has(object.id));
         // The board parts around the folder and its contents, so opening one
         // reads as zooming in on them rather than as a block landing on top of
-        // its neighbours.
+        // its neighbours. A card being dragged is where the pointer has it.
         this.pushed = pushAside(
           this.cards,
           card,
           this.contents,
-          new Set([card.id, ...this.contents.map((object) => object.id)]),
+          new Set([card.id, ...this.contents.map((object) => object.id), ...this.detached]),
           PREVIEW_OFFSET,
         );
       }
@@ -1376,8 +1378,9 @@ export class VaultStore {
    * strength, which is the resting state.
    */
   private focusSet(previewed: string | null): ReadonlySet<string> | null {
+    // A card dragged out of the previewed folder stays lit on its way out.
     if (previewed !== null)
-      return new Set([previewed, ...this.contents.map((object) => object.id)]);
+      return new Set([previewed, ...this.contents.map((object) => object.id), ...this.detached]);
 
     const opened = this.opened;
     if (opened === null) return null;

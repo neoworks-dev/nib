@@ -44,21 +44,23 @@ function cardAt(board: BoardStore, path: string): BoardObject | undefined {
 }
 
 describe("dragging a card out of an opened folder", () => {
-  it("closes the folder and leaves the card where it was picked up", () => {
+  it("keeps the folder open and leaves the card where it was picked up", () => {
     const { board, vault, redraw } = store({ "topic-x/a.md": "note", "topic-x/b.md": "note" });
     redraw();
     vault.togglePreview("topic-x");
 
     const picked = cardAt(board, "topic-x/a.md");
+    const neighbour = cardAt(board, "topic-x/b.md");
     expect(picked).toBeDefined();
-    expect(cardAt(board, "topic-x/b.md")).toBeDefined();
-    if (!picked) throw new Error("the folder laid out nothing");
+    if (!picked || !neighbour) throw new Error("the folder laid out nothing");
 
     vault.beginDrag([picked.id]);
 
-    expect(vault.preview).toBeNull();
-    // The rest of the block is back in the folder; the dragged card is not.
-    expect(cardAt(board, "topic-x/b.md")).toBeUndefined();
+    expect(vault.preview).toBe("topic-x");
+    // The rest of the block stays where it was, and the dragged card is drawn
+    // once, as a card on the table, not a second time in the block.
+    expect(cardAt(board, "topic-x/b.md")).toMatchObject({ x: neighbour.x, y: neighbour.y });
+    expect(board.vault.filter((card) => card.path === "topic-x/a.md")).toHaveLength(1);
     const dragged = cardAt(board, "topic-x/a.md");
     expect(dragged).toMatchObject({ x: picked.x, y: picked.y });
     // Placed on this board while its file is still in the topic, which is what
@@ -78,7 +80,9 @@ describe("dragging a card out of an opened folder", () => {
     vault.settleDrag([picked.id]);
 
     expect(board.doc.placements[""]?.["topic-x/a.md"]).toBeUndefined();
-    expect(cardAt(board, "topic-x/a.md")).toBeUndefined();
+    // Back in the still-open folder's block, where it was laid out before.
+    expect(vault.preview).toBe("topic-x");
+    expect(cardAt(board, "topic-x/a.md")).toMatchObject({ x: picked.x, y: picked.y });
   });
 
   it("leaves the folder open for a drag of something else on the board", () => {
