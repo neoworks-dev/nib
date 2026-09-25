@@ -144,7 +144,8 @@ export const comfyInstructions = [
     "workflow with comfy_read_workflow and adapt its graph rather than writing one from nothing; " +
     "find nodes with comfy_search_nodes and comfy_describe_nodes and models with comfy_list_models.",
   "Check a graph with comfy_validate_workflow and fix what it reports before running it. Outputs are " +
-    "written into the vault under comfyui/, where they appear on the board. To offer a new workflow " +
+    "written into the vault beside the first input picture, or under comfyui/ when there is none, and " +
+    "appear on the board. To offer a new workflow " +
     "for reuse, comfy_propose_workflow opens it in the node editor for the person to review and save; " +
     "comfy_save_workflow saves it straight away when you are asked to.",
 ].join("\n\n");
