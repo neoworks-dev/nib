@@ -114,11 +114,19 @@ bun run debug hover at=745,560 --screenshot plus --frames 5 --every 40  # a stri
 
 `--hold` photographs a drag with the button still down: a resize, a line
 following the pointer, a folder reacting to a card over it. `--frames` works on
-any picture and joins the frames into one file.
+any picture and joins the frames into one file. Strips come from Chromium's
+screencast, which renders about 16 frames a second on Xvnc: a 200ms animation
+shows as one or two frames between before and after.
 
-Pictures are read off the X display, not taken by Chromium — Chromium's own
-capture fires `mouseleave` and wipes every hover state. The pointer is drawn in
-as a black arrow where the app last saw it.
+Single pictures are read off the X display, not taken by Chromium — Chromium's
+own capture fires `mouseleave` and wipes every hover state. The pointer is drawn
+in as a black arrow where the app last saw it, and the picture waits until that
+arrow is on the display, so it never shows a frame from before the action.
+
+Holding a drag still for more than about half a second lets a board sync
+overwrite it (#38): a held resize snaps back, a held card lands where it was
+picked up. Take `--hold` pictures, but judge where things land from a drag
+without it.
 
 ## Acting
 

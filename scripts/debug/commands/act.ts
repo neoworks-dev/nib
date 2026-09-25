@@ -174,7 +174,9 @@ function act(name: string, command: Record<string, unknown>, options: PictureOpt
   const crop = cropOf(options);
   let screenshot: string | undefined = undefined;
   if (options.screenshot !== undefined) {
-    refuseRepeatPicture(options, crop);
+    // An action's picture is of what the action left, so only a command that
+    // changes nothing can be refused for photographing an unchanged screen.
+    if (!ACTING_COMMANDS.includes(name)) refuseRepeatPicture(options, crop);
     screenshot = nextShotPath(options.screenshot);
   }
   const output = drive(session, { ...command, screenshot, crop, ...frameCount(options) });
