@@ -5,6 +5,8 @@
     "@rollup/rollup-linux-x64-gnu": "^4.62.5",
     "@tailwindcss/oxide-linux-x64-gnu": "^4.3.3",
     "@types/bun": "^1.4.0",
+    "@types/node": "^24",
+    "commander": "^15.0.0",
     "electron": "^43.4.1",
     "electron-builder": "^26.15.3",
     "eslint": "^10.9.1",
@@ -12,6 +14,7 @@
     "lightningcss-linux-x64-gnu": "^1.33.0",
     "oxlint": "^1.80.0",
     "oxlint-tsgolint": "^7.0.2001",
+    "playwright-core": "^1.63.0",
     "prettier": "^3.9.6",
     "prettier-plugin-svelte": "^4.1.1",
     "svelte-eslint-parser": "^1.8.1",
@@ -24,7 +27,7 @@
     "dev": "bun --filter @nib-ui/desktop dev",
     "dev:web": "bun --filter @nib-ui/web dev",
     "build": "bun --filter @nib-ui/web build",
-    "typecheck": "bun --filter '*' typecheck",
+    "typecheck": "bun --filter '*' typecheck; a=$?; tsc -p scripts/debug; b=$?; exit $((a | b))",
     "lint": "oxlint --type-aware; a=$?; eslint .; b=$?; exit $((a | b))",
     "lint:fix": "oxlint --type-aware --fix; eslint . --fix",
     "lint:ts": "oxlint --type-aware",
@@ -33,7 +36,8 @@
     "format:fix": "prettier --write .",
     "check:svelte": "bun --filter @nib-ui/web typecheck",
     "test": "bun test",
-    "smoke": "bun apps/web/scripts/smoke.ts"
+    "smoke": "bun apps/web/scripts/smoke.ts",
+    "debug": "bun scripts/debug/cli.ts"
   },
   "trustedDependencies": [
     "electron"

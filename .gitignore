@@ -4,5 +4,6 @@ build/
 dist/
 out/
 .nib-ui/
+.nib-debug/
 *.log
 .DS_Store

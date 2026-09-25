@@ -4,6 +4,7 @@ build
 dist
 out
 bun.lock
+.nib-debug
 # The vault is authored content, not project source: `*emphasis*` is the user's
 # writing, and a formatter that rewrites it would edit notes on every `bun run
 # format`. Prettier has no opinion the vault needs.

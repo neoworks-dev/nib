@@ -26,6 +26,7 @@ import {
   sessionsPlugin,
   slotsPlugin,
 } from "./plugins/core-services";
+import { exposeDebugHandle } from "./debug";
 import { devCommandsPlugin } from "./plugins/dev-commands";
 import { paneLayoutPlugin } from "./plugins/pane-layout.svelte";
 import { readRoutingPlugin } from "./plugins/read-routing.svelte";
@@ -80,6 +81,7 @@ export function clientContext(): Context {
     pluginNames: featurePlugins.map((plugin) => plugin.name),
     toggle: togglePlugin,
   });
+  exposeDebugHandle(context);
   return context;
 }
 
