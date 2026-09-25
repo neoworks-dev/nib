@@ -10,6 +10,8 @@ import { CONTROL_WIDGET } from "./nodes";
 
 /** Snapshots kept for undo. */
 const HISTORY_LIMIT = 100;
+/** Graph units kept clear around the nodes when fitting them to the pane. */
+const FIT_MARGIN = 40;
 /** The seeds a randomized seed widget draws from. */
 const RANDOM_SEED_RANGE = 2 ** 32;
 
@@ -62,6 +64,8 @@ export class GraphEditor {
   ) {
     this.canvas = new LGraphCanvas(element, this.graph);
     this.canvas.allow_searchbox = true;
+    // Litegraph's frame-timing readout, which is for litegraph's own debugging.
+    this.canvas.show_info = false;
     applyTheme(this.canvas);
     this.graph.onAfterChange = () => this.record();
     this.canvas.onNodeSelected = (node) => onSelect(selectedNode(node));
@@ -96,17 +100,25 @@ export class GraphEditor {
     this.canvas.setDirty(true, true);
   }
 
-  /** Replaces the graph, and with it the undo history. */
-  load(graph: ComfyGraph): void {
+  /**
+   * Replaces the graph, and with it the undo history. A graph laid out here
+   * rather than saved from an editor has only estimated node sizes, so
+   * `measure` sizes each node to what it draws.
+   */
+  load(graph: ComfyGraph, measure = false): void {
     this.restoring = true;
     try {
       this.graph.configure(JSON.parse(JSON.stringify(graph)));
+      if (measure) {
+        for (const node of this.graph.nodes) node.setSize(node.computeSize());
+      }
     } finally {
       this.restoring = false;
     }
     this.history = [JSON.stringify(this.serialize())];
     this.future = [];
-    this.fit();
+    // A pane that has just opened is laid out on the next frame.
+    requestAnimationFrame(() => this.fit());
     this.onChange();
   }
 
@@ -145,7 +157,19 @@ export class GraphEditor {
       right = Math.max(right, node.pos[0] + node.size[0]);
       bottom = Math.max(bottom, node.pos[1] + node.size[1]);
     }
-    this.canvas.ds.fitToBounds([left, top, right - left, bottom - top]);
+    // Litegraph's own fitToBounds measures the canvas in device pixels, which on a
+    // scaled display leaves the graph a fraction of the pane; this measures it as laid out.
+    const width = this.element.clientWidth;
+    const height = this.element.clientHeight;
+    if (width === 0 || height === 0) return;
+    const boundsWidth = right - left + 2 * FIT_MARGIN;
+    const boundsHeight = bottom - top + 2 * FIT_MARGIN;
+    const scale = Math.min(width / boundsWidth, height / boundsHeight, 1);
+    this.canvas.ds.scale = scale;
+    this.canvas.ds.offset = [
+      width / scale / 2 - (left + right) / 2,
+      height / scale / 2 - (top + bottom) / 2,
+    ];
     this.canvas.setDirty(true, true);
   }
 

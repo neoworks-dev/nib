@@ -88,6 +88,15 @@
     imagePaths = vault.items.map((item) => item.path).filter((path) => IMAGE_FILE.test(path));
   }
 
+  /**
+   * Returns to the list, read again: a workflow saved from the editor or by an
+   * agent since the pane opened shows up there.
+   */
+  function back(): void {
+    selectedKey = null;
+    void load(cwd);
+  }
+
   /** Opens a workflow's form, starting from its defaults and the picture it was opened for. */
   function choose(entry: ComfyLibraryEntry): void {
     selectedKey = entryKey(entry);
@@ -152,9 +161,7 @@
 <div class="flex h-full min-h-0 flex-col" data-testid="comfyui-workflows">
   <header class="flex items-center gap-2 border-b border-line px-4 py-3">
     {#if selected}
-      <Button size="sm" variant="ghost" icon={ArrowLeftIcon} onclick={() => (selectedKey = null)}>
-        Back
-      </Button>
+      <Button size="sm" variant="ghost" icon={ArrowLeftIcon} onclick={back}>Back</Button>
       <h2 class="truncate text-sm font-semibold">{selected.manifest.name}</h2>
     {:else}
       <FlowArrowIcon size={16} />

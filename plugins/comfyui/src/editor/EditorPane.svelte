@@ -141,9 +141,8 @@
     category = manifest.category;
     workflowId = manifest.id;
     parameters = manifest.parameters;
-    let graph = manifest.graph;
-    if (!graph) graph = apiToUi(manifest.workflow, definitions);
-    editor.load(graph);
+    if (manifest.graph) editor.load(manifest.graph);
+    if (!manifest.graph) editor.load(apiToUi(manifest.workflow, definitions), true);
     dirty = false;
   }
 
