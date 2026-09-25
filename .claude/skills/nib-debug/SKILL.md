@@ -29,8 +29,8 @@ do that after changing app code, or you are testing the old build. `--fresh`
 throws the profile and the demo project away and makes new ones.
 
 The session runs on an Xvnc display in `:100`–`:109`, not the desktop. `start`
-prints which one; the user watches with `vncviewer :100` or
-`bun run debug view`. Never run `view` yourself — nobody is watching your
+prints which one and the address to watch it at — `vncviewer localhost::6000`
+for `:100`, since TigerVNC reads `:100` as port 100 — or `bun run debug view`. Never run `view` yourself — nobody is watching your
 desktop.
 
 The profile is `.nib-debug/profile/`: `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and
