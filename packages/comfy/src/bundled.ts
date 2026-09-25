@@ -7,6 +7,7 @@ import type { ComfyWorkflowManifest } from "@nib-ui/ui-contracts";
 import assetVariation from "../workflows/asset-variation.json";
 import imageTo3d from "../workflows/image-to-3d.json";
 import removeBackground from "../workflows/remove-background.json";
+import splitAssets from "../workflows/split-assets.json";
 import tileableTexture from "../workflows/tileable-texture.json";
 import upscale from "../workflows/upscale.json";
 import { parseManifest } from "./manifest";
@@ -15,6 +16,7 @@ const FILES: Record<string, unknown> = {
   "asset-variation.json": assetVariation,
   "image-to-3d.json": imageTo3d,
   "remove-background.json": removeBackground,
+  "split-assets.json": splitAssets,
   "upscale.json": upscale,
   "tileable-texture.json": tileableTexture,
 };

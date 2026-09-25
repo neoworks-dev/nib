@@ -48,6 +48,7 @@ describe("bundled workflows", () => {
       "asset-variation",
       "image-to-3d",
       "remove-background",
+      "split-assets",
       "tileable-texture",
       "upscale",
     ]);
