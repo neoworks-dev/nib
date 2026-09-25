@@ -1,3 +1,5 @@
+import type { ComposerTargetContext } from "@nib-ui/ui-contracts";
+
 /**
  * A composer with no session behind it yet: a workstream that was written down
  * and not launched. It carries the same four picks a running session exposes, so
@@ -19,4 +21,11 @@ export interface PendingComposer {
   setEffort(effort: string): void;
   /** Sends the first prompt, which is what creates the session. */
   start(text: string): Promise<void>;
+  /**
+   * What the request is about and where it was made. Given, the composer also
+   * offers the registered targets — a ComfyUI workflow — besides an agent.
+   */
+  target?: ComposerTargetContext;
+  /** Called once a target has taken the request, so a floating composer can close. */
+  onTargetSent?(): void;
 }
