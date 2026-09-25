@@ -17,6 +17,7 @@ import {
   type FolderObject,
   MIN_CARD_SIZE,
   linkSummary,
+  pictureCardSize,
   PREVIEW_COLUMNS,
   PREVIEW_GAP,
   previewObjects,
@@ -661,6 +662,20 @@ describe("pushAside", () => {
 
     expect(pushAside(view.objects, folder, block, new Set(["a.md"]), gap).has("a.md")).toBe(false);
     expect(pushAside(view.objects, folder, [], new Set(), gap).size).toBe(0);
+  });
+});
+
+describe("pictureCardSize", () => {
+  it("keeps a wide picture's shape, as wide as the default visual card", () => {
+    expect(pictureCardSize({ width: 800, height: 400 })).toEqual({ w: VISUAL_SIZE.w, h: 170 });
+  });
+
+  it("keeps a tall picture's shape, its height the default card's width", () => {
+    expect(pictureCardSize({ width: 300, height: 600 })).toEqual({ w: 170, h: VISUAL_SIZE.w });
+  });
+
+  it("falls back to the default card for a picture with no size", () => {
+    expect(pictureCardSize({ width: 0, height: 0 })).toEqual(VISUAL_SIZE);
   });
 });
 

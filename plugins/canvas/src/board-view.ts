@@ -75,6 +75,19 @@ export const PREVIEW_WIDTH = PREVIEW_COLUMNS * VISUAL_SIZE.w + (PREVIEW_COLUMNS 
 export const MIN_CARD_SIZE: Size = { w: 120, h: 64 };
 
 /**
+ * The size a picture of known pixel dimensions starts at: its own shape, with
+ * its longer side as wide as the default visual card, so a wide picture, a tall
+ * one and a square one all take about the room a picture is given — and none of
+ * them is cropped to a shape it does not have.
+ */
+export function pictureCardSize(pixels: { width: number; height: number }): Size {
+  const longest = Math.max(pixels.width, pixels.height);
+  if (longest <= 0) return VISUAL_SIZE;
+  const scale = VISUAL_SIZE.w / longest;
+  return { w: Math.round(pixels.width * scale), h: Math.round(pixels.height * scale) };
+}
+
+/**
  * What every card carries. Identity and content come from the vault; `x`, `y`,
  * `w`, `h` and `z` come from the placement, and are the only part of a card that
  * is the app's own (PLAN decision 4).

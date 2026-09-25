@@ -53,6 +53,7 @@ import {
   type FolderObject,
   type LinkSummary,
   linkSummary,
+  pictureCardSize,
   PREVIEW_WIDTH,
   previewObjects,
   pushAside,
@@ -1038,7 +1039,7 @@ export class VaultStore {
       try {
         const bytes = new Uint8Array(await file.arrayBuffer());
         const { path } = await transport.writeVaultFile(cwd, this.view, file.name, bytes);
-        const size = sizeForPath(path);
+        const size = await sizeForWrittenFile(file, path);
         slice[path] = { x: at.x + index * 24, y: at.y + index * 24, ...size, z: 1 };
         written.push(path);
       } catch (cause) {
@@ -1444,6 +1445,30 @@ function sizeForPath(path: string): Size {
   if (isDiagramPath(path)) return DIAGRAM_SIZE;
   if (isMarkdownPath(path)) return STICKY_SIZE;
   return FILE_SIZE;
+}
+
+/**
+ * The size a file dropped or pasted onto the board is placed at. Unlike a file
+ * found by a scan, its bytes are in hand, so a picture can be measured and
+ * placed at its own shape instead of being cropped to the default card's.
+ */
+async function sizeForWrittenFile(file: File, path: string): Promise<Size> {
+  if (!isImagePath(path)) return sizeForPath(path);
+  const pixels = await measurePicture(file);
+  if (pixels === null) return sizeForPath(path);
+  return pictureCardSize(pixels);
+}
+
+/** A picture's pixel dimensions, or null when the browser cannot decode it. */
+async function measurePicture(file: Blob): Promise<{ width: number; height: number } | null> {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const pixels = { width: bitmap.width, height: bitmap.height };
+    bitmap.close();
+    return pixels;
+  } catch {
+    return null;
+  }
 }
 
 function sizeForItem(item: VaultSnapshotItem): Size {
