@@ -22,8 +22,14 @@ import {
   type ResizeHandle,
   resizedRect,
 } from "../engine/resize";
-import { drawPlusButton, onPlus, type SpawnableRenderer, type SpawnEdge } from "../engine/spawn";
-import { easeInCubic, easeOutCubic, easeOutExpo } from "../engine/utils/easing";
+import {
+  drawPlusButton,
+  onPlus,
+  plusEmergeOffset,
+  type SpawnableRenderer,
+  type SpawnEdge,
+} from "../engine/spawn";
+import { easeInCubic, easeOutBack, easeOutCubic, easeOutExpo } from "../engine/utils/easing";
 import { sheetReturn, sheetStagger, type SheetSlot } from "../folder-sheets";
 import { applyShadow, createShadowSprite } from "../engine/utils/shadow";
 import { resolutionForZoom } from "../engine/utils/textTexture";
@@ -66,6 +72,8 @@ const SWALLOW_MS = 300;
  */
 const LIFT_SCALE = 1.03;
 const LIFT_MS = 120;
+/** How long the plus takes to come out from under the card. */
+const PLUS_EMERGE_MS = 220;
 
 /** The selection ring's stroke, in world units and the theme's action colour. */
 export interface RingStroke {
@@ -146,20 +154,26 @@ export abstract class CardRenderer<TData extends CanvasObject = CanvasObject>
   /** The edge whose plus button is showing, and whether the pointer is on it. */
   private plusEdge: SpawnEdge | null = null;
   private plusHot = false;
+  /** How far out from under the card the plus has come: 0 hidden, 1 at rest. */
+  private plusProgress = 1;
+  /** Bumped by every emergence, so a newer one stops the one before it. */
+  private plusEmergence = 0;
 
   constructor(protected readonly engine: CanvasEngineApi) {
     super();
     this.container.eventMode = "static";
     this.container.cursor = "default";
     this.container.addChild(this.body);
+    // The plus sits under the surface: it comes out from beneath the card, and at
+    // rest it is clear of the edge, so being underneath hides nothing of it.
     this.body.addChild(
       this.shadow,
+      this.plus,
       this.surface,
       this.content,
       this.clip,
       this.ring,
       this.handles,
-      this.plus,
     );
     this.content.mask = this.clip;
   }
@@ -201,9 +215,38 @@ export abstract class CardRenderer<TData extends CanvasObject = CanvasObject>
   hoverPlus(edge: SpawnEdge | null, hot: boolean): void {
     const shown = this.spawnable ? edge : null;
     if (shown === this.plusEdge && hot === this.plusHot) return;
+    const appeared = shown !== null && shown !== this.plusEdge;
     this.plusEdge = shown;
     this.plusHot = hot;
     this.drawChrome();
+    if (appeared) this.emergePlus();
+  }
+
+  /** Slides the plus out from under the card's edge, springing a little past its place. */
+  private emergePlus(): void {
+    const start = performance.now();
+    const run = ++this.plusEmergence;
+    this.plusProgress = 0;
+    this.placePlus();
+    this.animate((now) => {
+      if (run !== this.plusEmergence) return true;
+      const t = Math.min(1, (now - start) / PLUS_EMERGE_MS);
+      this.plusProgress = easeOutBack(t);
+      this.placePlus();
+      return t >= 1;
+    });
+  }
+
+  /** Moves the drawn plus to where its emergence has got to. */
+  private placePlus(): void {
+    const edge = this.plusEdge;
+    if (edge === null) {
+      this.plus.position.set(0, 0);
+      return;
+    }
+    const zoom = this.engine.camera.zoom;
+    const offset = plusEmergeOffset(edge, this.width, this.height, zoom, this.plusProgress);
+    this.plus.position.set(offset.x, offset.y);
   }
 
   /** Fixed for every card but the webclip, which is a capture and stays square. */
@@ -817,6 +860,7 @@ export abstract class CardRenderer<TData extends CanvasObject = CanvasObject>
       this.handlePaint(),
     );
     drawPlusButton(this.plus, this.width, this.height, zoom, this.plusEdge, this.plusHot);
+    this.placePlus();
   }
 }
 

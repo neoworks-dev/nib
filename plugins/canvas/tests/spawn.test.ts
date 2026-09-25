@@ -3,9 +3,28 @@ import {
   nearEdge,
   onPlus,
   plusAnchor,
+  plusEmergeOffset,
   plusPoint,
   tetherCurve,
 } from "../src/engine/spawn";
+
+describe("the button coming out", () => {
+  it("starts with its centre a radius inside the edge, hidden under the card", () => {
+    const rest = plusPoint("e", 300, 200, 1);
+    const offset = plusEmergeOffset("e", 300, 200, 1, 0);
+    expect(rest.x + offset.x).toBe(300 - 9);
+    expect(offset.y).toBe(0);
+  });
+
+  it("is at rest once it has come out", () => {
+    expect(plusEmergeOffset("n", 300, 200, 1, 1)).toEqual({ x: 0, y: 0 });
+  });
+
+  it("travels outward from whichever edge it is on", () => {
+    expect(plusEmergeOffset("w", 300, 200, 1, 0).x).toBeGreaterThan(0);
+    expect(plusEmergeOffset("s", 300, 200, 1, 0).y).toBeLessThan(0);
+  });
+});
 
 describe("the tether", () => {
   it("leaves the button straight out of the card's edge", () => {

@@ -170,6 +170,27 @@ export function tetherCurve(
   };
 }
 
+/**
+ * How far the button is from where it rests while it comes out: at 0 its centre
+ * is a radius inside the card's edge, hidden under the card, and at 1 it is at
+ * rest. It travels along the edge's outward direction, which is towards the
+ * pointer that called it — the button is only shown for an edge the pointer is
+ * outside of. Past 1 it overshoots, for an easing that springs.
+ */
+export function plusEmergeOffset(
+  edge: SpawnEdge,
+  width: number,
+  height: number,
+  zoom: number,
+  progress: number,
+): Point {
+  const shortest = Math.max(1, Math.min(width, height));
+  const travel = scaled(PLUS.gap + PLUS.radius, zoom, shortest);
+  const normal = EDGE_NORMALS[edge];
+  const behind = (1 - progress) * travel;
+  return { x: 0 - normal.x * behind, y: 0 - normal.y * behind };
+}
+
 /** A white disc with a grey ring and a plus in it; solid while aimed at. */
 export function drawPlusButton(
   graphics: Graphics,
