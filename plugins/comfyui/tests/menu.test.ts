@@ -18,9 +18,13 @@ describe("comfyMenuItems", () => {
   });
 
   it("opens ComfyUI's own pictures and JSON files in the editor", () => {
-    expect(
-      ids({ kind: "visual", id: "a", path: "comfyui/variation_00001_.png", video: false }),
-    ).toEqual(["comfyui.runWorkflow", "comfyui.openInEditor", "comfyui.separator"]);
+    for (const path of ["art/variation_00001_.png", "art/variation_00001_-2.png"]) {
+      expect(ids({ kind: "visual", id: "a", path, video: false })).toEqual([
+        "comfyui.runWorkflow",
+        "comfyui.openInEditor",
+        "comfyui.separator",
+      ]);
+    }
     expect(ids({ kind: "file", id: "b", path: "workflows/mine.json", extension: "json" })).toEqual([
       "comfyui.openInEditor",
       "comfyui.separator",

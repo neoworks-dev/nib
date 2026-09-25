@@ -50,7 +50,10 @@ export interface ComfyQueueInput {
   cwd: string;
   workflow: ComfyWorkflow;
   uploads?: ComfyUpload[];
-  /** Vault directory the outputs are written into; `comfyui` when left out. */
+  /**
+   * Vault directory the outputs are written into. Left out, they go beside the
+   * first upload, or into `comfyui` when there is none.
+   */
   outputDirectory?: string;
 }
 
