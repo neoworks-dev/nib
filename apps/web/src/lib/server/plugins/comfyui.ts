@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, posix } from "node:path";
 import type { Disposer, Plugin } from "@nib-ui/kernel";
 import {
   type ComfyNodeDefinitions,
@@ -27,7 +27,7 @@ import { applyEvent, cancelRun, failRun, isFinished, queuedRun, succeedRun } fro
 import type { ComfyUIService, VaultService } from "../services";
 import { userConfigPath } from "../user-config";
 
-/** Where a run's outputs land in the vault unless the caller names a directory. */
+/** Where a run's outputs land when neither the caller nor a reference picture names a directory. */
 export const DEFAULT_OUTPUT_DIRECTORY = "comfyui";
 /** Finished runs kept for the run list; older ones are forgotten. */
 const MAX_RUNS = 200;
@@ -92,6 +92,20 @@ export function openWebSocket(url: string, handlers: SocketHandlers): { close():
 function messageOf(cause: unknown): string {
   if (cause instanceof Error) return cause.message;
   return String(cause);
+}
+
+/**
+ * The vault directory a run's outputs go to: the one the caller named, else the
+ * folder of the first picture it was given, so a result lands beside what it was
+ * made from.
+ */
+function outputDirectoryFor(input: ComfyQueueInput): string {
+  if (input.outputDirectory !== undefined) return input.outputDirectory;
+  const reference = input.uploads?.[0];
+  if (!reference) return DEFAULT_OUTPUT_DIRECTORY;
+  const directory = posix.dirname(reference.path);
+  if (directory === ".") return "";
+  return directory;
 }
 
 /** Waits the given time. */
@@ -168,12 +182,10 @@ export class ComfyHost implements ComfyUIService {
     await this.connectWithin(CONNECT_TIMEOUT_MS);
     const promptId = await client.queue(workflow, this.clientId);
 
-    let outputDirectory = DEFAULT_OUTPUT_DIRECTORY;
-    if (input.outputDirectory !== undefined) outputDirectory = input.outputDirectory;
     const tracked: Tracked = {
       run: queuedRun(promptId, input.cwd, Date.now()),
       workflow,
-      outputDirectory,
+      outputDirectory: outputDirectoryFor(input),
       client,
       files: [],
       delivering: false,

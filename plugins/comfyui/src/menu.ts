@@ -7,8 +7,13 @@
 import type { CanvasMenuItem, CanvasObject } from "@nib-ui/ui-contracts";
 import type { Component } from "svelte";
 
-/** The folder runs write their outputs into, whose pictures carry their workflow. */
-const OUTPUT_FOLDER = "comfyui/";
+/**
+ * The name ComfyUI's SaveImage gives a picture, which carries its workflow:
+ * `prefix_00001_.png`, or `prefix_00001_-1.png` once the vault has renamed it past
+ * a file already there. Outputs land beside their references, so the name is
+ * what marks them, not a folder.
+ */
+const OUTPUT_NAME = /_\d{5}_(-\d+)?\.png$/;
 
 /** What the entries do, and the icons they show, handed in by the plugin. */
 export interface MenuActions {
@@ -51,7 +56,7 @@ export function comfyMenuItems(
       run: () => actions.runWorkflowOn(path),
     });
   }
-  const madeByComfy = isPicture(target) && path.startsWith(OUTPUT_FOLDER) && path.endsWith(".png");
+  const madeByComfy = isPicture(target) && OUTPUT_NAME.test(path);
   if (isJsonFile(target) || madeByComfy) {
     items.push({
       kind: "action",

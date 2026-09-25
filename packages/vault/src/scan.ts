@@ -6,18 +6,20 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import type { Dirent } from "node:fs";
 import { join } from "node:path";
+import { COMFYUI_DIRECTORY } from "./comfyui";
 import { TRASH_DIRECTORY } from "./trash";
 import { buildVaultIndex, type VaultEntry, type VaultIndex, type VaultSource } from "./tree";
 
 /**
  * Not content: a nested repository or an installed dependency is not a topic, and
  * neither is the recycling bin — a deleted note that came back as a card called
- * `.trash` would undo the delete by drawing it.
+ * `.trash` would undo the delete by drawing it — nor ComfyUI's workflow files.
  */
 export const DEFAULT_SKIPPED_DIRECTORIES: readonly string[] = [
   ".git",
   "node_modules",
   TRASH_DIRECTORY,
+  COMFYUI_DIRECTORY,
 ];
 
 /** Matches the file route's own cap, so the scan cannot read what a panel cannot open. */

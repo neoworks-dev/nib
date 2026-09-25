@@ -1,7 +1,9 @@
 /**
  * The workflow library: what nib ships, what the user saved, and what a project
- * keeps in its vault. All three are the same manifest file; they differ only in
- * where the file lives and who may change it.
+ * keeps in `.nib/.comfyui/workflows`. All three are the same manifest file; they
+ * differ only in where the file lives and who may change it. The library reads
+ * the directories on every call, so a file an agent writes there is listed and
+ * runnable straight away.
  */
 
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
@@ -27,12 +29,12 @@ import type {
   ComfyWorkflowSource,
 } from "@nib-ui/ui-contracts";
 import type { Disposer } from "@nib-ui/kernel";
-import { VAULT_DIRECTORY } from "@nib-ui/vault";
+import { COMFYUI_DIRECTORY, VAULT_DIRECTORY } from "@nib-ui/vault";
 import type { ComfyUIService, VaultService } from "./services";
 import { userConfigPath } from "./user-config";
 
-/** The vault directory project workflows live in. */
-export const PROJECT_WORKFLOW_DIRECTORY = "workflows";
+/** The vault directory project workflows live in, out of the scan's sight. */
+export const PROJECT_WORKFLOW_DIRECTORY = `${COMFYUI_DIRECTORY}/workflows`;
 
 /** A workflow that cannot be run or saved as asked, with the issues that say why. */
 export class ComfyWorkflowError extends Error {

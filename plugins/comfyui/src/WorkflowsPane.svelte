@@ -1,8 +1,8 @@
 <script lang="ts">
   /**
    * The workflow library: pick a workflow, fill in its parameters, run it. The
-   * outputs land in the vault's `comfyui/` folder, so they reach the board the
-   * way any file does; this pane only shows the run's progress.
+   * outputs land in the vault beside the picture they were made from, so they
+   * reach the board the way any file does; this pane only shows the run's progress.
    *
    * Opened with `image` (a vault path) from a card's menu, it lists only the
    * workflows that take a picture and fills it in.

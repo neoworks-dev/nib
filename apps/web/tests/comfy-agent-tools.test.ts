@@ -211,7 +211,7 @@ describe("the ComfyUI agent tools", () => {
     const saved = (await call(comfyToolNames.save, { manifest })) as { source: string; id: string };
     expect(saved).toMatchObject({ source: "project", id: "sprite-upscale" });
     const file = JSON.parse(
-      await readFile(join(project, ".nib", "workflows", "sprite-upscale.json"), "utf8"),
+      await readFile(join(project, ".nib", ".comfyui", "workflows", "sprite-upscale.json"), "utf8"),
     );
     expect(file.name).toBe("Sprite upscale");
   });

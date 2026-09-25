@@ -102,7 +102,9 @@ export function createComfyTools(
       description:
         "The workflow library: bundled, the person's own and this project's workflows, each with " +
         "its parameters and whether the connected ComfyUI can run it. Start here — running or " +
-        "adapting one of these beats writing a graph from nothing.",
+        "adapting one of these beats writing a graph from nothing. This project's workflows are " +
+        "manifest files in .nib/.comfyui/workflows/<id>.json: edit or add one there and it is " +
+        "listed and runnable at once.",
       inputSchema: comfyListWorkflowsInputSchema,
       handler: async (input) => {
         comfyListWorkflowsInputSchema.parse(input);

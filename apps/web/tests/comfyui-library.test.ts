@@ -117,7 +117,7 @@ describe("ComfyLibrary", () => {
       cwd: project,
       manifest: { ...manifest, name: "Renamed" },
     });
-    const file = join(project, ".nib", "workflows", "my-upscale.json");
+    const file = join(project, ".nib", ".comfyui", "workflows", "my-upscale.json");
     expect(JSON.parse(await readFile(file, "utf8")).name).toBe("Renamed");
     const entries = await library().list(project);
     expect(
@@ -126,10 +126,29 @@ describe("ComfyLibrary", () => {
   });
 
   it("skips files in the workflow folder that are not manifests", async () => {
-    await mkdir(join(project, ".nib", "workflows"), { recursive: true });
-    await writeFile(join(project, ".nib", "workflows", "notes.json"), '{"hello": 1}');
+    await mkdir(join(project, ".nib", ".comfyui", "workflows"), { recursive: true });
+    await writeFile(join(project, ".nib", ".comfyui", "workflows", "notes.json"), '{"hello": 1}');
     const entries = await library().list(project);
     expect(entries.some((entry) => entry.source === "project")).toBe(false);
+  });
+
+  it("lists and runs a workflow file written straight into .nib/.comfyui/workflows", async () => {
+    const directory = join(project, ".nib", ".comfyui", "workflows");
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, "my-upscale.json"), JSON.stringify(userManifest()));
+
+    const entries = await library().list(project);
+    expect(
+      entries.filter((entry) => entry.source === "project").map((entry) => entry.manifest.id),
+    ).toEqual(["my-upscale"]);
+
+    await library().run({
+      cwd: project,
+      source: "project",
+      workflowId: "my-upscale",
+      values: { image: "art/chest.png", scale: 1 },
+    });
+    expect(queued).toHaveLength(1);
   });
 
   it("runs a workflow with its parameters filled and the picture uploaded", async () => {
@@ -168,7 +187,7 @@ describe("ComfyLibrary", () => {
     await library().delete("user", "my-upscale", null);
     expect((await library().list(null)).some((entry) => entry.source === "user")).toBe(false);
     await library().delete("project", "my-upscale", project);
-    expect(trashed).toEqual(["workflows/my-upscale.json"]);
+    expect(trashed).toEqual([".comfyui/workflows/my-upscale.json"]);
   });
 
   it("passes editor requests to every subscriber", () => {

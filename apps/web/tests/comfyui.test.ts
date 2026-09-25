@@ -364,7 +364,7 @@ describe("ComfyClient", () => {
 });
 
 describe("ComfyHost", () => {
-  it("uploads the inputs, follows the run and writes the outputs into the vault", async () => {
+  it("uploads the inputs, follows the run and writes the outputs beside the first input", async () => {
     const comfy = new FakeComfy();
     const { host, written, seen } = await createHost(comfy);
 
@@ -385,16 +385,39 @@ describe("ComfyHost", () => {
     expect(written).toEqual([
       {
         cwd: "/project",
-        directory: "comfyui",
+        directory: "refs",
         name: "nib_00001_.png",
         text: "bytes of nib_00001_.png",
       },
     ]);
     expect(host.runs()[0]).toMatchObject({
       status: "succeeded",
-      outputs: ["comfyui/nib_00001_.png"],
+      outputs: ["refs/nib_00001_.png"],
     });
     host.dispose();
+  });
+
+  it("writes outputs into comfyui/ without an input, and at the root beside a root-level one", async () => {
+    const comfy = new FakeComfy();
+    const { host, written } = await createHost(comfy);
+
+    await host.queue({ cwd: "/project", workflow });
+    sendSuccessfulRun(comfy);
+    await settle();
+    host.dispose();
+
+    const second = await createHost(comfy);
+    await second.host.queue({
+      cwd: "/project",
+      workflow,
+      uploads: [{ nodeId: "1", input: "image", path: "sprite.png" }],
+    });
+    sendSuccessfulRun(comfy);
+    await settle();
+    second.host.dispose();
+
+    expect(written.map((entry) => entry.directory)).toEqual(["comfyui"]);
+    expect(second.written.map((entry) => entry.directory)).toEqual([""]);
   });
 
   it("keeps events that arrive before the queue call answers", async () => {

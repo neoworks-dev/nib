@@ -1,3 +1,4 @@
+export { COMFYUI_DIRECTORY } from "./comfyui";
 export { metaString, parseFrontmatter, setMetaString, type Frontmatter } from "./frontmatter";
 export { vaultInstructions, VAULT_DIRECTORY, VAULT_GUIDE, VAULT_GUIDE_FILE } from "./instructions";
 export {
