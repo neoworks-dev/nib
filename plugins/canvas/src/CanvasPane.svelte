@@ -325,8 +325,11 @@
     </p>
   {/if}
 
-  <!-- Top right, opposite the shell's own bar in the bottom-right corner. -->
-  <div class="absolute top-2 right-2 z-raised flex items-center gap-1.5">
+  <!-- Top right, opposite the shell's own bar in the bottom-right corner. The shell
+       sets `--board-inset-right` to the width of the drawer lying over the board. -->
+  <div
+    class="absolute top-2 right-[calc(0.5rem+var(--board-inset-right,0px))] z-raised flex items-center gap-1.5 transition-[right] duration-200 ease-out"
+  >
     <button
       type="button"
       class="rounded-lg border border-line bg-elevated p-1.5 text-faint hover:text-default"
@@ -434,7 +437,9 @@
     only places and lifts it — the composer draws its own box.
   -->
   {#if opened}
-    <div class="pointer-events-none absolute inset-x-0 bottom-0 z-raised flex justify-center">
+    <div
+      class="pointer-events-none absolute bottom-0 left-0 right-[var(--board-inset-right,0px)] z-raised flex justify-center transition-[right] duration-200 ease-out"
+    >
       <div class="pointer-events-auto w-[46rem] max-w-full drop-shadow-xl">
         <Composer pending={boardComposer} />
       </div>

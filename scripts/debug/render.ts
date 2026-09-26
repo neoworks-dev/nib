@@ -15,7 +15,9 @@ const WRAP_COLUMNS = 96;
 export function renderSnapshot(snapshot: Snapshot): string {
   const lines = [...headerLines(snapshot), "", ...boardLines(snapshot)];
   for (const dock of snapshot.docks) {
-    let heading = `dock ${dock.edge}`;
+    // The drawer and the sheets arrive as docks named after their layer.
+    const layer = dock.edge === "drawer" || dock.edge === "sheet";
+    let heading = layer ? dock.edge : `dock ${dock.edge}`;
     // Zero means the dock has not been resized and takes its default size.
     if (dock.size > 0) heading = `${heading}  ${Math.round(dock.size)}px`;
     lines.push("", heading);

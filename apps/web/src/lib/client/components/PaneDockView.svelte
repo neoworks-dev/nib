@@ -11,12 +11,12 @@
   import { cubicOut } from "svelte/easing";
   import { slide } from "svelte/transition";
   import { dockAxis, dockExtent, dockPixels } from "../layout/docks";
-  import type { ReactivePaneRegistry } from "../registries/panes.svelte";
+  import { reactivePanes } from "../registries/panes.svelte";
   import PaneTreeView from "./PaneTreeView.svelte";
 
   const { dock, session }: { dock: PaneDock; session: SessionView | null } = $props();
 
-  const panes = kernelContext().require("panes") as ReactivePaneRegistry;
+  const panes = reactivePanes(kernelContext().require("panes"));
 
   const axis = $derived(dockAxis(dock.edge));
   const pixels = $derived(dockPixels(dock.edge, dock.size, panes.bounds));
@@ -87,7 +87,7 @@
   {#if splitterFirst}{@render splitter()}{/if}
 
   <div class="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-    <PaneTreeView {dock} {session} />
+    <PaneTreeView frame={{ layer: "dock", edge: dock.edge }} root={dock.root} {session} />
   </div>
 
   {#if !splitterFirst}{@render splitter()}{/if}

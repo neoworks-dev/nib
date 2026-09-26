@@ -9,10 +9,12 @@ import {
   type CanvasObject,
   emptyBoard,
   type PaneDock,
+  type PaneDrawer,
   type PaneEdge,
   type PaneInstance,
   type PaneLayout,
   type PaneNode,
+  type PaneSheet,
 } from "@nib-ui/ui-contracts";
 import {
   boardOf,
@@ -101,8 +103,49 @@ export function parseLayout(value: unknown): PaneLayout | undefined {
     docks.push({ edge, size, root: parsedRoot });
   }
 
-  if (docks.length === 0) return undefined;
-  return { docks, instances: [...placed].map((instanceId) => instances.get(instanceId)!) };
+  const drawer = parseDrawer(candidate.drawer, instances, placed);
+  const sheets = parseSheets(candidate.sheets, instances, placed);
+
+  if (docks.length === 0 && !drawer && sheets.length === 0) return undefined;
+  const layout: PaneLayout = {
+    docks,
+    instances: [...placed].map((instanceId) => instances.get(instanceId)!),
+  };
+  if (drawer) layout.drawer = drawer;
+  if (sheets.length > 0) layout.sheets = sheets;
+  return layout;
+}
+
+/** The drawer, when it has a usable width and anything left in it. */
+function parseDrawer(
+  value: unknown,
+  instances: Map<string, PaneInstance>,
+  placed: Set<string>,
+): PaneDrawer | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const { size, root } = value as Partial<PaneDrawer>;
+  if (typeof size !== "number" || !Number.isFinite(size) || size <= 0) return undefined;
+  const parsedRoot = parseNode(root, instances, placed);
+  if (!parsedRoot) return undefined;
+  return { size, root: parsedRoot };
+}
+
+/** The raised sheets in their stored order; one with a repeated id or no panes is dropped. */
+function parseSheets(
+  value: unknown,
+  instances: Map<string, PaneInstance>,
+  placed: Set<string>,
+): PaneSheet[] {
+  const sheets: PaneSheet[] = [];
+  if (!Array.isArray(value)) return sheets;
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const { sheetId, root } = entry as Partial<PaneSheet>;
+    if (typeof sheetId !== "string" || sheets.some((sheet) => sheet.sheetId === sheetId)) continue;
+    const parsedRoot = parseNode(root, instances, placed);
+    if (parsedRoot) sheets.push({ sheetId, root: parsedRoot });
+  }
+  return sheets;
 }
 
 function isEdge(value: unknown): value is PaneEdge {

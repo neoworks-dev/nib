@@ -411,6 +411,9 @@ export const canvasPlugin: Plugin = {
         kind: "chat",
         title: "Chat",
         icon: ChatCenteredDotsIcon,
+        // Over the board's right side rather than beside it: the board keeps its
+        // width, and the cards a conversation is about stay where they were.
+        presentation: "drawer",
         component: ChatPane,
       }),
     );
@@ -425,10 +428,10 @@ export const canvasPlugin: Plugin = {
         component: LinksPane,
       }),
     );
-    // A note is read and written beside the board rather than over it: one pane
-    // per note, and the board it belongs to stays on screen next to it. The pane
-    // is the page, so its bar stays out of the way until the pointer is over it,
-    // and it is named after the note rather than after the pane.
+    // A note is read and written on a sheet raised over the board: one pane per
+    // note, and the board it belongs to stays behind it, set back. The pane is the
+    // page, so its bar stays out of the way until the pointer is over it, and it
+    // is named after the note rather than after the pane.
     ctx.effect(() =>
       panes.register({
         id: sheetPaneId,
@@ -436,6 +439,7 @@ export const canvasPlugin: Plugin = {
         title: "Note",
         icon: NotePencilIcon,
         chrome: "quiet",
+        presentation: "sheet",
         label: sheetPaneLabel,
         component: SheetPane,
       }),

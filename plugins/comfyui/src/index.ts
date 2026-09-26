@@ -65,6 +65,7 @@ export const comfyuiPlugin: Plugin = {
         kind: "comfyui-editor",
         title: "Node editor",
         icon: GraphIcon,
+        presentation: "sheet",
         component: EditorPane,
       }),
     );
