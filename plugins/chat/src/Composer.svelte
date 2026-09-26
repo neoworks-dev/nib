@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { Button } from "@neoworks-dev/ui";
   import type { MessageAttachment, SessionView } from "@nib-ui/protocol";
   import {
     assetUrl,
@@ -17,14 +16,15 @@
     PillSelect,
     SlotHost,
   } from "@nib-ui/ui-contracts/svelte";
+  import ArrowUpIcon from "phosphor-svelte/lib/ArrowUpIcon";
   import BrainIcon from "phosphor-svelte/lib/BrainIcon";
-  import PaperPlaneRightIcon from "phosphor-svelte/lib/PaperPlaneRightIcon";
   import PlayIcon from "phosphor-svelte/lib/PlayIcon";
   import RobotIcon from "phosphor-svelte/lib/RobotIcon";
   import ShieldCheckIcon from "phosphor-svelte/lib/ShieldCheckIcon";
-  import StopCircleIcon from "phosphor-svelte/lib/StopCircleIcon";
+  import StopIcon from "phosphor-svelte/lib/StopIcon";
   import AgentTabs from "./AgentTabs.svelte";
   import { composeAnnotatedMessage, type StagedAnnotation } from "./annotations";
+  import ComposerAction from "./ComposerAction.svelte";
   import { applyTrigger, detectTrigger, type TriggerItem } from "./composer-trigger";
   import { composerDrafts } from "./drafts.svelte";
   import HarnessSwitchDialog from "./HarnessSwitchDialog.svelte";
@@ -394,7 +394,7 @@
 
 <div class="px-8 pb-5">
   <div
-    class="relative flex flex-col rounded-2xl border border-line bg-raised focus-within:border-line-strong"
+    class="relative flex flex-col rounded-2xl border border-line bg-raised shadow-sm transition-colors duration-fast focus-within:border-line-strong"
   >
     {#if trigger && items.length > 0}
       <TriggerPopup {items} {activeIndex} {heading} files={trigger.kind === "file"} onpick={pick} />
@@ -411,7 +411,7 @@
       </div>
     {/if}
 
-    <div class="flex flex-col gap-2 px-3 py-2">
+    <div class="flex flex-col gap-2 px-3 py-2.5">
       <!-- What rides the next prompt, shown before it goes: a picture as itself, anything else by name. -->
       {#if attachments.length > 0}
         <div class="flex flex-wrap items-center gap-2 px-1 pt-1">
@@ -459,30 +459,36 @@
         />
       {/if}
 
-      <div class="flex flex-wrap items-center gap-2">
-        {#if targetOptions.length > 0}
-          <PillSelect
-            icon={RobotIcon}
-            value={targetPick ? pickValue(targetPick.targetId, targetPick.optionId) : AGENT_PICK}
-            placeholder="Send to"
-            searchable
-            searchPlaceholder="Search workflows"
-            options={targetOptions}
-            onChange={chooseTarget}
+      <!--
+        The pills wrap on their own; the action stays in the bottom-right corner.
+        The pill rows' 3px padding centres their last row on the 32px action.
+      -->
+      <div class="flex items-end gap-3">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 py-0.75">
+          {#if targetOptions.length > 0}
+            <PillSelect
+              icon={RobotIcon}
+              value={targetPick ? pickValue(targetPick.targetId, targetPick.optionId) : AGENT_PICK}
+              placeholder="Send to"
+              searchable
+              searchPlaceholder="Search workflows"
+              options={targetOptions}
+              onChange={chooseTarget}
+            />
+          {/if}
+
+          {#if !pickedTarget}
+            {@render agentPills()}
+          {/if}
+
+          <SlotHost
+            slot="composer.actions"
+            session={session ?? null}
+            class="flex items-center gap-1.5"
           />
-        {/if}
+        </div>
 
-        {#if !pickedTarget}
-          {@render agentPills()}
-        {/if}
-
-        <SlotHost
-          slot="composer.actions"
-          session={session ?? null}
-          class="flex items-center gap-2"
-        />
-
-        <span class="ml-auto flex items-center gap-2">
+        <span class="flex h-8 shrink-0 items-center gap-2">
           {#if pickedTarget}
             {#if targetError}
               <span class="max-w-72 truncate text-2xs text-red" title={targetError}
@@ -491,38 +497,34 @@
             {:else if targetBlocked}
               <span class="text-2xs text-faint">{targetBlocked}</span>
             {/if}
-            <Button
-              size="sm"
-              variant="primary"
+            <ComposerAction
               icon={PlayIcon}
+              label="Run"
               disabled={targetBlocked !== null || targetSending}
-              onclick={submit}>Run</Button
-            >
+              onclick={submit}
+            />
           {:else if canInterrupt}
-            <span class="animate-pulse">
-              <Button
-                size="sm"
-                variant="danger"
-                icon={StopCircleIcon}
-                onclick={() => {
-                  focusSession();
-                  void sessions.interrupt();
-                }}
-              >
-                Interrupt
-              </Button>
-            </span>
+            <ComposerAction
+              icon={StopIcon}
+              iconWeight="fill"
+              label="Interrupt"
+              tone="danger"
+              onclick={() => {
+                focusSession();
+                void sessions.interrupt();
+              }}
+            />
           {:else}
-            <Button
-              size="sm"
-              variant="primary"
-              icon={PaperPlaneRightIcon}
+            <ComposerAction
+              icon={ArrowUpIcon}
+              label="Send"
+              shortcut="Enter"
               disabled={(draft.trim().length === 0 &&
                 annotations.length === 0 &&
                 attachments.length === 0) ||
                 pending?.busy === true}
-              onclick={submit}>Send</Button
-            >
+              onclick={submit}
+            />
           {/if}
         </span>
       </div>
