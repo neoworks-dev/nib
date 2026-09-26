@@ -4,6 +4,7 @@ import {
   createSessionView,
   type HarnessDescriptor,
   type MessageAttachment,
+  type ModelInfo,
   type PermissionBehavior,
   reduceSession,
   type SessionCommand,
@@ -24,7 +25,11 @@ import { loadRecentDirectories, rememberDirectory } from "../recent-directories"
  * inspector.
  */
 export class ReactiveSessionsStore implements SessionsService {
-  harnesses = $state<HarnessDescriptor[]>([]);
+  private descriptors = $state<HarnessDescriptor[]>([]);
+  /** What each harness's runtime said it can run, which outranks the descriptor's static list. */
+  private discoveredModels = $state<Record<string, ModelInfo[]>>({});
+  /** Harnesses asked or answered already; a failed ask is dropped so the next refresh retries. */
+  private readonly discovering = new Set<string>();
   activeId = $state<string | null>(null);
   error = $state<string | null>(null);
   recentDirectories = $state<string[]>(loadRecentDirectories());
@@ -37,6 +42,15 @@ export class ReactiveSessionsStore implements SessionsService {
   private readonly subscriptions = new Map<string, Disposer>();
 
   constructor(private readonly transport: TransportService) {}
+
+  /** The mounted harnesses, each with the models its runtime reported once it has. */
+  get harnesses(): HarnessDescriptor[] {
+    return this.descriptors.map((descriptor) => {
+      const models = this.discoveredModels[descriptor.id];
+      if (!models || models.length === 0) return descriptor;
+      return { ...descriptor, models };
+    });
+  }
 
   /**
    * The list endpoint is a snapshot; a subscribed session's own event stream is
@@ -77,8 +91,25 @@ export class ReactiveSessionsStore implements SessionsService {
       this.transport.listHarnesses(),
       this.transport.listSessions(),
     ]);
-    this.harnesses = harnesses;
+    this.descriptors = harnesses;
     this.fetched = summaries;
+    for (const harness of harnesses) void this.discoverModels(harness.id);
+  }
+
+  /**
+   * Asks the server which models a harness's runtime can run. Not awaited by
+   * `refresh`: the answer can take seconds, and the static list stands in until
+   * it arrives.
+   */
+  private async discoverModels(harnessId: string): Promise<void> {
+    if (this.discovering.has(harnessId)) return;
+    this.discovering.add(harnessId);
+    try {
+      const models = await this.transport.listHarnessModels(harnessId);
+      this.discoveredModels = { ...this.discoveredModels, [harnessId]: models };
+    } catch {
+      this.discovering.delete(harnessId);
+    }
   }
 
   async create(input: CreateSessionInput): Promise<void> {

@@ -2,6 +2,7 @@ import type { Plugin } from "@nib-ui/kernel";
 import {
   type AnyAgentEvent,
   type HarnessDescriptor,
+  type ModelInfo,
   type SessionCommand,
   safeParseAgentEvent,
 } from "@nib-ui/protocol";
@@ -38,6 +39,13 @@ class SseTransport implements TransportService {
   async listHarnesses(): Promise<HarnessDescriptor[]> {
     const { harnesses } = await requestJson<{ harnesses: HarnessDescriptor[] }>("/api/harnesses");
     return harnesses;
+  }
+
+  async listHarnessModels(harnessId: string): Promise<ModelInfo[]> {
+    const { models } = await requestJson<{ models: ModelInfo[] }>(
+      `/api/harnesses/${encodeURIComponent(harnessId)}/models`,
+    );
+    return models;
   }
 
   async listSessions(): Promise<SessionSummary[]> {

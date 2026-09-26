@@ -6,6 +6,7 @@ import type {
   HarnessDescriptor,
   MessageAttachment,
   MessageView,
+  ModelInfo,
   PermissionBehavior,
   PermissionRequestView,
   SessionCommand,
@@ -82,6 +83,8 @@ export interface CreateSessionInput {
 
 export interface TransportService {
   listHarnesses(): Promise<HarnessDescriptor[]>;
+  /** The models the harness's runtime says it can run; slow, since it may start the CLI. */
+  listHarnessModels(harnessId: string): Promise<ModelInfo[]>;
   listSessions(): Promise<SessionSummary[]>;
   createSession(input: CreateSessionInput): Promise<string>;
   deleteSession(sessionId: string): Promise<void>;

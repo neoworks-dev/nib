@@ -11,8 +11,10 @@ import {
   type EmitEvent,
   type HarnessAdapter,
   type HarnessSession,
+  listOnce,
   type ModelInfo,
 } from "@nib-ui/protocol";
+import { appServerRequest } from "./app-server";
 import { resolveCodexExecutable } from "./binary";
 import {
   type CodexStreamState,
@@ -24,6 +26,7 @@ import {
   mapCodexEvent,
   mapUserText,
   parseModelCache,
+  parseModelList,
 } from "./mapping";
 
 const sandboxModes: SandboxMode[] = ["read-only", "workspace-write", "danger-full-access"];
@@ -45,6 +48,7 @@ export interface CodexHarnessConfig {
 
 export function createCodexAdapter(config: CodexHarnessConfig): HarnessAdapter {
   const harnessId = config.harnessId ?? codexHarnessId;
+  const listModels = listOnce(() => discoverModels(config));
   return {
     id: harnessId,
     displayName: config.displayName ?? "Codex",
@@ -52,17 +56,11 @@ export function createCodexAdapter(config: CodexHarnessConfig): HarnessAdapter {
     defaultPermissionMode: config.sandboxMode ?? defaultSandboxMode,
     models: codexModels,
     defaultModel: config.defaultModel ?? codexDefaultModel.id,
-    listModels: async (): Promise<ModelInfo[]> => {
-      try {
-        return [codexDefaultModel, ...(await readModelCache())];
-      } catch {
-        return codexModels;
-      }
-    },
-    createSession: (opts, emit) => startSession(harnessId, config, opts, emit),
+    listModels,
+    createSession: (opts, emit) => startSession(harnessId, config, opts, emit, listModels),
     resumeSession: (nativeSessionId, opts, emit) => {
       if (opts.fork) throw new Error("codex cannot fork a thread");
-      return startSession(harnessId, config, opts, emit, nativeSessionId);
+      return startSession(harnessId, config, opts, emit, listModels, nativeSessionId);
     },
   };
 }
@@ -72,6 +70,7 @@ async function startSession(
   config: CodexHarnessConfig,
   opts: CreateSessionOptions,
   emit: EmitEvent,
+  listModels: () => Promise<ModelInfo[]>,
   resumeThreadId?: string,
 ): Promise<HarnessSession> {
   const executable = resolveCodexExecutable(config.executable);
@@ -119,7 +118,7 @@ async function startSession(
     });
   }
 
-  void publishModels(emit);
+  void publishModels(listModels, emit);
 
   const runTurn = async (text: string): Promise<void> => {
     const abort = new AbortController();
@@ -231,21 +230,39 @@ export function codexOptions(executable: string, opts: CreateSessionOptions): Co
 }
 
 /**
- * The CLI caches the account's model list in `$CODEX_HOME/models_cache.json` and
- * exposes no query command, so this is the only way to name the models without
- * running it. Throws when the cache is absent or unreadable.
+ * The account's models, headed by the entry that leaves `--model` off. The
+ * Codex SDK cannot enumerate models, but the CLI's `app-server` answers
+ * `model/list` with the catalog its own picker shows. The CLI's on-disk cache
+ * stands in when the app-server cannot answer; throws when neither can.
+ */
+async function discoverModels(config: CodexHarnessConfig): Promise<ModelInfo[]> {
+  let models: ModelInfo[];
+  try {
+    const executable = resolveCodexExecutable(config.executable);
+    models = parseModelList(await appServerRequest(executable, "model/list", {}));
+  } catch {
+    models = await readModelCache();
+  }
+  if (models.length === 0) throw new Error("codex listed no models");
+  return [codexDefaultModel, ...models];
+}
+
+/**
+ * The CLI caches the account's model list in `$CODEX_HOME/models_cache.json`.
+ * Throws when the cache is absent or unreadable.
  */
 async function readModelCache(): Promise<ModelInfo[]> {
   const codexHome = process.env.CODEX_HOME?.trim() || join(homedir(), ".codex");
   return parseModelCache(await readFile(join(codexHome, "models_cache.json"), "utf8"));
 }
 
-/** An absent or unreadable cache simply leaves the composer on the adapter's static list. */
-async function publishModels(emit: EmitEvent): Promise<void> {
+/** A runtime that cannot name its models simply leaves the composer on the adapter's static list. */
+async function publishModels(
+  listModels: () => Promise<ModelInfo[]>,
+  emit: EmitEvent,
+): Promise<void> {
   try {
-    const models = await readModelCache();
-    if (models.length === 0) return;
-    emit({ type: "session.meta", data: { models: [codexDefaultModel, ...models] } });
+    emit({ type: "session.meta", data: { models: await listModels() } });
   } catch (error) {
     emit({
       type: "log",

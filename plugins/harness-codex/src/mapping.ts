@@ -30,13 +30,12 @@ export const codexDefaultModel: ModelInfo = {
   description: "Model configured in ~/.codex/config.toml",
 };
 
-/** Composer pre-flight only; the account's real list replaces this at session start. */
-export const codexModels: ModelInfo[] = [
-  codexDefaultModel,
-  { id: "gpt-5.6-sol", displayName: "GPT-5.6-Sol" },
-  { id: "gpt-5.5", displayName: "GPT-5.5" },
-  { id: "gpt-5.4-mini", displayName: "GPT-5.4-Mini" },
-];
+/**
+ * What the composer offers until the CLI has named the account's models. No
+ * model ids are kept here: a hand-kept list goes stale the next time OpenAI
+ * ships one, and offering a model the account cannot run is worse than waiting.
+ */
+export const codexModels: ModelInfo[] = [codexDefaultModel];
 
 export interface CodexStreamState {
   readonly cwd: string;
@@ -205,6 +204,31 @@ export function mapCodexEvent(state: CodexStreamState, event: unknown): CodexMap
         ],
       };
   }
+}
+
+/**
+ * The app-server's `model/list` answer: the same catalog the CLI's own picker
+ * shows. Hidden entries are internal routing targets, not user choices.
+ */
+export function parseModelList(result: unknown): ModelInfo[] {
+  if (!isRecord(result) || !Array.isArray(result.data)) return [];
+  const models: ModelInfo[] = [];
+  for (const entry of result.data) {
+    if (!isRecord(entry) || typeof entry.id !== "string") continue;
+    if (entry.hidden === true) continue;
+    models.push({
+      id: entry.id,
+      displayName: nonEmptyString(entry.displayName, entry.id),
+      description: typeof entry.description === "string" ? entry.description : undefined,
+    });
+  }
+  return models;
+}
+
+/** The value when it is a non-empty string, the fallback otherwise. */
+function nonEmptyString(value: unknown, fallback: string): string {
+  if (typeof value !== "string" || value.length === 0) return fallback;
+  return value;
 }
 
 /** `visibility: "hide"` entries are internal Codex routing targets, not user choices. */
