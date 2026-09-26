@@ -8,18 +8,15 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { buildVaultIndex, toSnapshot, type VaultSource } from "@nib-ui/vault";
+import { buildVaultIndex, toSnapshot, type VaultDoc, type VaultSource } from "@nib-ui/vault";
 import type { BoardObject } from "../src/board-view";
 import { BoardStore } from "../src/board.svelte";
 import { VaultStore } from "../src/vault.svelte";
 
 const cwd = "/work/project";
 
-function store(files: Record<string, string>): {
-  board: BoardStore;
-  vault: VaultStore;
-  redraw: () => void;
-} {
+/** The vault these files make, as a scan of them would report it. */
+function scan(files: Record<string, string>): VaultDoc {
   const topics = new Set(
     Object.keys(files)
       .filter((path) => path.includes("/"))
@@ -32,10 +29,34 @@ function store(files: Record<string, string>): {
     ],
     bodies: new Map(Object.entries(files)),
   };
+  return { ...toSnapshot(buildVaultIndex(source)), cwd, writable: true, reason: null };
+}
+
+/**
+ * A store over these files. Its transport moves them for real, in memory, so a
+ * drop that takes a card out of a folder changes what the next scan reports.
+ */
+function store(files: Record<string, string>): {
+  board: BoardStore;
+  vault: VaultStore;
+  redraw: () => void;
+} {
+  const present = { ...files };
   const board = new BoardStore();
   board.doc = { version: 1, rev: 0, cwd, objects: [], placements: { "": {} }, stacks: {} };
   const vault = new VaultStore(board);
-  vault.doc = { ...toSnapshot(buildVaultIndex(source)), cwd, writable: true, reason: null };
+  vault.doc = scan(present);
+  vault.transport = {
+    loadVault: () => Promise.resolve(scan(present)),
+    moveVaultEntry: (_cwd: string, from: string, toDirectory: string) => {
+      const name = from.slice(from.lastIndexOf("/") + 1);
+      let to = name;
+      if (toDirectory.length > 0) to = `${toDirectory}/${name}`;
+      present[to] = present[from] ?? "";
+      delete present[from];
+      return Promise.resolve({ from, to, rewritten: [] });
+    },
+  } as never;
   return { board, vault, redraw: () => board.onBoardSynced?.() };
 }
 
@@ -44,28 +65,43 @@ function cardAt(board: BoardStore, path: string): BoardObject | undefined {
 }
 
 describe("dragging a card out of an opened folder", () => {
-  it("keeps the folder open and leaves the card where it was picked up", () => {
+  it("closes the folder and leaves the card where it was picked up", () => {
     const { board, vault, redraw } = store({ "topic-x/a.md": "note", "topic-x/b.md": "note" });
     redraw();
     vault.togglePreview("topic-x");
 
     const picked = cardAt(board, "topic-x/a.md");
-    const neighbour = cardAt(board, "topic-x/b.md");
     expect(picked).toBeDefined();
-    if (!picked || !neighbour) throw new Error("the folder laid out nothing");
+    expect(cardAt(board, "topic-x/b.md")).toBeDefined();
+    if (!picked) throw new Error("the folder laid out nothing");
 
     vault.beginDrag([picked.id]);
 
-    expect(vault.preview).toBe("topic-x");
-    // The rest of the block stays where it was, and the dragged card is drawn
-    // once, as a card on the table, not a second time in the block.
-    expect(cardAt(board, "topic-x/b.md")).toMatchObject({ x: neighbour.x, y: neighbour.y });
-    expect(board.vault.filter((card) => card.path === "topic-x/a.md")).toHaveLength(1);
+    expect(vault.preview).toBeNull();
+    // The rest of the block is back in the folder; the dragged card is not.
+    expect(cardAt(board, "topic-x/b.md")).toBeUndefined();
     const dragged = cardAt(board, "topic-x/a.md");
     expect(dragged).toMatchObject({ x: picked.x, y: picked.y });
     // Placed on this board while its file is still in the topic, which is what
     // the drop then moves.
     expect(board.doc.placements[""]?.["topic-x/a.md"]).toMatchObject({ x: picked.x, y: picked.y });
+  });
+
+  it("opens the folder again once the card is dropped outside it", async () => {
+    const { board, vault, redraw } = store({ "topic-x/a.md": "note", "topic-x/b.md": "note" });
+    redraw();
+    vault.togglePreview("topic-x");
+    const neighbour = cardAt(board, "topic-x/b.md");
+    if (!neighbour) throw new Error("the folder laid out nothing");
+
+    vault.beginDrag(["topic-x/a.md"]);
+    // Let go on empty board: the file moves to the board's own directory.
+    await vault.moveInto(["topic-x/a.md"], null);
+    vault.settleDrag(["topic-x/a.md"]);
+
+    expect(vault.preview).toBe("topic-x");
+    expect(cardAt(board, "a.md")).toBeDefined();
+    expect(cardAt(board, "topic-x/b.md")).toBeDefined();
   });
 
   it("puts a card back in the folder when the drag moved no file", () => {
@@ -80,7 +116,7 @@ describe("dragging a card out of an opened folder", () => {
     vault.settleDrag([picked.id]);
 
     expect(board.doc.placements[""]?.["topic-x/a.md"]).toBeUndefined();
-    // Back in the still-open folder's block, where it was laid out before.
+    // Back in the reopened folder's block, where it was laid out before.
     expect(vault.preview).toBe("topic-x");
     expect(cardAt(board, "topic-x/a.md")).toMatchObject({ x: picked.x, y: picked.y });
   });
