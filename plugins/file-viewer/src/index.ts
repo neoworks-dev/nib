@@ -78,6 +78,7 @@ export const fileViewerPlugin: Plugin = {
         kind: "editor",
         title: "Editor",
         icon: FileCodeIcon,
+        presentation: "sheet",
         component: FileViewer,
       }),
     );

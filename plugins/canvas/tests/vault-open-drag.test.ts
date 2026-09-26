@@ -192,3 +192,55 @@ describe("dragging a card out of a spread pile", () => {
     expect(cardAt(board, "a.md")).toBeDefined();
   });
 });
+
+describe("carrying a card out of an entered topic", () => {
+  it("goes back to the board the topic is on, with the card where the drag had it", () => {
+    const { board, vault, redraw } = store({ "topic-x/a.md": "note", "topic-x/b.md": "note" });
+    redraw();
+    vault.enter("topic-x");
+    const picked = cardAt(board, "topic-x/a.md");
+    if (!picked) throw new Error("the topic's board is empty");
+
+    vault.beginDrag([picked.id]);
+    expect(vault.carryOut([picked.id])).toBe(true);
+
+    expect(vault.topic).toBeNull();
+    expect(cardAt(board, "topic-x/a.md")).toMatchObject({ x: picked.x, y: picked.y });
+    // The rest stays in the topic: only what was dragged comes out.
+    expect(cardAt(board, "topic-x/b.md")).toBeUndefined();
+  });
+
+  it("moves the file up once the card is let go on that board", async () => {
+    const { board, vault, redraw } = store({ "topic-x/a.md": "note" });
+    redraw();
+    vault.enter("topic-x");
+
+    vault.beginDrag(["topic-x/a.md"]);
+    vault.carryOut(["topic-x/a.md"]);
+    await vault.moveInto(["topic-x/a.md"], null);
+    vault.settleDrag(["topic-x/a.md"]);
+
+    expect(cardAt(board, "a.md")).toBeDefined();
+    expect(vault.dragging).toBe(false);
+  });
+
+  it("puts the card back in the topic when the drop moved no file", () => {
+    const { board, vault, redraw } = store({ "topic-x/a.md": "note" });
+    redraw();
+    vault.enter("topic-x");
+
+    vault.beginDrag(["topic-x/a.md"]);
+    vault.carryOut(["topic-x/a.md"]);
+    vault.settleDrag(["topic-x/a.md"]);
+
+    expect(board.doc.placements[""]?.["topic-x/a.md"]).toBeUndefined();
+    expect(cardAt(board, "topic-x/a.md")).toBeUndefined();
+  });
+
+  it("carries nothing out of the root board, which has nothing behind it", () => {
+    const { vault, redraw } = store({ "a.md": "note" });
+    redraw();
+
+    expect(vault.carryOut(["a.md"])).toBe(false);
+  });
+});

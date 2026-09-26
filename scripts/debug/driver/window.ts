@@ -34,6 +34,8 @@ export interface NibWindow {
       definitions: DebugPaneDefinition[];
       openPanes: Array<{ instanceId: string; paneId: string; params?: Record<string, unknown> }>;
       docks: Array<{ edge: string; size: number; root: LayoutNode }>;
+      drawer: { size: number; root: LayoutNode } | null;
+      sheets: Array<{ sheetId: string; root: LayoutNode }>;
       focusedInstanceId: string | null;
       open(paneId: string): string;
       close(paneId: string): void;

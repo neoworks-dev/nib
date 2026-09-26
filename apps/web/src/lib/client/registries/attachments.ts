@@ -11,9 +11,10 @@ export class PaneAttachments implements AttachmentsService {
   constructor(private readonly panes: ReactivePaneRegistry) {}
 
   siblings(instanceId: string): PaneAttachment[] {
-    const dock = this.panes.dockOf(instanceId);
-    if (!dock) return [];
-    return listLeaves(dock.root)
+    const frame = this.panes.frameOf(instanceId);
+    const root = frame && this.panes.rootOf(frame);
+    if (!root) return [];
+    return listLeaves(root)
       .filter((leaf) => leaf !== instanceId)
       .map((leaf) => this.panes.attachment(leaf))
       .filter((attachment): attachment is PaneAttachment => attachment !== undefined);

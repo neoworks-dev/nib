@@ -4,6 +4,7 @@
     type PaneProps,
     parseWorkspaceFileRefs,
     type Point,
+    RECEDED_TRANSFORM,
     workspaceFileTransferType,
   } from "@nib-ui/ui-contracts";
   import CornersOutIcon from "phosphor-svelte/lib/CornersOutIcon";
@@ -54,6 +55,32 @@
 
   /** The trail from the project to here, root first. Empty until a project is open. */
   const crumbs = $derived(canvasState.vault.breadcrumb);
+
+  /**
+   * An entered topic is a sheet raised over the board it sits in, lowered by the
+   * strip that board shows through. The board behind is a picture taken as the
+   * topic was entered: there is one engine, and it is drawing the topic.
+   */
+  const inTopic = $derived(opened && canvasState.vault.topic !== null);
+  /** The directory the entered topic sits in: what is behind its sheet. */
+  const parentDir = $derived(crumbs.at(-2) ?? "");
+  /** Pictures of the boards topics were entered from, by directory. */
+  let pictures = $state<Record<string, string>>({});
+  const picture = $derived(pictures[parentDir]);
+  let sheet = $state<HTMLDivElement>();
+
+  /** How deep the window was, so only going down a level raises a sheet. */
+  let depth = 0;
+  $effect(() => {
+    const current = crumbs.length;
+    const deeper = current > depth;
+    depth = current;
+    if (!deeper || !sheet || !inTopic) return;
+    sheet.animate([{ transform: "translateY(100%)" }, { transform: "none" }], {
+      duration: 280,
+      easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+    });
+  });
 
   /** The last segment of a directory path, and the project's own name for the root. */
   function crumbLabel(dir: string): string {
@@ -157,9 +184,15 @@
       attributeFilter: ["data-theme", "class"],
     });
 
+    canvasState.vault.beforeEnter = (from) => {
+      if (!engine) return;
+      pictures = { ...pictures, [from]: engine.capture() };
+    };
+
     return () => {
       disposed = true;
       observer.disconnect();
+      canvasState.vault.beforeEnter = null;
       registry.engine = null;
       engine?.destroy();
       engine = null;
@@ -259,187 +292,226 @@
   is no dark flash in the frames before the renderer has initialised. The table
   is light grey whatever the app's theme is; dark mode is a separate question.
 -->
-<div
-  bind:clientWidth={boardWidth}
-  bind:clientHeight={boardHeight}
-  class="relative h-full w-full overflow-hidden"
-  style:background-color={boardBackground}
->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    bind:this={host}
-    class="absolute inset-0"
-    ondragover={(event) => event.preventDefault()}
-    ondrop={onDrop}
-  ></div>
-
-  {#if !opened}
-    <p
-      class="pointer-events-none absolute inset-0 z-raised flex items-center justify-center text-sm text-dim"
+<div class="relative h-full w-full overflow-hidden bg-black">
+  {#if inTopic}
+    <!-- The board the topic sits in, set back behind the topic's sheet. -->
+    <div
+      class="absolute inset-0 origin-top overflow-hidden rounded-xl"
+      style:transform={RECEDED_TRANSFORM}
+      style:background-color={boardBackground}
     >
-      Pick a project to open its board.
-    </p>
-  {:else if empty && canvasState.vault.loading}
-    <p
-      class="pointer-events-none absolute inset-0 z-raised flex items-center justify-center text-sm text-dim"
-    >
-      Reading the vault…
-    </p>
-  {:else if empty}
-    <p
-      class="pointer-events-none absolute inset-0 z-raised flex items-center justify-center text-sm text-dim"
-    >
-      Nothing on this board yet — say what to do below.
-    </p>
-  {/if}
-
-  {#if opened && crumbs.length > 1}
-    <nav
-      class="absolute top-2 left-1/2 z-raised flex -translate-x-1/2 items-center gap-1 rounded-lg border border-line bg-elevated px-2 py-1 text-2xs"
-      aria-label="Where this board is in the project"
-    >
-      {#each crumbs as dir, index (dir)}
-        {#if index > 0}
-          <span class="text-faint">/</span>
-        {/if}
-        {#if index === crumbs.length - 1}
-          <span class="text-muted">{crumbLabel(dir)}</span>
-        {:else}
-          <button
-            type="button"
-            class="text-faint hover:text-default"
-            onclick={() => canvasState.vault.goTo(dir)}
-          >
-            {crumbLabel(dir)}
-          </button>
-        {/if}
-      {/each}
-    </nav>
-  {/if}
-
-  {#if status}
-    <p
-      class="absolute bottom-40 left-1/2 z-raised max-w-[32rem] -translate-x-1/2 rounded-lg border border-red/40 bg-red-soft px-2 py-1 text-2xs text-red"
-    >
-      {status}
-    </p>
-  {/if}
-
-  <!-- Top right, opposite the shell's own bar in the bottom-right corner. -->
-  <div class="absolute top-2 right-2 z-raised flex items-center gap-1.5">
+      {#if picture}
+        <img src={picture} alt="" class="h-full w-full object-cover object-top" />
+      {/if}
+    </div>
+    <!-- The strip that board shows through: a click goes back to it, and a card
+         dragged onto it is carried out of the topic onto it. Deep enough for the
+         shell's toolbar, which is set back with the board, to sit wholly on it. -->
     <button
       type="button"
-      class="rounded-lg border border-line bg-elevated p-1.5 text-faint hover:text-default"
-      aria-label="Fit the board to the pane"
-      onclick={fit}
+      class="absolute inset-x-0 top-0 z-raised flex h-16 items-center justify-center bg-black/40 text-2xs text-white/80"
+      aria-label="Back to {crumbLabel(parentDir)}"
+      onclick={() => canvasState.vault.up()}
     >
-      <CornersOutIcon size={12} />
+      {#if canvasState.vault.dragging}
+        Drag here to take it out onto {crumbLabel(parentDir)}
+      {/if}
     </button>
-    <button
-      type="button"
-      class="rounded-lg border border-line bg-elevated px-2 py-1 text-2xs text-faint hover:text-default"
-      aria-label="Zoom out"
-      onclick={() => zoomBy(1 / 1.2)}>−</button
-    >
-    <span class="rounded-lg border border-line bg-elevated px-2 py-1 text-2xs text-faint">
-      {Math.round(registry.camera.zoom * 100)}%
-    </span>
-    <button
-      type="button"
-      class="rounded-lg border border-line bg-elevated px-2 py-1 text-2xs text-faint hover:text-default"
-      aria-label="Zoom in"
-      onclick={() => zoomBy(1.2)}>+</button
-    >
-  </div>
+  {/if}
 
-  {#if menu}
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- The board's own surface: the whole pane, or the topic's sheet. -->
+  <div
+    bind:this={sheet}
+    bind:clientWidth={boardWidth}
+    bind:clientHeight={boardHeight}
+    class="absolute inset-x-0 bottom-0 overflow-hidden"
+    class:top-0={!inTopic}
+    class:top-16={inTopic}
+    class:rounded-t-xl={inTopic}
+    class:shadow-lg={inTopic}
+    style:background-color={boardBackground}
+  >
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-      class="absolute inset-0 z-overlay"
-      onclick={() => registry.closeMenu()}
-      oncontextmenu={(event) => event.preventDefault()}
+      bind:this={host}
+      class="absolute inset-0"
+      ondragover={(event) => event.preventDefault()}
+      ondrop={onDrop}
+    ></div>
+
+    {#if !opened}
+      <p
+        class="pointer-events-none absolute inset-0 z-raised flex items-center justify-center text-sm text-dim"
+      >
+        Pick a project to open its board.
+      </p>
+    {:else if empty && canvasState.vault.loading}
+      <p
+        class="pointer-events-none absolute inset-0 z-raised flex items-center justify-center text-sm text-dim"
+      >
+        Reading the vault…
+      </p>
+    {:else if empty}
+      <p
+        class="pointer-events-none absolute inset-0 z-raised flex items-center justify-center text-sm text-dim"
+      >
+        Nothing on this board yet — say what to do below.
+      </p>
+    {/if}
+
+    {#if opened && crumbs.length > 1}
+      <nav
+        class="absolute top-2 left-1/2 z-raised flex -translate-x-1/2 items-center gap-1 rounded-lg border border-line bg-elevated px-2 py-1 text-2xs"
+        aria-label="Where this board is in the project"
+      >
+        {#each crumbs as dir, index (dir)}
+          {#if index > 0}
+            <span class="text-faint">/</span>
+          {/if}
+          {#if index === crumbs.length - 1}
+            <span class="text-muted">{crumbLabel(dir)}</span>
+          {:else}
+            <button
+              type="button"
+              class="text-faint hover:text-default"
+              onclick={() => canvasState.vault.goTo(dir)}
+            >
+              {crumbLabel(dir)}
+            </button>
+          {/if}
+        {/each}
+      </nav>
+    {/if}
+
+    {#if status}
+      <p
+        class="absolute bottom-40 left-1/2 z-raised max-w-[32rem] -translate-x-1/2 rounded-lg border border-red/40 bg-red-soft px-2 py-1 text-2xs text-red"
+      >
+        {status}
+      </p>
+    {/if}
+
+    <!-- Top right, opposite the shell's own bar in the bottom-right corner. The shell
+       sets `--board-inset-right` to the width of the drawer lying over the board. -->
+    <div
+      class="absolute top-2 right-[calc(0.5rem+var(--board-inset-right,0px))] z-raised flex items-center gap-1.5 transition-[right] duration-200 ease-out"
     >
-      <!--
+      <button
+        type="button"
+        class="rounded-lg border border-line bg-elevated p-1.5 text-faint hover:text-default"
+        aria-label="Fit the board to the pane"
+        onclick={fit}
+      >
+        <CornersOutIcon size={12} />
+      </button>
+      <button
+        type="button"
+        class="rounded-lg border border-line bg-elevated px-2 py-1 text-2xs text-faint hover:text-default"
+        aria-label="Zoom out"
+        onclick={() => zoomBy(1 / 1.2)}>−</button
+      >
+      <span class="rounded-lg border border-line bg-elevated px-2 py-1 text-2xs text-faint">
+        {Math.round(registry.camera.zoom * 100)}%
+      </span>
+      <button
+        type="button"
+        class="rounded-lg border border-line bg-elevated px-2 py-1 text-2xs text-faint hover:text-default"
+        aria-label="Zoom in"
+        onclick={() => zoomBy(1.2)}>+</button
+      >
+    </div>
+
+    {#if menu}
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="absolute inset-0 z-overlay"
+        onclick={() => registry.closeMenu()}
+        oncontextmenu={(event) => event.preventDefault()}
+      >
+        <!--
         The dark pill the selection bars used to be. The menu replaced them, so it
         keeps their look: the board is a light table, and the actions read as one
         object floating over it rather than as a panel cut out of the chrome.
       -->
-      <div
-        bind:clientWidth={menuWidth}
-        bind:clientHeight={menuHeight}
-        class="absolute w-56 rounded-xl bg-neutral-900 p-1 shadow-lg"
-        style:left="{menuPosition.left}px"
-        style:top="{menuPosition.top}px"
-        role="menu"
-        aria-label="What can be done with the selection"
-      >
-        {#each menu.items as item (item.id)}
-          {#if item.kind === "separator"}
-            <div class="my-1 h-px bg-white/10"></div>
-          {:else if item.kind === "swatches"}
-            <div class="flex items-center gap-0.5 px-1 py-1">
-              {#each item.swatches as swatch (swatch.id)}
-                <button
-                  type="button"
-                  class="flex size-7 items-center justify-center rounded-lg hover:bg-white/10"
-                  aria-label={swatch.label}
-                  title={swatch.label}
-                  onclick={() => {
-                    registry.closeMenu();
-                    item.run(swatch.id);
-                  }}
-                >
-                  <span
-                    class="size-4 rounded-full ring-1 ring-white/25"
-                    style:background-color={swatch.css}
-                  ></span>
-                </button>
-              {/each}
-            </div>
-          {:else}
-            <button
-              type="button"
-              class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-2xs text-neutral-300 transition-colors hover:bg-white/10 hover:text-white"
-              class:hover:text-red-400={item.danger}
-              onclick={() => {
-                registry.closeMenu();
-                void item.run();
-              }}
-            >
-              {#if item.icon}
-                <item.icon size={15} />
-              {/if}
-              <span class="truncate">{item.label}</span>
-            </button>
-          {/if}
-        {/each}
+        <div
+          bind:clientWidth={menuWidth}
+          bind:clientHeight={menuHeight}
+          class="absolute w-56 rounded-xl bg-neutral-900 p-1 shadow-lg"
+          style:left="{menuPosition.left}px"
+          style:top="{menuPosition.top}px"
+          role="menu"
+          aria-label="What can be done with the selection"
+        >
+          {#each menu.items as item (item.id)}
+            {#if item.kind === "separator"}
+              <div class="my-1 h-px bg-white/10"></div>
+            {:else if item.kind === "swatches"}
+              <div class="flex items-center gap-0.5 px-1 py-1">
+                {#each item.swatches as swatch (swatch.id)}
+                  <button
+                    type="button"
+                    class="flex size-7 items-center justify-center rounded-lg hover:bg-white/10"
+                    aria-label={swatch.label}
+                    title={swatch.label}
+                    onclick={() => {
+                      registry.closeMenu();
+                      item.run(swatch.id);
+                    }}
+                  >
+                    <span
+                      class="size-4 rounded-full ring-1 ring-white/25"
+                      style:background-color={swatch.css}
+                    ></span>
+                  </button>
+                {/each}
+              </div>
+            {:else}
+              <button
+                type="button"
+                class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-2xs text-neutral-300 transition-colors hover:bg-white/10 hover:text-white"
+                class:hover:text-red-400={item.danger}
+                onclick={() => {
+                  registry.closeMenu();
+                  void item.run();
+                }}
+              >
+                {#if item.icon}
+                  <item.icon size={15} />
+                {/if}
+                <span class="truncate">{item.label}</span>
+              </button>
+            {/if}
+          {/each}
+        </div>
       </div>
-    </div>
-  {/if}
+    {/if}
 
-  {#if prompt}
-    <SpawnPrompt {prompt} paneWidth={boardWidth} paneHeight={boardHeight} />
-  {/if}
+    {#if prompt}
+      <SpawnPrompt {prompt} paneWidth={boardWidth} paneHeight={boardHeight} />
+    {/if}
 
-  {#if renaming}
-    {#key renaming}
-      <FolderRenameField rename={renaming} />
-    {/key}
-  {/if}
+    {#if renaming}
+      {#key renaming}
+        <FolderRenameField rename={renaming} />
+      {/key}
+    {/if}
 
-  <!--
+    <!--
     The board's input, docked at the foot of the pane: the table has one place to
     say what to do, and it is in the same spot whatever is selected. The wrapper
     only places and lifts it — the composer draws its own box.
   -->
-  {#if opened}
-    <div class="pointer-events-none absolute inset-x-0 bottom-0 z-raised flex justify-center">
-      <div class="pointer-events-auto w-[46rem] max-w-full drop-shadow-xl">
-        <Composer pending={boardComposer} />
+    {#if opened}
+      <div
+        class="pointer-events-none absolute bottom-0 left-0 right-[var(--board-inset-right,0px)] z-raised flex justify-center transition-[right] duration-200 ease-out"
+      >
+        <div class="pointer-events-auto w-[46rem] max-w-full drop-shadow-xl">
+          <Composer pending={boardComposer} />
+        </div>
       </div>
-    </div>
-  {/if}
+    {/if}
 
-  <StickyOverlay />
+    <StickyOverlay />
+  </div>
 </div>
