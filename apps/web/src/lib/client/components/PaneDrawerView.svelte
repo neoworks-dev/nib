@@ -10,7 +10,7 @@
   import { kernelContext } from "@nib-ui/ui-contracts/svelte";
   import { cubicOut } from "svelte/easing";
   import type { TransitionConfig } from "svelte/transition";
-  import { dockExtent, dockPixels } from "../layout/docks";
+  import { DRAWER_MARGIN, dockExtent, dockPixels } from "../layout/docks";
   import { reactivePanes } from "../registries/panes.svelte";
   import PaneTreeView from "./PaneTreeView.svelte";
 
@@ -25,7 +25,8 @@
     return {
       duration: 240,
       easing: cubicOut,
-      css: (progress: number) => `transform: translateX(${(1 - progress) * 100}%)`,
+      css: (progress: number) =>
+        `transform: translateX(calc(${(1 - progress) * 100}% + ${(1 - progress) * DRAWER_MARGIN}px))`,
     };
   }
 
@@ -51,7 +52,10 @@
 
 <section
   aria-label="Drawer"
-  class="absolute inset-y-0 right-0 z-overlay flex border-l border-line bg-elevated shadow-lg"
+  class="absolute z-overlay flex overflow-hidden rounded-xl border border-line bg-elevated shadow-xl"
+  style:top="{DRAWER_MARGIN}px"
+  style:right="{DRAWER_MARGIN}px"
+  style:bottom="{DRAWER_MARGIN}px"
   style:width="{pixels}px"
   transition:slideIn|global
 >

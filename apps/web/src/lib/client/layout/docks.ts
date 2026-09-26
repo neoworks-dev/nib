@@ -12,6 +12,12 @@ export const MIN_DOCK_HEIGHT = 200;
 export const MIN_BOARD_WIDTH = 360;
 export const MIN_BOARD_HEIGHT = 260;
 
+/**
+ * The gap the drawer keeps from the edges of the board it lies on: held off the
+ * edge, it reads as a layer over the board rather than as a dock beside it.
+ */
+export const DRAWER_MARGIN = 8;
+
 /** A dock opens taking about a third of the area, and is dragged from there. */
 export const DEFAULT_DOCK_SIZE = 0.32;
 

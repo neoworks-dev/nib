@@ -2,7 +2,7 @@
   import type { SessionView } from "@nib-ui/protocol";
   import type { PaneEdge } from "@nib-ui/ui-contracts";
   import { kernelContext } from "@nib-ui/ui-contracts/svelte";
-  import { dockPixels } from "../layout/docks";
+  import { DRAWER_MARGIN, dockPixels } from "../layout/docks";
   import { paneDrag } from "../layout/pane-drag.svelte";
   import { RECEDE_TRANSITION, RECEDED_TRANSFORM } from "@nib-ui/ui-contracts";
   import { reactivePanes, rootPaneId } from "../registries/panes.svelte";
@@ -20,7 +20,10 @@
   const right = $derived(panes.dock("right"));
   const bottom = $derived(panes.dock("bottom"));
   const drawer = $derived(panes.drawer);
-  const drawerPixels = $derived(drawer ? dockPixels("right", drawer.size, panes.bounds) : 0);
+  /** How much of the board's right side the drawer covers, with the gap it keeps. */
+  const drawerPixels = $derived(
+    drawer ? dockPixels("right", drawer.size, panes.bounds) + DRAWER_MARGIN : 0,
+  );
   const sheets = $derived(panes.sheets);
   /** Behind a raised sheet the whole window is set back, so the sheet reads as a layer on it. */
   const receded = $derived(sheets.length > 0);
