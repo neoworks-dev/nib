@@ -14,7 +14,7 @@ Commits, issues and pull requests carry only what matters. Say the thing, explai
 
 Work lives in GitHub issues on `neoworks-dev/nib`, not in a file in the repo.
 
-Write to GitHub as the bot: issues, comments, labels and issue closes go through `gh bot` (`gh bot issue comment 12 --body …`), so they show as `neoworks-bot[bot]`, not as me. Plain `gh` is for reading only. The bot as author already says a model wrote it, so no "written by Claude" line in the text. If `gh bot` fails, say so rather than falling back to plain `gh`. It lives in `~/Documents/neoworks/gh-bot`.
+Write to GitHub as the bot: issues, comments and labels go through `gh bot` (`gh bot issue comment 12 --body …`), so they show as `neoworks-bot[bot]`, not as me. Plain `gh` is for reading only. The bot as author already says a model wrote it, so no "written by Claude" line in the text. If `gh bot` fails, say so rather than falling back to plain `gh`. It lives in `~/Documents/neoworks/gh-bot`.
 
 Before starting on an issue, read its comments and `git log --grep '#<n>'` — sessions end mid-feature, and an earlier attempt may already be half in `main`.
 
@@ -52,10 +52,10 @@ An issue is done when its fix has been shown to work, not when the code is writt
 
 As soon as one issue is done, before starting the next:
 
-1. Commit it to `main` with `Closes #<n>` in the body, and push.
+1. Commit it to `main` with `Refs #<n>` in the body, and push.
 2. Comment on the issue with `bun run debug evidence --issue <n> --body … --screenshot …`: what changed, in a sentence or two, plus the screenshots or the test's output.
 
-Don't close an issue without evidence to show for it.
+Never close an issue yourself — I close it once I've checked the fix. That includes by keyword: `Closes`, `Fixes` or `Resolves` in a commit pushed to `main` closes the issue, so reference it with `Refs`. Linking an issue to a PR is fine; closing or merging that PR is mine too.
 
 I run nib from the repo root, so every commit to `main` lands in my running app. When one touches `apps/desktop/src/main` or `apps/desktop/src/preload`, tell me to restart.
 
