@@ -307,6 +307,7 @@ export * from "./display";
 export * from "./fuzzy";
 export * from "./panes";
 export * from "./permission-modes";
+export * from "./recede";
 export * from "./tool-summary";
 
 export const slotNames = [

@@ -4,7 +4,7 @@
   import { kernelContext } from "@nib-ui/ui-contracts/svelte";
   import { dockPixels } from "../layout/docks";
   import { paneDrag } from "../layout/pane-drag.svelte";
-  import { RECEDE_TRANSITION, RECEDED_TRANSFORM } from "../layout/recede";
+  import { RECEDE_TRANSITION, RECEDED_TRANSFORM } from "@nib-ui/ui-contracts";
   import { reactivePanes, rootPaneId } from "../registries/panes.svelte";
   import PaneDockView from "./PaneDockView.svelte";
   import PaneDrawerView from "./PaneDrawerView.svelte";

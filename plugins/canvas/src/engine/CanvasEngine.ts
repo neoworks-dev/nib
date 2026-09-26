@@ -124,7 +124,24 @@ export class CanvasEngine implements CanvasEngineApi {
 
     this.app.ticker.add(this.tick);
     this.bindInput(canvas);
+    this.followSize(element);
     this.setTool(this.host.activeTool);
+  }
+
+  /**
+   * `resizeTo` only listens to the window, and the board's box changes without
+   * the window doing so: a dock opening beside it, a folder's sheet lowering it.
+   */
+  private followSize(element: HTMLElement): void {
+    const observer = new ResizeObserver(() => this.app.queueResize());
+    observer.observe(element);
+    this.disposers.push(() => observer.disconnect());
+  }
+
+  /** The board as it is drawn right now, as an image url. */
+  capture(): string {
+    this.app.render();
+    return (this.app.canvas as HTMLCanvasElement).toDataURL("image/jpeg", 0.85);
   }
 
   destroy(): void {
@@ -195,6 +212,10 @@ export class CanvasEngine implements CanvasEngineApi {
 
   beginDrag(ids: string[]): void {
     this.host.beginDrag(ids);
+  }
+
+  carryOut(ids: string[]): boolean {
+    return this.host.carryOut(ids);
   }
 
   spawnFrom(id: string, at: Point): void {

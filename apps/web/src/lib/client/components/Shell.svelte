@@ -5,9 +5,10 @@
    * nowhere better to be — the project switcher, the search popup and settings.
    * Every other pane opens from the thing it belongs to, or from the palette.
    */
+  import { canvasState } from "@nib-ui/plugin-canvas";
+  import { RECEDE_TRANSITION, RECEDED_TRANSFORM } from "@nib-ui/ui-contracts";
   import { provideKernelContext, SlotHost } from "@nib-ui/ui-contracts/svelte";
   import { clientContext } from "../context";
-  import { RECEDE_TRANSITION, RECEDED_TRANSFORM } from "../layout/recede";
   import { reactivePanes } from "../registries/panes.svelte";
   import CommandPalette from "./CommandPalette.svelte";
   import PaneHost from "./PaneHost.svelte";
@@ -21,8 +22,11 @@
   const session = $derived(sessions.active);
 
   const panes = reactivePanes(context.require("panes"));
-  /** The toolbar sits on the board, so it is set back with it behind a raised sheet. */
-  const receded = $derived(panes.sheets.length > 0);
+  /**
+   * The toolbar sits on the board, so it is set back with it behind a raised
+   * sheet — a document's, or a folder's, which rises over the board it is on.
+   */
+  const receded = $derived(panes.sheets.length > 0 || canvasState.vault.topic !== null);
 </script>
 
 <div class="relative h-screen overflow-hidden bg-canvas text-default">

@@ -156,6 +156,9 @@ export const canvasPlugin: Plugin = {
     // Picking a card up out of an opened folder or a spread pile puts the rest of
     // it back, so the drag can see the board it is crossing.
     registry.onBeginDrag = (ids) => canvasState.vault.beginDrag(ids);
+    // Dragging a card off the top of a topic's sheet takes it out onto the board
+    // the topic sits on.
+    registry.onCarryOut = (ids) => canvasState.vault.carryOut(ids);
 
     // Entering a project and reaching one of its workstreams are what the project
     // list asks for; it holds the `canvas` service and knows nothing beyond it.
@@ -170,6 +173,7 @@ export const canvasPlugin: Plugin = {
       registry.boardSource = null;
       registry.onDropOnto = null;
       registry.onBeginDrag = null;
+      registry.onCarryOut = null;
       registry.onOpenBoard = null;
       registry.onOpenWorkstream = null;
     });
