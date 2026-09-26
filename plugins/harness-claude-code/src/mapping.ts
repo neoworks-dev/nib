@@ -1,4 +1,4 @@
-import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKMessage, ModelInfo as SdkModelInfo } from "@anthropic-ai/claude-agent-sdk";
 import type {
   BlockContent,
   BlockKind,
@@ -24,8 +24,8 @@ export const claudeCodeCapabilities: HarnessCapabilities = {
 };
 
 /**
- * The CLI's stable `--model` aliases. `supportedModels()` replaces these with
- * resolved display names once the process answers its first control request.
+ * The CLI's stable `--model` aliases, offered until the CLI has named the
+ * models the signed-in account is entitled to.
  */
 export const claudeCodeModels: ModelInfo[] = [
   { id: "default", displayName: "Default" },
@@ -33,6 +33,15 @@ export const claudeCodeModels: ModelInfo[] = [
   { id: "sonnet", displayName: "Sonnet" },
   { id: "haiku", displayName: "Haiku" },
 ];
+
+/** The CLI's model rows as the composer offers them: the row's `value` is what `--model` takes. */
+export function mapSupportedModels(models: readonly SdkModelInfo[]): ModelInfo[] {
+  return models.map((model) => ({
+    id: model.value,
+    displayName: model.displayName,
+    description: model.description,
+  }));
+}
 
 type RawBlock = { type: string; [key: string]: unknown };
 

@@ -27,6 +27,7 @@ import {
   stopAgentInputSchema,
 } from "@nib-ui/protocol";
 import { type Placement, placementsFor, type VaultSnapshotItem } from "@nib-ui/vault";
+import { availableModels } from "./harness-models";
 import type { AgentToolSource, BoardService, SessionHost, VaultService } from "./services";
 
 /** `read_agent`'s default when waiting, long enough for a real task and short enough to return. */
@@ -317,13 +318,7 @@ export async function harnessCatalog(
     harnesses.list().map(async (descriptor) => {
       const adapter = harnesses.get(descriptor.id);
       let listed = descriptor.models;
-      if (adapter?.listModels) {
-        try {
-          listed = await adapter.listModels();
-        } catch {
-          // The static list stands in for a runtime that cannot answer.
-        }
-      }
+      if (adapter) listed = await availableModels(adapter);
       const models = new Map<string, ModelInfo>();
       for (const model of [...listed, ...(reported.get(descriptor.id) ?? [])]) {
         if (!models.has(model.id)) models.set(model.id, model);

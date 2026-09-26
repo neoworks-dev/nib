@@ -20,6 +20,8 @@ import {
   type EmitEvent,
   type HarnessAdapter,
   type HarnessSession,
+  listOnce,
+  type ModelInfo,
   type PermissionBehavior,
   type SessionAttachment,
 } from "@nib-ui/protocol";
@@ -30,8 +32,12 @@ import {
   claudeCodeCapabilities,
   claudeCodeHarnessId,
   claudeCodeModels,
+  mapSupportedModels,
 } from "./mapping";
 import { AsyncMessageQueue } from "./message-queue";
+
+/** How long the model probe waits for the CLI to connect before giving up. */
+const modelProbeTimeoutMs = 120_000;
 
 interface PermissionResponse {
   behavior: PermissionBehavior;
@@ -66,10 +72,43 @@ export function createClaudeCodeAdapter(config: ClaudeCodeHarnessConfig): Harnes
     defaultPermissionMode: config.defaultPermissionMode ?? "default",
     models: claudeCodeModels,
     defaultModel: config.defaultModel ?? "default",
+    listModels: listOnce(() => probeModels(config)),
     createSession: (opts, emit) => startSession(harnessId, config, opts, emit),
     resumeSession: (nativeSessionId, opts, emit) =>
       startSession(harnessId, config, opts, emit, { nativeSessionId, fork: opts.fork }),
   };
+}
+
+/**
+ * Asks a throwaway query which models the signed-in account can run. The CLI
+ * answers the SDK's `initialize` control request as soon as it has connected,
+ * and nothing here starts a turn, so nothing is charged for it. Only the user's
+ * own settings are read: there is no project yet, and a model restriction in
+ * them is part of what the account can run.
+ */
+async function probeModels(config: ClaudeCodeHarnessConfig): Promise<ModelInfo[]> {
+  const executable = resolveClaudeExecutable(config.executable);
+  const { query } = await import("@anthropic-ai/claude-agent-sdk");
+  const queue = new AsyncMessageQueue<SDKUserMessage>();
+  const abortController = new AbortController();
+  // The CLI loads settings, plugins and MCP servers before it answers.
+  const timer = setTimeout(() => abortController.abort(), modelProbeTimeoutMs);
+  const probe = query({
+    prompt: queue,
+    options: {
+      abortController,
+      pathToClaudeCodeExecutable: executable,
+      settingSources: ["user"],
+    },
+  });
+  try {
+    const initialization = await probe.initializationResult();
+    return mapSupportedModels(initialization.models);
+  } finally {
+    clearTimeout(timer);
+    queue.close();
+    probe.close();
+  }
 }
 
 async function startSession(
@@ -271,11 +310,7 @@ async function publishMetadata(session: Query, emit: EmitEvent): Promise<void> {
           description: command.description,
           argumentHint: command.argumentHint,
         })),
-        models: models.map((model) => ({
-          id: model.value,
-          displayName: model.displayName,
-          description: model.description,
-        })),
+        models: mapSupportedModels(models),
       },
       raw: { commands, models },
     });

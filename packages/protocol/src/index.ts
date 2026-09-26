@@ -114,6 +114,7 @@ export type {
   RewindResult,
   SessionAttachment,
 } from "./harness";
+export { listOnce } from "./model-listing";
 export { reduceSession, reduceSessionAll } from "./reduce";
 export {
   type BlockView,
