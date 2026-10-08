@@ -4,9 +4,9 @@
     assetUrl,
     type ComposerTarget,
     type ComposerTargetRequest,
-    effortLabel,
     fuzzyRank,
     permissionModeLabel,
+    permissionModeShortLabel,
     type SessionSummary,
   } from "@nib-ui/ui-contracts";
   import {
@@ -17,11 +17,11 @@
     SlotHost,
   } from "@nib-ui/ui-contracts/svelte";
   import ArrowUpIcon from "phosphor-svelte/lib/ArrowUpIcon";
-  import BrainIcon from "phosphor-svelte/lib/BrainIcon";
   import PlayIcon from "phosphor-svelte/lib/PlayIcon";
   import RobotIcon from "phosphor-svelte/lib/RobotIcon";
   import ShieldCheckIcon from "phosphor-svelte/lib/ShieldCheckIcon";
   import StopIcon from "phosphor-svelte/lib/StopIcon";
+  import AgentPicker from "./AgentPicker.svelte";
   import AgentTabs from "./AgentTabs.svelte";
   import { composeAnnotatedMessage, type StagedAnnotation } from "./annotations";
   import ComposerAction from "./ComposerAction.svelte";
@@ -93,6 +93,7 @@
   let activeIndex = $state(0);
   let fileMatches = $state<string[]>([]);
   let textarea = $state<HTMLTextAreaElement>();
+  let focused = $state(false);
   /** A chosen harness waits here until the user accepts what the switch costs. */
   let proposed = $state<HarnessSwitchPlan | null>(null);
   let switching = $state(false);
@@ -102,8 +103,6 @@
   const canInterrupt = $derived(capabilities?.interrupt !== false && busy);
   const harnessId = $derived(session?.harnessId ?? pending?.harnessId ?? null);
   const harness = $derived(sessions.harnesses.find((entry) => entry.id === harnessId));
-  // The model belongs to the harness driving the session, so the pill wears its mark.
-  const HarnessIcon = $derived(harnessIcon(harnessId ?? ""));
   // Pre-flight: the harness descriptor answers before the session's own metadata
   // does, which is also all there is to go on before the session exists.
   const permissionModes = $derived(
@@ -279,10 +278,9 @@
     return sessions.harnesses.find((entry) => entry.id === id)?.displayName ?? id;
   }
 
-  /** The pick means different things before and after there is a transcript to move. */
-  function harnessHint(id: string): string {
-    if (!session)
-      return id === harnessId ? "Starts this workstream" : "Starts this workstream instead";
+  /** Only a running session has a transcript, so only there does a pick cost anything to say. */
+  function harnessHint(id: string): string | undefined {
+    if (!session) return undefined;
     return id === session.harnessId
       ? "Running this conversation"
       : "Replays this conversation as text";
@@ -329,11 +327,16 @@
     caret = event.currentTarget.selectionStart ?? event.currentTarget.value.length;
   }
 
-  /** The text area's hint: the picked target's, else whether it continues or starts work. */
+  /**
+   * The text area's hint: the picked target's, else whether it continues or
+   * starts work. Once the person is in the box it turns to how to use it.
+   */
   function placeholder(): string {
     if (targetPrompt) return targetPrompt.placeholder;
-    if (session) return "Ask for follow-up changes — / for commands, @ for files";
-    return "What needs doing? — @ for files";
+    if (focused && session) return "Type / for commands and @ for files";
+    if (focused) return "Type @ to mention a file";
+    if (session) return "Ask for follow-up changes";
+    return "What needs doing?";
   }
 
   function syncCaret() {
@@ -443,6 +446,8 @@
           onkeyup={syncCaret}
           onclick={syncCaret}
           onkeydown={onKeydown}
+          onfocus={() => (focused = true)}
+          onblur={() => (focused = false)}
           rows="2"
           placeholder={placeholder()}
           class="min-h-14 w-full resize-none bg-transparent px-1 py-1 text-base text-default placeholder:text-faint focus:outline-none"
@@ -533,6 +538,35 @@
 </div>
 
 {#snippet agentPills()}
+  <AgentPicker
+    harnesses={sessions.harnesses.map((entry) => ({
+      value: entry.id,
+      label: entry.displayName,
+      icon: harnessIcon(entry.id),
+      hint: harnessHint(entry.id),
+    }))}
+    {harnessId}
+    models={models.map((model) => ({
+      value: model.id,
+      label: model.displayName ?? model.id,
+      hint: model.description,
+    }))}
+    model={selectedModel}
+    {effortLevels}
+    effort={selectedEffort}
+    onHarness={proposeHarness}
+    onModel={(model) => {
+      if (!session) return pending?.setModel(model);
+      focusSession();
+      void sessions.setModel(model);
+    }}
+    onEffort={(effort) => {
+      if (!session) return pending?.setEffort(effort);
+      focusSession();
+      void sessions.setEffort(effort);
+    }}
+  />
+
   {#if permissionModes.length > 0}
     <PillSelect
       icon={ShieldCheckIcon}
@@ -541,59 +575,13 @@
       options={permissionModes.map((mode) => ({
         value: mode,
         label: permissionModeLabel(mode),
-        hint: mode,
+        short: permissionModeShortLabel(mode),
       }))}
       onChange={(mode) => {
         if (!session) return pending?.setPermissionMode(mode);
         focusSession();
         void sessions.setPermissionMode(mode);
       }}
-    />
-  {/if}
-
-  {#if models.length > 0}
-    <PillSelect
-      value={selectedModel}
-      placeholder="Model"
-      options={models.map((model) => ({
-        value: model.id,
-        label: model.displayName ?? model.id,
-        hint: model.description,
-      }))}
-      onChange={(model) => {
-        if (!session) return pending?.setModel(model);
-        focusSession();
-        void sessions.setModel(model);
-      }}
-    />
-  {/if}
-
-  {#if effortLevels.length > 0}
-    <PillSelect
-      icon={BrainIcon}
-      value={selectedEffort}
-      placeholder="Effort"
-      options={effortLevels.map((level) => ({ value: level, label: effortLabel(level) }))}
-      onChange={(effort) => {
-        if (!session) return pending?.setEffort(effort);
-        focusSession();
-        void sessions.setEffort(effort);
-      }}
-    />
-  {/if}
-
-  {#if sessions.harnesses.length > 1}
-    <PillSelect
-      icon={HarnessIcon}
-      value={harnessId}
-      placeholder="Harness"
-      options={sessions.harnesses.map((entry) => ({
-        value: entry.id,
-        label: entry.displayName,
-        icon: harnessIcon(entry.id),
-        hint: harnessHint(entry.id),
-      }))}
-      onChange={proposeHarness}
     />
   {/if}
 {/snippet}

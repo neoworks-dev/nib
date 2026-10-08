@@ -21,6 +21,22 @@ export function permissionModeLabel(mode: string): string {
   return labels[mode] ?? mode;
 }
 
+/** One or two words for the modes whose full label is too long to sit in the composer's row of pills. */
+const shortLabels: Record<string, string> = {
+  ask: "Ask",
+  default: "Ask",
+  "auto-edit": "Auto-edit",
+  acceptEdits: "Auto-edit",
+  plan: "Plan",
+  bypassPermissions: "Bypass",
+  "workspace-write": "Workspace",
+};
+
+/** The pill's name for a mode; the menu and the tooltip carry the full label. */
+export function permissionModeShortLabel(mode: string): string {
+  return shortLabels[mode] ?? permissionModeLabel(mode);
+}
+
 const effortLabels: Record<string, string> = {
   off: "Off",
   minimal: "Minimal",
