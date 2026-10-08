@@ -48,6 +48,16 @@ export function promptParameter(manifest: ComfyWorkflowManifest): ComfyParameter
 }
 
 /**
+ * What the text area says while a workflow is picked: the prompt's own
+ * description where the workflow gives one, else an instruction.
+ */
+export function promptPlaceholder(prompt: ComfyParameter): string {
+  if (prompt.description) return prompt.description;
+  if (prompt.label.toLowerCase() === "prompt") return "Describe what to make";
+  return `Describe the ${prompt.label.toLowerCase()}`;
+}
+
+/**
  * The workflows a composer offers: asked from a picture, those that take one;
  * asked of the board, which has no picture to give, those that need none. A
  * workflow ComfyUI cannot run is shown, not pickable.

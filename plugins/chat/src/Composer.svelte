@@ -454,16 +454,6 @@
         ></textarea>
       {/if}
 
-      {#if pickedTarget && targetPick && targetContext}
-        {@const TargetForm = pickedTarget.form}
-        <TargetForm
-          optionId={targetPick.optionId}
-          context={targetContext}
-          values={targetPick.values}
-          onchange={(values) => composerTargetPicks.setValues(draftKey, values)}
-        />
-      {/if}
-
       <!--
         The pills wrap on their own; the action stays in the bottom-right corner.
         The pill rows' 3px padding centres their last row on the 32px action.
@@ -482,7 +472,15 @@
             />
           {/if}
 
-          {#if !pickedTarget}
+          {#if pickedTarget && targetPick && targetContext}
+            {@const TargetForm = pickedTarget.form}
+            <TargetForm
+              optionId={targetPick.optionId}
+              context={targetContext}
+              values={targetPick.values}
+              onchange={(values) => composerTargetPicks.setValues(draftKey, values)}
+            />
+          {:else}
             {@render agentPills()}
           {/if}
 
@@ -499,7 +497,8 @@
               <span class="max-w-72 truncate text-2xs text-red" title={targetError}
                 >{targetError}</span
               >
-            {:else if targetBlocked}
+            {:else if targetBlocked && draft.trim().length > 0}
+              <!-- With nothing typed yet, the empty prompt already says what is missing. -->
               <span class="text-2xs text-faint">{targetBlocked}</span>
             {/if}
             <ComposerAction

@@ -37,6 +37,7 @@
   <button
     type="button"
     {title}
+    aria-label={label}
     class="flex items-center gap-1.5 rounded-full border border-line bg-raised px-2.5 py-1 text-xs text-muted transition-colors duration-fast hover:border-line-strong hover:text-default"
     onclick={() => (open = !open)}
   >
