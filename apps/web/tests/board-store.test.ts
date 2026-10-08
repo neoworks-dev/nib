@@ -108,6 +108,35 @@ describe("parseBoard layout", () => {
     expect(parseBoard({ rev: 2, cwd, objects: [], layout }, cwd).layout).toEqual(layout);
   });
 
+  it("round-trips the drawer and the sheets, and keeps a layout that has only them", () => {
+    const layered: PaneLayout = {
+      docks: [],
+      instances: [
+        { instanceId: "i2", paneId: "chat", params: { sessionId: "s1" } },
+        { instanceId: "i3", paneId: "canvas.sheet", params: { path: "a.md" } },
+      ],
+      drawer: { size: 0.3, root: { kind: "leaf", instanceId: "i2" } },
+      sheets: [{ sheetId: "s1", root: { kind: "leaf", instanceId: "i3" } }],
+    };
+    expect(parseBoard({ layout: layered }, cwd).layout).toEqual(layered);
+  });
+
+  it("a sheet claiming an instance the drawer already holds loses it", () => {
+    const parsed = parseBoard(
+      {
+        layout: {
+          docks: [],
+          instances: [{ instanceId: "i2", paneId: "chat" }],
+          drawer: { size: 0.3, root: { kind: "leaf", instanceId: "i2" } },
+          sheets: [{ sheetId: "s1", root: { kind: "leaf", instanceId: "i2" } }],
+        },
+      },
+      cwd,
+    ).layout;
+    expect(parsed?.sheets).toBeUndefined();
+    expect(parsed?.drawer?.root).toEqual({ kind: "leaf", instanceId: "i2" });
+  });
+
   it("a board without a layout has none rather than an empty one", () => {
     expect(parseBoard({ rev: 1, cwd, objects: [] }, cwd).layout).toBeUndefined();
     expect(parseBoard({ layout: "nonsense" }, cwd).layout).toBeUndefined();

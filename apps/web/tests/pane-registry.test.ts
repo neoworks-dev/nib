@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import type { PaneKind, PaneLayout, PaneProps } from "@nib-ui/ui-contracts";
+import type { PaneKind, PaneLayout, PaneProps, PaneSheet } from "@nib-ui/ui-contracts";
 import type { Component } from "svelte";
 import { dockPixels, MIN_BOARD_WIDTH, MIN_DOCK_WIDTH } from "../src/lib/client/layout/docks";
 import { listLeaves } from "../src/lib/client/layout/tree";
@@ -15,6 +15,32 @@ let attachments: PaneAttachments;
 
 function register(id: string, kind: PaneKind, title = id) {
   return panes.register({ id, kind, title, component });
+}
+
+/** A chat that opens in the drawer and a note and a node editor that open as sheets. */
+function registerLayered(): void {
+  panes.register({
+    id: "chat.drawer",
+    kind: "chat",
+    title: "Chat",
+    component,
+    presentation: "drawer",
+  });
+  panes.register({ id: "note", kind: "editor", title: "Note", component, presentation: "sheet" });
+  panes.register({
+    id: "nodes",
+    kind: "comfyui-editor",
+    title: "Nodes",
+    component,
+    presentation: "sheet",
+  });
+}
+
+/** The sheet at a place in the stack, oldest first; -1 is the front one. */
+function sheetAt(index: number): PaneSheet {
+  const sheet = panes.sheets.at(index);
+  if (!sheet) throw new Error(`no sheet at ${index}`);
+  return sheet;
 }
 
 function leavesOf(instanceId: string): string[] {
@@ -389,6 +415,45 @@ describe("layout persistence", () => {
     expect(panes.docks).toEqual([]);
   });
 
+  test("a pane stored in a dock that now asks for a layer reopens in it", () => {
+    const git = panes.open("git");
+    const chat = panes.open("chat");
+    const layout = panes.snapshotLayout();
+
+    const reopened = new ReactivePaneRegistry();
+    reopened.setBounds(bounds);
+    reopened.register({ id: "git", kind: "git", title: "Git", component });
+    reopened.register({
+      id: "chat",
+      kind: "chat",
+      title: "Chat",
+      component,
+      presentation: "drawer",
+    });
+    reopened.restoreLayout(layout);
+
+    expect(reopened.dock("right")?.root).toEqual({ kind: "leaf", instanceId: git });
+    expect(reopened.drawer && listLeaves(reopened.drawer.root)).toEqual([chat]);
+    expect(reopened.instances()).toHaveLength(2);
+  });
+
+  test("the drawer and the sheets round-trip through restore, front sheet focused", () => {
+    registerLayered();
+    const chat = panes.open("chat.drawer");
+    const back = panes.openInstance("note", { path: "a.md" });
+    const front = panes.openInstance("note", { path: "b.md" });
+    const layout = panes.snapshotLayout();
+
+    const reopened = new ReactivePaneRegistry();
+    reopened.setBounds(bounds);
+    for (const definition of panes.list()) reopened.register(definition);
+    reopened.restoreLayout(layout);
+
+    expect(reopened.drawer && listLeaves(reopened.drawer.root)).toEqual([chat]);
+    expect(reopened.sheets.map((sheet) => listLeaves(sheet.root))).toEqual([[back], [front]]);
+    expect(reopened.focusedInstanceId).toBe(front);
+  });
+
   test("a snapshot holds plain values, not live state", () => {
     panes.open("git");
     const layout = panes.snapshotLayout();
@@ -396,5 +461,104 @@ describe("layout persistence", () => {
 
     expect(layout.docks).toHaveLength(1);
     expect(JSON.parse(JSON.stringify(layout))).toEqual(layout);
+  });
+});
+
+describe("drawer and sheets", () => {
+  beforeEach(registerLayered);
+
+  test("a drawer pane opens over the board, taking no dock", () => {
+    const chat = panes.open("chat.drawer");
+
+    expect(panes.docks).toEqual([]);
+    expect(panes.drawer && listLeaves(panes.drawer.root)).toEqual([chat]);
+    expect(panes.frameOf(chat)).toEqual({ layer: "drawer" });
+  });
+
+  test("a second chat splits the drawer below the first", () => {
+    const first = panes.openInstance("chat.drawer");
+    const second = panes.openInstance("chat.drawer");
+
+    expect(panes.drawer?.root).toMatchObject({ kind: "split", axis: "column" });
+    expect(panes.drawer && listLeaves(panes.drawer.root)).toEqual([first, second]);
+  });
+
+  test("a pane attached to a chat joins the drawer", () => {
+    const chat = panes.open("chat.drawer");
+    const git = panes.open("git");
+    attachments.attach(git, chat, "right");
+
+    expect(panes.docks).toEqual([]);
+    expect(attachments.siblings(chat).map((entry) => entry.instanceId)).toEqual([git]);
+  });
+
+  test("each sheet pane rises as a sheet of its own, the newest in front", () => {
+    const note = panes.open("note", { path: "a.md" });
+    const nodes = panes.open("nodes");
+
+    expect(panes.sheets.map((sheet) => listLeaves(sheet.root))).toEqual([[note], [nodes]]);
+    expect(panes.focusedInstanceId).toBe(nodes);
+  });
+
+  test("opening a sheet that is already up brings it to the front", () => {
+    const note = panes.open("note", { path: "a.md" });
+    panes.open("nodes");
+    panes.open("note", { path: "a.md" });
+
+    expect(listLeaves(sheetAt(-1).root)).toEqual([note]);
+    expect(panes.sheets).toHaveLength(2);
+  });
+
+  test("dismissing a sheet closes what is on it, and focus falls to the one behind", () => {
+    const note = panes.open("note", { path: "a.md" });
+    const nodes = panes.open("nodes");
+    panes.closeSheet(sheetAt(-1).sheetId);
+
+    expect(panes.isInstanceOpen(nodes)).toBe(false);
+    expect(panes.sheets).toHaveLength(1);
+    expect(panes.focusedInstanceId).toBe(note);
+  });
+
+  test("closing the last pane of a sheet takes the sheet down", () => {
+    const note = panes.open("note", { path: "a.md" });
+    panes.closeInstance(note);
+
+    expect(panes.sheets).toEqual([]);
+  });
+
+  test("a docked pane attached to a sheet pane shares its sheet", () => {
+    const note = panes.open("note", { path: "a.md" });
+    const git = panes.openInstance("git");
+    attachments.attach(git, note, "left");
+
+    expect(panes.docks).toEqual([]);
+    expect(listLeaves(sheetAt(0).root)).toEqual([git, note]);
+  });
+
+  test("dragging keeps a drawer pane in the drawer and off the sheets", () => {
+    const chat = panes.open("chat.drawer");
+    const note = panes.open("note", { path: "a.md" });
+    panes.open("git");
+
+    expect(panes.canDragInto(chat, { layer: "dock", edge: "right" })).toBe(false);
+    expect(panes.canDragInto(chat, { layer: "sheet", sheetId: sheetAt(0).sheetId })).toBe(false);
+    expect(panes.canDragInto(note, { layer: "drawer" })).toBe(false);
+  });
+
+  test("a docked pane can be dragged into the drawer, but not onto a sheet", () => {
+    panes.open("chat.drawer");
+    panes.open("note", { path: "a.md" });
+    const git = panes.open("git");
+
+    expect(panes.canDragInto(git, { layer: "drawer" })).toBe(true);
+    expect(panes.canDragInto(git, { layer: "sheet", sheetId: sheetAt(0).sheetId })).toBe(false);
+  });
+
+  test("the drawer's width is held inside what the board can spare", () => {
+    panes.open("chat.drawer");
+    panes.setDrawerSize(0.99);
+
+    const size = panes.drawer?.size ?? 0;
+    expect(dockPixels("right", size, bounds)).toBe(bounds.width - MIN_BOARD_WIDTH);
   });
 });

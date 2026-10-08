@@ -324,7 +324,15 @@ const stateScript = (missingHandle: string): RendererState => {
     if (instance.params) summary.params = JSON.parse(JSON.stringify(instance.params));
     return summary;
   });
+  // The drawer and the sheets are listed as docks of their own, the front sheet last.
   state.docks = JSON.parse(JSON.stringify(debug.panes.docks));
+  const drawer = debug.panes.drawer;
+  if (drawer) {
+    state.docks.push({ edge: "drawer", size: 0, root: JSON.parse(JSON.stringify(drawer.root)) });
+  }
+  for (const sheet of debug.panes.sheets) {
+    state.docks.push({ edge: "sheet", size: 0, root: JSON.parse(JSON.stringify(sheet.root)) });
+  }
 
   const canvas = debug.canvas;
   state.project = canvas.vault.cwd || null;

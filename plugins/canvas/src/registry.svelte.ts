@@ -95,6 +95,8 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
   onDropOnto: ((ids: string[], toId: string | null, at: Point) => void) | null = null;
   /** A drag of these cards has begun: whatever they were laid out as part of is put away. */
   onBeginDrag: ((ids: string[]) => void) | null = null;
+  /** Cards dragged out through the top of a topic's sheet: true when they were carried out. */
+  onCarryOut: ((ids: string[]) => boolean) | null = null;
   /** Set by the plugin: entering a project is a board load plus everything that hangs off it. */
   onOpenBoard: ((cwd: string) => Promise<void>) | null = null;
   /** Set by the plugin: opening a workstream is a pane operation the registry knows nothing about. */
@@ -294,6 +296,11 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
     if (ids.length > 0) this.onBeginDrag?.(ids);
   }
 
+  carryOut(ids: string[]): boolean {
+    if (ids.length === 0 || !this.onCarryOut) return false;
+    return this.onCarryOut(ids);
+  }
+
   contextMenu(target: CanvasObject | null, at: Point, screen: Point): void {
     // The menu acts on the selection, so a card outside it becomes the selection
     // first: right-clicking one card and having the actions apply to three others
@@ -362,6 +369,7 @@ export class CanvasRegistryStore implements CanvasRegistry, EngineHost {
     this.onClearFocus = null;
     this.onDropOnto = null;
     this.onBeginDrag = null;
+    this.onCarryOut = null;
   }
 }
 

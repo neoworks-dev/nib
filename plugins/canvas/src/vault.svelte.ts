@@ -142,6 +142,15 @@ export class VaultStore {
 
   loading = $state(false);
   error = $state<string | null>(null);
+  /** True from a drag's first move until its drop has settled. */
+  dragging = $state(false);
+
+  /**
+   * Set by the board pane: a topic is about to be entered from `from`, which is
+   * still the board on screen. The pane keeps a picture of it to show behind the
+   * topic's sheet.
+   */
+  beforeEnter: ((from: string) => void) | null = null;
 
   /** Page captures this window has, by the url they were taken of. */
   private captures = $state<Record<string, PageCapture>>({});
@@ -341,6 +350,7 @@ export class VaultStore {
   enter(topic: FolderObject | string): void {
     const path = typeof topic === "string" ? topic : topic.path;
     if (path.length === 0 || path === this.view) return;
+    this.beforeEnter?.(this.view);
     this.trail = [...this.trail, this.view];
     this.view = path;
     this.preview = null;
@@ -483,6 +493,7 @@ export class VaultStore {
    * the drop has settled, so several cards can be taken out one after another.
    */
   beginDrag(ids: readonly string[]): void {
+    this.dragging = true;
     const opened = this.opened;
     if (opened !== null) {
       const members = new Set(membersOf(this.slice(), opened).map((member) => member.path));
@@ -515,6 +526,30 @@ export class VaultStore {
   }
 
   /**
+   * Cards dragged out through the top of an entered topic's sheet. The window
+   * goes back to the board the topic sits on and the cards come along: each is
+   * lent a placement there where the drag has it, the way a card taken out of a
+   * preview is, so the drag carries on across that board. Dropping it is what
+   * moves the file up; `settleDrag` takes the placement back if it never moves.
+   * True when anything was carried.
+   */
+  carryOut(ids: readonly string[]): boolean {
+    if (!this.canGoUp) return false;
+    const leaving = this.cards.filter((object) => ids.includes(object.id));
+    if (leaving.length === 0) return false;
+
+    this.up();
+    const slice = this.slice();
+    for (const object of leaving) {
+      slice[object.id] = { x: object.x, y: object.y, w: object.w, h: object.h, z: 1 };
+      this.detached.add(object.id);
+    }
+    this.writeSlice(slice);
+    this.derive();
+    return true;
+  }
+
+  /**
    * The drag those cards were picked up for is over. One that came out of a
    * preview and did not move — dropped back inside its own topic, or refused —
    * gives its placement up again and goes back into the folder.
@@ -527,6 +562,7 @@ export class VaultStore {
    * The folder the drag closed opens again, with whatever is still in it.
    */
   settleDrag(ids: readonly string[]): void {
+    this.dragging = false;
     const slice = this.slice();
     let changed = false;
     for (const id of ids) {

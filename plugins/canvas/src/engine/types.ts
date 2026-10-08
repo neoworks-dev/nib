@@ -60,6 +60,13 @@ export interface EngineHost {
    * the block the cards came out of.
    */
   beginDrag(ids: string[]): void;
+  /**
+   * A drag of `ids` has left the board through its top edge. On a topic raised
+   * as a sheet that edge is the board it sits on: the host goes back there and
+   * the cards come along. True when it did, so the tool carries on the drag
+   * across the board that is on screen now.
+   */
+  carryOut(ids: string[]): boolean;
   contextMenu(target: CanvasObject | null, at: Point, screen: Point): void;
   /**
    * A plus button dragged off a card and let go at `at`: the host asks what to

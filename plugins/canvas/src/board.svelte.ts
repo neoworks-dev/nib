@@ -107,7 +107,8 @@ export class BoardStore {
 
   /** Pane furniture, not board content: it is saved but never undone. */
   setLayout(layout: PaneLayout): void {
-    const next = layout.docks.length > 0 ? layout : undefined;
+    const empty = layout.docks.length === 0 && !layout.drawer && (layout.sheets ?? []).length === 0;
+    const next = empty ? undefined : layout;
     if (JSON.stringify(this.doc.layout ?? null) === JSON.stringify(next ?? null)) return;
     this.doc = { ...this.doc, layout: next };
     this.scheduleSave();

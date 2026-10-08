@@ -53,12 +53,20 @@ export function registerActionCommands(program: Command): void {
   pictured(program.command("drag <from> <to>"))
     .description("press, move in steps, release — cards, dock dividers, anything")
     .option("--hold", "take the --screenshot at the end of the move, before releasing")
-    .action((from: string, to: string, options: PictureOptions & { hold?: boolean }) => {
-      if (options.hold === true && options.screenshot === undefined) {
-        throw new Error("--hold photographs the drag in progress, so it needs --screenshot");
-      }
-      act("drag", { action: "drag", from, to, hold: options.hold === true }, options);
-    });
+    .option("--via <target>", "pass through this point first, and rest there a moment")
+    .action(
+      (from: string, to: string, options: PictureOptions & { hold?: boolean; via?: string }) => {
+        if (options.hold === true && options.screenshot === undefined) {
+          throw new Error("--hold photographs the drag in progress, so it needs --screenshot");
+        }
+        const command = { action: "drag", from, to, hold: options.hold === true };
+        if (options.via === undefined) {
+          act("drag", command, options);
+          return;
+        }
+        act("drag", { ...command, via: options.via }, options);
+      },
+    );
 
   pictured(program.command("hover <target>"))
     .description("move the pointer onto a target and leave it there")

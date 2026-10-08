@@ -1,13 +1,13 @@
 <script lang="ts">
   /**
-   * The panes of one dock, drawn flat from its tree. Every leaf is one keyed
+   * The panes of one dock, drawer or sheet, drawn flat from its tree. Every leaf is one keyed
    * element placed by the box the tree gives it, so a leaf that gains a sibling
    * or is dragged into another split moves instead of being torn down under a
    * new parent — the note or terminal in it is kept. Splitters are lines laid
    * over the boundaries, each leaf giving up half of one along the sides it has.
    */
   import type { SessionView } from "@nib-ui/protocol";
-  import type { PaneDock } from "@nib-ui/ui-contracts";
+  import type { PaneNode } from "@nib-ui/ui-contracts";
   import { kernelContext } from "@nib-ui/ui-contracts/svelte";
   import {
     layoutTree,
@@ -17,14 +17,18 @@
     resizeSiblings,
     type SplitterPlacement,
   } from "../layout/tree";
-  import type { ReactivePaneRegistry } from "../registries/panes.svelte";
+  import { type PaneFrame, reactivePanes } from "../registries/panes.svelte";
   import PaneLeaf from "./PaneLeaf.svelte";
 
-  const { dock, session }: { dock: PaneDock; session: SessionView | null } = $props();
+  const {
+    frame,
+    root,
+    session,
+  }: { frame: PaneFrame; root: PaneNode; session: SessionView | null } = $props();
 
-  const panes = kernelContext().require("panes") as ReactivePaneRegistry;
+  const panes = reactivePanes(kernelContext().require("panes"));
 
-  const layout = $derived(layoutTree(dock.root));
+  const layout = $derived(layoutTree(root));
 
   let width = $state(0);
   let height = $state(0);
@@ -32,7 +36,8 @@
   /** The splitter is 4px, centred on the boundary: 2px of it lies over each neighbour. */
   const HALF_SPLITTER = 2;
 
-  function frame(leaf: LeafPlacement): Record<"left" | "top" | "width" | "height", string> {
+  /** Where a leaf's element goes, less its half of each splitter beside it. */
+  function leafBox(leaf: LeafPlacement): Record<"left" | "top" | "width" | "height", string> {
     const { box, gutters } = leaf;
     const left = gutters.left ? HALF_SPLITTER : 0;
     const right = gutters.right ? HALF_SPLITTER : 0;
@@ -59,7 +64,7 @@
   function track(event: PointerEvent): void {
     if (!drag) return;
     const splitter = layout.splitters.find((entry) => entry.key === drag?.key);
-    const split = splitter && nodeAt(dock.root, splitter.path);
+    const split = splitter && nodeAt(root, splitter.path);
     if (!splitter || !split || split.kind !== "split") return;
 
     const row = splitter.axis === "row";
@@ -70,7 +75,7 @@
     const pointer = row ? event.clientX : event.clientY;
     const minimum = minimumFraction(split.axis, extent, split.children.length);
     panes.setSplitSizes(
-      dock.edge,
+      frame,
       splitter.path,
       resizeSiblings(split.sizes, splitter.index, (pointer - drag.pointer) / extent, minimum),
     );
@@ -84,7 +89,7 @@
   class="relative min-h-0 min-w-0 flex-1 overflow-hidden"
 >
   {#each layout.leaves as leaf (leaf.instanceId)}
-    {@const box = frame(leaf)}
+    {@const box = leafBox(leaf)}
     <div
       class="absolute flex"
       style:left={box.left}

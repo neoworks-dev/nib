@@ -42,6 +42,11 @@ type State =
       history: Disposer;
       /** What the dragged cards are hovering over, for the host to interpret. */
       overId: string | null;
+      /**
+       * Where the pointer was when the cards were carried out of a topic's sheet,
+       * until the drag has picked up again on the board behind it.
+       */
+      carriedFrom: Point | null;
     }
   | { kind: "rubber"; anchor: Point; corner: Point }
   | { kind: "resizing"; targetId: string; handle: ResizeHandle; world: Point; history: Disposer };
@@ -192,6 +197,7 @@ export class SelectTool implements CanvasTool {
         bounds: unionRects(boxes),
         history: engine.beginHistory(),
         overId: null,
+        carriedFrom: null,
       };
       const lifted = this.state.origins.map((origin) => origin.id);
       this.setRaised(lifted, true);
@@ -202,6 +208,7 @@ export class SelectTool implements CanvasTool {
     }
 
     if (this.state.kind === "dragging") {
+      if (this.carryAcross(event)) return;
       const deltaX = (event.screen.x - this.state.screen.x) / engine.camera.zoom;
       const deltaY = (event.screen.y - this.state.screen.y) / engine.camera.zoom;
       // The cards being dragged are under the pointer themselves, so the target is
@@ -310,6 +317,66 @@ export class SelectTool implements CanvasTool {
       case "idle":
         return;
     }
+  }
+
+  /**
+   * Takes a drag out through the top of a topic's sheet, and picks it up again on
+   * the board behind. True while the move belongs to that hand-over rather than
+   * to the drag itself.
+   *
+   * The board grows over the strip it was lowered by once the sheet is gone, so
+   * the canvas moves under the pointer. The drag waits for the pointer to be on
+   * the grown canvas, then moves the cards by how far the pointer is from where
+   * it carried them, in the new board's coordinates, and continues from there.
+   */
+  private carryAcross(event: CanvasPointerEvent): boolean {
+    const engine = this.engine;
+    const state = this.state;
+    if (!engine || state.kind !== "dragging") return false;
+
+    const ids = state.origins.map((origin) => origin.id);
+    if (state.carriedFrom === null) {
+      if (event.screen.y >= 0 || !engine.carryOut(ids)) return false;
+      this.band?.clear();
+      this.guides?.clear();
+      this.state = { ...state, carriedFrom: event.world };
+      return true;
+    }
+
+    if (event.screen.y < 0) return true;
+    const shiftX = event.world.x - state.carriedFrom.x;
+    const shiftY = event.world.y - state.carriedFrom.y;
+    const origins = this.currentOrigins(ids).map((origin) => ({
+      id: origin.id,
+      x: origin.x + shiftX,
+      y: origin.y + shiftY,
+    }));
+    for (const origin of origins) engine.updateObject(origin.id, { x: origin.x, y: origin.y });
+    const boxes = origins
+      .map((origin) => engine.objectBounds(origin.id))
+      .filter((bounds): bounds is Rect => bounds !== null);
+    this.state = {
+      ...state,
+      screen: event.screen,
+      origins,
+      bounds: unionRects(boxes),
+      carriedFrom: null,
+    };
+    this.setRaised(ids, true);
+    return true;
+  }
+
+  /** Where these cards are on the board now, for the ones it has. */
+  private currentOrigins(ids: readonly string[]): { id: string; x: number; y: number }[] {
+    const engine = this.engine;
+    if (!engine) return [];
+    const origins: { id: string; x: number; y: number }[] = [];
+    for (const id of ids) {
+      const object = engine.objects.find((entry) => entry.id === id);
+      if (typeof object?.x !== "number" || typeof object.y !== "number") continue;
+      origins.push({ id, x: object.x, y: object.y });
+    }
+    return origins;
   }
 
   /**

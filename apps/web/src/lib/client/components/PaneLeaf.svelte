@@ -8,16 +8,17 @@
   import { nearestEdge } from "../layout/docks";
   import { clearPaneDrag, paneDrag } from "../layout/pane-drag.svelte";
   import { dropEdge } from "../layout/tree";
-  import type { ReactivePaneRegistry } from "../registries/panes.svelte";
+  import { reactivePanes } from "../registries/panes.svelte";
 
   const { instanceId, session }: { instanceId: string; session: SessionView | null } = $props();
 
-  const panes = kernelContext().require("panes") as ReactivePaneRegistry;
+  const panes = reactivePanes(kernelContext().require("panes"));
 
   const instance = $derived(panes.instance(instanceId));
   const definition = $derived(instance ? panes.definition(instance.paneId) : undefined);
   const focused = $derived(panes.focusedInstanceId === instanceId);
   const quiet = $derived(definition?.chrome === "quiet");
+  const docked = $derived(panes.frameOf(instanceId)?.layer === "dock");
   const title = $derived.by(() => {
     if (!definition) return instance?.paneId ?? instanceId;
     if (definition.label) return definition.label(instance?.params);
@@ -88,7 +89,9 @@
 
     const under = leafUnder(event);
     const target = under?.dataset.paneLeaf;
-    if (under && target && target !== instanceId) {
+    const targetFrame = target ? panes.frameOf(target) : undefined;
+    const accepted = targetFrame !== undefined && panes.canDragInto(instanceId, targetFrame);
+    if (under && target && target !== instanceId && accepted) {
       const box = under.getBoundingClientRect();
       paneDrag.hint = {
         instanceId: target,
@@ -104,9 +107,10 @@
 
     // Over the board, or over nothing: the pane docks against the edge it is
     // nearest, because there is nowhere in this shell for it to float. Over its
-    // own pane it is not a drop at all, and nothing is armed.
+    // own pane it is not a drop at all, and nothing is armed. Only a docked pane
+    // docks: the drawer and the sheets are layers, not edges.
     paneDrag.hint = null;
-    paneDrag.edgeHint = target ? null : edgeAt(event);
+    paneDrag.edgeHint = target || !docked ? null : edgeAt(event);
   }
 
   function finish() {

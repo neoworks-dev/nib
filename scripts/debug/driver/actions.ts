@@ -47,6 +47,8 @@ export type Photographer = () => Promise<void>;
  * accumulate pointermove deltas, and one event from start to finish is a drag
  * they never see the middle of. With `hold`, the picture is taken at the end of
  * the move with the button still down — what a drag looks like while it lasts.
+ * With `via`, the pointer passes through that point first and rests there a
+ * moment, for a gesture whose middle changes the screen under it.
  */
 export async function drag(
   page: Page,
@@ -57,19 +59,36 @@ export async function drag(
   const from = await pointOf(page, refsPath, parseTarget(String(command.from)));
   const to = await pointOf(page, refsPath, parseTarget(String(command.to)));
   const steps = Number(command.steps ?? 24);
+  const points = [from];
+  if (typeof command.via === "string") {
+    points.push(await pointOf(page, refsPath, parseTarget(command.via)));
+  }
+  points.push(to);
 
   await page.mouse.move(from.x, from.y);
   await page.waitForTimeout(DRAG_SETTLE_MS);
   await page.mouse.down();
+  for (let leg = 1; leg < points.length; leg += 1) {
+    if (leg > 1) await page.waitForTimeout(DRAG_SETTLE_MS);
+    await moveInSteps(page, points[leg - 1] ?? from, points[leg] ?? to, steps);
+  }
+  if (command.hold === true) await photograph();
+  await page.mouse.up();
+  const route = points.map((point) => `${Math.round(point.x)},${Math.round(point.y)}`);
+  return { dragged: route.join(" → ") };
+}
+
+/** Moves the pointer from one point to another in even steps, the button as it is. */
+async function moveInSteps(
+  page: Page,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  steps: number,
+): Promise<void> {
   for (let step = 1; step <= steps; step += 1) {
     const ratio = step / steps;
     await page.mouse.move(from.x + (to.x - from.x) * ratio, from.y + (to.y - from.y) * ratio);
   }
-  if (command.hold === true) await photograph();
-  await page.mouse.up();
-  return {
-    dragged: `${Math.round(from.x)},${Math.round(from.y)} → ${Math.round(to.x)},${Math.round(to.y)}`,
-  };
 }
 
 /**
