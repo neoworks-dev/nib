@@ -6,13 +6,12 @@ tasks:
     cmd: bun run build
 
   build:runtime-deps:
-    desc: Copy the agent SDKs into apps/web/build/node_modules, dereferencing bun's symlinks
+    desc: Copy the shared harness into apps/web/build/node_modules, dereferencing bun's symlinks
     deps: [build:web]
     cmds:
       - rm -rf apps/web/build/node_modules
       - mkdir -p apps/web/build/node_modules
-      - cp -RL apps/web/node_modules/@anthropic-ai apps/web/build/node_modules/
-      - cp -RL apps/web/node_modules/@openai apps/web/build/node_modules/
+      - cp -RL apps/web/node_modules/@neoworks apps/web/build/node_modules/
 
   build:desktop:
     desc: Build the Electron main and preload bundles into apps/desktop/out
