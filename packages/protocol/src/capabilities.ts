@@ -10,8 +10,6 @@ export const harnessCapabilitiesSchema = z.object({
   models: z.boolean(),
   /** Reasoning-effort levels the harness accepts, coarsest first; absent means it has none. */
   effortLevels: z.array(z.string()).optional(),
-  /** The harness snapshots files per turn, so a turn's edits can be rewound. */
-  checkpoints: z.boolean().optional(),
 });
 
 export type HarnessCapabilities = z.infer<typeof harnessCapabilitiesSchema>;

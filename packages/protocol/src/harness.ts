@@ -6,12 +6,6 @@ import type { EmittedEvent, MessageAttachment, ModelInfo, PermissionBehavior } f
 /** What an adapter calls to push a normalized event; the host stamps id/seq/sessionId/ts. */
 export type EmitEvent = (event: EmittedEvent) => void;
 
-export interface RewindResult {
-  ok: boolean;
-  filesChanged: string[];
-  error?: string;
-}
-
 /**
  * An attachment the host has already resolved: the bytes exist at `path`, so an
  * adapter can hand the file to a harness that has no multimodal input at all.
@@ -31,8 +25,6 @@ export interface HarnessSession {
   setPermissionMode?(mode: string): Promise<void>;
   setModel?(model: string): Promise<void>;
   setEffort?(effort: string): Promise<void>;
-  /** Restores the working tree to the named checkpoint; the conversation is left alone. */
-  rewind?(checkpointId: string): Promise<RewindResult>;
   dispose(): Promise<void>;
 }
 
