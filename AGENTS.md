@@ -1,30 +1,50 @@
 ## Git
 
-Commit the worktree first if it's dirty, then write your changes. Short, to-the-point commit title; a body explaining the change when the title doesn't carry it; ask if you're unsure what to write. Always say the commit was made by you, not a human. One commit per issue, so each one stays easy to revert.
-
-For now everything happens on `main`, in the repo root, for rapid iteration: no feature branches, no worktrees, no PRs, no `next`. Commit straight to `main` and push. The branch-and-PR workflow this replaces is kept in `CLAUDE.md.bak`.
+Commit the worktree first if it's dirty, then write your changes. Short, to-the-point commit title; a body explaining the change when the title doesn't carry it; ask if you're unsure what to write. Always say the commit was made by you, not a human. On a feature branch, only commit what that branch is for.
 
 No trailers, ever: no `Co-Authored-By` on a commit, no "Generated with Claude Code" on a PR.
 
 ## Writing
 
-Commits, issues and pull requests carry only what matters. Say the thing, explain what a reader won't see for themselves, stop. No restating the diff, no summarising what you just said, no section that exists because the format seemed to want one.
+Commits and issues carry only what matters. Say the thing, explain what a reader won't see for themselves, stop. No restating the diff, no summarising what you just said, no section that exists because the format seemed to want one.
+
+Write issues and their comments the way you'd explain it to a colleague, in complete sentences.
+
+- Start with a 2–3 sentence summary: what happened, why, and the fix.
+- Use short headings, with short paragraphs of normal prose under them.
+- Never join ideas with arrows, slashes, colons or dashes. Write "first X, then Y" instead of "X → Y", and "A and B" instead of "A / B".
+- Use at most two code identifiers per sentence. Say what each one does the first time it appears.
+- Use bullets only for genuinely separate items, and make each bullet a full sentence.
+- Use tables only for numbers or timelines.
+- Use one date format everywhere: 2026-10-07 18:28.
+- Put error messages, paths and commands in code formatting, and long logs in a collapsed `<details>` block.
+- Put side findings in a short "Out of scope" section at the end.
+
+## How we work
+
+One agent at a time, with me giving feedback as it goes. Keep each step small enough for me to read in one sitting, and stop to show me rather than piling up work I then have to catch up on.
+
+`main` is what I've reviewed and what I run nib from. It stays checked out in the repo root: never switch branches there.
+
+Straight to `main` in the root, no branch: typos, one-liners, and anything that only touches how we work rather than the app — this file, `.claude/skills/`, lint and editor config.
+
+Everything else happens on a branch off `main`, in a worktree under `.worktrees/<branch>` (`git worktree add .worktrees/<branch> -b <branch> main`). Name it `<issue-number>-<slug>` when there is an issue (`12-tab-strip-overflow`), `<slug>` when there isn't. One branch is one thing; anything found along the way gets written down as an issue and stays off the branch, unless the branch can't finish without it.
+
+Before starting on anything, check whether it is already half-built: `git branch` and `git worktree list` for the feature, the issue's comments, and what is on the branch. Sessions end mid-feature, and a branch is where that work is — starting again writes it a second time and loses whatever the first attempt learned. If a branch for it exists, continue on it.
+
+No pull requests unless I ask for one. Review happens here, on the diff, before the merge.
 
 ## Issues
 
-Work lives in GitHub issues on `neoworks-dev/nib`, not in a file in the repo.
+Issues on `neoworks-dev/nib` carry goals across sessions. A session ends and its context goes with it; an issue is the only thing that carries a goal to the next one. So:
+
+- Work that finishes in this session, with me here, needs no issue.
+- Work that won't finish in one session gets one, however loosely defined it still is.
+- Something concrete found along the way, that isn't what we're doing now, gets one instead of being done.
+
+Write them as soon as the list exists, not once the work starts.
 
 Write to GitHub as the bot: issues, comments and labels go through `gh bot` (`gh bot issue comment 12 --body …`), so they show as `neoworks-bot[bot]`, not as me. Plain `gh` is for reading only. The bot as author already says a model wrote it, so no "written by Claude" line in the text. If `gh bot` fails, say so rather than falling back to plain `gh`. It lives in `~/Documents/neoworks/gh-bot`.
-
-Before starting on an issue, read its comments and `git log --grep '#<n>'` — sessions end mid-feature, and an earlier attempt may already be half in `main`.
-
-Anything more than a tiny change gets an issue (`gh bot issue create`) with the labels below. Anything found along the way gets its own issue rather than riding along in the current commit.
-
-No issue for typos, one-liners, and anything that only touches how we work rather than the app — this file, `.claude/skills/`, lint and editor config.
-
-No issue either when the work is still undefined — building out a surface we're feeling our way through, where the shape comes from what we find as we go. An issue describes a known outcome, and there isn't one yet; writing it up front would be a guess, and keeping it current would cost more than it tells anyone.
-
-The moment that exploration names something concrete, it gets an issue — and anything that won't finish in one session always does, however loosely defined it still is. A session ends and its context goes with it; an issue is the only thing that carries a goal across to the next one. Write them as soon as the list exists, not once the work starts.
 
 Labels are two axes. Type is GitHub's default `bug` or `enhancement`. Area is exactly one of:
 
@@ -43,21 +63,22 @@ Two areas is fine when an issue genuinely spans them; three means split it.
 
 ## Done means verified
 
-An issue is done when its fix has been shown to work, not when the code is written. Shown means one of:
+Work is done when it has been shown to work, not when the code is written. Shown means one of:
 
-- reproduced through `bun run debug` beforehand and shown fixed afterwards, with screenshots of both;
+- shown fixed through `bun run debug`, with a screenshot (and one from before, if you reproduced it);
 - a test under the workspace's `tests/` that fails without the fix and passes with it.
 
-`bun test` passes either way.
+`bun test` passes on the branch either way.
 
-As soon as one issue is done, before starting the next:
+Then hand it over and stop: what changed in a sentence or two, the evidence, and the branch. When it has an issue, the evidence also goes on the issue (`bun run debug evidence --issue <n> --body … --screenshot …`) — that comment is what I read, so it's written for someone who wasn't in the session.
 
-1. Commit it to `main` with `Refs #<n>` in the body, and push.
-2. Comment on the issue with `bun run debug evidence --issue <n> --body … --screenshot …`: what changed, in a sentence or two, plus the screenshots or the test's output.
+Reference the issue in commits with `Refs #<n>`, never `Closes`, `Fixes` or `Resolves`: those close it the moment the commit reaches `main`.
 
-Never close an issue yourself — I close it once I've checked the fix. That includes by keyword: `Closes`, `Fixes` or `Resolves` in a commit pushed to `main` closes the issue, so reference it with `Refs`. Linking an issue to a PR is fine; closing or merging that PR is mine too.
+## Merging
 
-I run nib from the repo root, so every commit to `main` lands in my running app. When one touches `apps/desktop/src/main` or `apps/desktop/src/preload`, tell me to restart.
+I review the branch's diff, and it merges into `main` when I say so — never before, and never without evidence. Merge in the root with `git merge --no-ff <branch>`, so the branch stays one unit in the history; if it conflicts, resolve it in the merge commit. Push `main`. Then remove the worktree and delete the branch, and close its issue with `gh bot issue close <n>`.
+
+Merges land in my running app; when one touches `apps/desktop/src/main` or `apps/desktop/src/preload`, tell me to restart.
 
 ## Validation
 
