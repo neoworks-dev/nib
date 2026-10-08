@@ -1,54 +1,43 @@
 import { describe, expect, test } from "bun:test";
-import { type AnyAgentEvent, parseAgentEvent } from "@nib-ui/protocol";
+import { loggedCapture } from "../../../packages/protocol/tests/acp-capture";
 import { buildTrace } from "../src/trace";
 
-const fixturePath = new URL(
-  "../../../packages/protocol/tests/fixtures/claude-session.jsonl",
-  import.meta.url,
-).pathname;
-
-async function fixtureEvents(): Promise<AnyAgentEvent[]> {
-  const text = await Bun.file(fixturePath).text();
-  return text
-    .split("\n")
-    .filter((line) => line.trim().length > 0)
-    .map((line) => parseAgentEvent(JSON.parse(line)));
-}
-
 describe("buildTrace", () => {
-  test("nests blocks under their message and folds deltas into them", async () => {
-    const trace = buildTrace(await fixtureEvents());
-    const assistant = trace.find((node) => node.kind === "message" && node.badge === "ASSISTANT");
+  test("nests the agent's messages and calls under their prompt", async () => {
+    const trace = buildTrace(await loggedCapture("claude", "run it"));
+    const prompt = trace.find((node) => node.kind === "message");
     const text = trace.find((node) => node.kind === "text");
 
-    expect(assistant?.depth).toBe(0);
-    expect(assistant?.turn).toBe(1);
+    expect(prompt?.badge).toBe("USER");
+    expect(prompt?.turn).toBe(1);
     expect(text?.depth).toBe(1);
-    expect(text?.detail).toBe("Listing files.");
-    expect(trace.some((node) => node.events.some((event) => event.type === "block.delta"))).toBe(
-      true,
-    );
+    expect(text?.detail).toBe("done");
+    expect(text?.turn).toBe(1);
   });
 
-  test("a tool call carries the result of its own id", async () => {
-    const trace = await fixtureEvents().then(buildTrace);
-    const tool = trace.filter((node) => node.kind === "tool");
+  test("a tool call is one row that its updates fill in", async () => {
+    const trace = await loggedCapture("claude", "run it").then(buildTrace);
+    const tools = trace.filter((node) => node.kind === "tool");
 
-    expect(tool).toHaveLength(1);
-    expect(tool[0]!.title).toBe("Bash");
-    expect(tool[0]!.detail).toContain("ls -la");
-    expect(tool[0]!.result).toContain("total 0");
-    expect(tool[0]!.status).toBe("ok");
+    expect(tools).toHaveLength(4);
+    expect(tools[0]!.title).toBe("Bash");
+    expect(tools[0]!.detail).toContain("echo hello");
+    expect(tools[0]!.status).toBe("ok");
+    expect(tools[0]!.events.length).toBeGreaterThan(3);
+    expect(tools[2]!.title).toBe("Read");
+    expect(tools[2]!.result).toContain("I like apple pie");
   });
 
-  test("numbers turns and steps, and resolves permissions", async () => {
-    const trace = await fixtureEvents().then(buildTrace);
+  test("numbers turns and steps, and leaves a permission waiting until it is answered", async () => {
+    const trace = await loggedCapture("pi", "run it").then(buildTrace);
     const permission = trace.find((node) => node.kind === "permission");
-    const steps = trace.filter((node) => node.depth === 1 && node.step > 0);
+    const steps = trace.filter((node) => node.depth === 1 && node.step > 0 && node.turn === 1);
 
-    expect(permission?.result).toBe("allow by user");
-    expect(permission?.status).toBe("ok");
-    expect(steps.map((node) => node.step)).toEqual([1, 2]);
+    expect(permission?.status).toBe("streaming");
+    expect(steps.map((node) => node.step)).toEqual([1, 2, 3, 4]);
+    expect(trace.filter((node) => node.kind === "message").map((node) => node.turn)).toEqual([
+      1, 2,
+    ]);
   });
 
   test("keeps an unknown event type as its own row", () => {

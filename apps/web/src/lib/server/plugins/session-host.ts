@@ -6,13 +6,7 @@ import type {
   SessionCommand,
   SessionView,
 } from "@nib-ui/protocol";
-import {
-  checkpointBefore,
-  createSessionView,
-  deriveTaskTitle,
-  reduceSession,
-  sessionDigest,
-} from "@nib-ui/protocol";
+import { createSessionView, deriveTaskTitle, reduceSession, sessionDigest } from "@nib-ui/protocol";
 import type {
   AgentControlProvider,
   CreateSessionOptions,
@@ -176,8 +170,6 @@ class SessionHostService implements SessionHost {
       case "session.setEffort":
         if (!session.setEffort) throw new Error("harness does not support reasoning effort");
         return session.setEffort(command.effort);
-      case "session.rewind":
-        return this.rewind(hosted, session, command.messageId);
       case "session.create":
         throw new Error("session.create is not a per-session command");
     }
@@ -210,34 +202,6 @@ class SessionHostService implements SessionHost {
       resolved.push({ ...attachment, path });
     }
     return resolved;
-  }
-
-  /**
-   * Only the working tree moves: the transcript keeps describing edits that are
-   * no longer on disk, so the outcome is logged where the turn can show it.
-   */
-  private async rewind(
-    hosted: HostedSession,
-    session: HarnessSession,
-    messageId: string,
-  ): Promise<void> {
-    const checkpointId = checkpointBefore(hosted.view, messageId);
-    if (!session.rewind) throw new Error("harness does not support checkpoints");
-    if (!checkpointId) throw new Error(`message "${messageId}" has no checkpoint to rewind to`);
-
-    const result = await session.rewind(checkpointId);
-    // A rewind that only deletes files reports no changed paths, so the count
-    // is mentioned only when the harness actually named some.
-    const changed = result.filesChanged.length;
-    this.emit(hosted, {
-      type: "log",
-      data: {
-        level: result.ok ? "info" : "warn",
-        message: result.ok
-          ? `restored the working tree to the state before this turn${changed > 0 ? ` (${changed} file(s))` : ""}`
-          : `rewind failed: ${result.error ?? "unknown error"}`,
-      },
-    });
   }
 
   eventsSince(sessionId: string, fromSeq: number): AnyAgentEvent[] {

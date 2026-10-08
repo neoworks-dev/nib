@@ -1,31 +1,15 @@
 <script lang="ts">
   import { FileIcon } from "@nib-ui/file-icons";
-  import { checkpointBefore } from "@nib-ui/protocol";
   import type { SlotProps } from "@nib-ui/ui-contracts";
-  import ArrowUUpLeftIcon from "phosphor-svelte/lib/ArrowUUpLeftIcon";
   import { summarizeChanges } from "./changed-files";
   import { diffState } from "./state.svelte";
 
-  const { session, message }: SlotProps = $props();
+  const { session, turn }: SlotProps = $props();
 
-  let undoing = $state(false);
-
-  const summary = $derived(message ? summarizeChanges(message) : null);
-  // Undo restores files, not the transcript, so it needs the turn's own restore point.
-  const checkpoint = $derived(session && message ? checkpointBefore(session, message.id) : null);
+  const summary = $derived(turn ? summarizeChanges(turn) : null);
 
   function open(path: string) {
     if (session) void diffState.viewer?.open(session.sessionId, path);
-  }
-
-  async function undo() {
-    if (!session || !message || undoing) return;
-    undoing = true;
-    try {
-      await diffState.sessions?.rewind(session.sessionId, message.id);
-    } finally {
-      undoing = false;
-    }
   }
 </script>
 
@@ -38,18 +22,6 @@
       </span>
       <span class="ml-auto font-mono text-green">+{summary.added}</span>
       <span class="font-mono text-red">-{summary.removed}</span>
-      {#if checkpoint}
-        <button
-          type="button"
-          class="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-dim hover:bg-hover hover:text-default disabled:opacity-50"
-          disabled={undoing}
-          title="Restore these files to how they were before this turn"
-          onclick={undo}
-        >
-          {undoing ? "Undoing…" : "Undo"}
-          <ArrowUUpLeftIcon size={12} />
-        </button>
-      {/if}
     </header>
     <ul>
       {#each summary.files as file (file.path)}

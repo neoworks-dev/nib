@@ -1,34 +1,33 @@
 import { describe, expect, test } from "bun:test";
 import { exchangeId, toExchanges } from "../src/exchanges";
-import { message, session, text, toolResult, toolUse } from "./fixtures";
+import { sessionOf, textItem, toolItem, userItem } from "./fixtures";
 
 describe("toExchanges", () => {
   test("opens an exchange per prompt and folds the answer into it", () => {
     const exchanges = toExchanges(
-      session("s1", [
-        message("m1", "user", [text("b1", "add a button")]),
-        message("m2", "assistant", [text("b2", "done")]),
-        message("m3", "user", [text("b3", "now style it")]),
-        message("m4", "assistant", [text("b4", "styled")]),
+      sessionOf("s1", [
+        userItem("u1", "add a button"),
+        textItem("a1", "done"),
+        userItem("u2", "now style it"),
+        textItem("a2", "styled"),
       ]),
     );
 
     expect(exchanges.map((exchange) => exchange.id)).toEqual([
-      exchangeId("s1", "m1"),
-      exchangeId("s1", "m3"),
+      exchangeId("s1", "u1"),
+      exchangeId("s1", "u2"),
     ]);
     expect(exchanges[0]!.prompt).toBe("add a button");
     expect(exchanges[0]!.reply).toBe("done");
     expect(exchanges[1]!.reply).toBe("styled");
   });
 
-  test("a user turn carrying only tool results stays inside the open exchange", () => {
+  test("tool calls and prose in one turn stay inside the open exchange", () => {
     const exchanges = toExchanges(
-      session("s1", [
-        message("m1", "user", [text("b1", "look around")]),
-        message("m2", "assistant", [toolUse("t1", "Read", { file_path: "/a/b.ts" })]),
-        message("m3", "user", [toolResult("t1")]),
-        message("m4", "assistant", [text("b2", "read it")]),
+      sessionOf("s1", [
+        userItem("u1", "look around"),
+        toolItem("t1", "Read", { file_path: "/a/b.ts" }),
+        textItem("a1", "read it"),
       ]),
     );
 
@@ -37,30 +36,23 @@ describe("toExchanges", () => {
     expect(exchanges[0]!.steps.map((step) => step.verb)).toEqual(["Read"]);
   });
 
-  test("a step carries the message and block it came from, so a canvas row can jump to it", () => {
+  test("a step carries the turn and tool call it came from, so a canvas row can jump to it", () => {
     const exchanges = toExchanges(
-      session("s1", [
-        message("m1", "user", [text("b1", "look around")]),
-        message("m2", "assistant", [toolUse("t1", "Read", { file_path: "/a/b.ts" })]),
-      ]),
+      sessionOf("s1", [userItem("u1", "look around"), toolItem("t1", "Read", { path: "/a/b.ts" })]),
     );
 
-    expect(exchanges[0]!.steps[0]).toMatchObject({ messageId: "m2", blockId: "t1" });
+    expect(exchanges[0]!.steps[0]).toMatchObject({ turnId: "t1", toolCallId: "t1" });
   });
 
   test("edits become changes and everything else becomes a step", () => {
+    const edit = (id: string, oldText: string, newText: string) =>
+      toolItem(id, "Edit", {}, { content: [{ type: "diff", path: "/a/b.ts", oldText, newText }] });
     const exchanges = toExchanges(
-      session("s1", [
-        message("m1", "user", [text("b1", "fix it")]),
-        message("m2", "assistant", [
-          toolUse("t1", "Grep", { pattern: "todo" }),
-          toolUse("t2", "Edit", {
-            file_path: "/a/b.ts",
-            old_string: "one\ntwo",
-            new_string: "one\nthree",
-          }),
-          toolUse("t3", "Edit", { file_path: "/a/b.ts", old_string: "four", new_string: "five" }),
-        ]),
+      sessionOf("s1", [
+        userItem("u1", "fix it"),
+        toolItem("t1", "Grep", { pattern: "todo" }),
+        edit("t2", "one\ntwo", "one\nthree"),
+        edit("t3", "four", "five"),
       ]),
     );
 
@@ -70,42 +62,33 @@ describe("toExchanges", () => {
 
   test("a running session marks only its newest exchange", () => {
     const exchanges = toExchanges(
-      session(
-        "s1",
-        [
-          message("m1", "user", [text("b1", "one")]),
-          message("m2", "assistant", [text("b2", "done")]),
-          message("m3", "user", [text("b3", "two")]),
-        ],
-        { status: "working" },
-      ),
+      sessionOf("s1", [userItem("u1", "one"), textItem("a1", "done"), userItem("u2", "two")], {
+        status: "working",
+      }),
     );
 
     expect(exchanges.map((exchange) => exchange.working)).toEqual([false, true]);
   });
 
   test("a transcript opening with harness output still gets an exchange", () => {
-    const exchanges = toExchanges(
-      session("s1", [message("m1", "assistant", [text("b1", "resumed")])]),
-    );
+    const exchanges = toExchanges(sessionOf("s1", [textItem("a1", "resumed")]));
 
     expect(exchanges).toHaveLength(1);
     expect(exchanges[0]!.prompt).toBe("");
     expect(exchanges[0]!.reply).toBe("resumed");
   });
 
-  test("messageIds collects every message folded into the exchange, prompt through reply", () => {
+  test("messageIds collects the prompt and every turn folded into the exchange", () => {
     const exchanges = toExchanges(
-      session("s1", [
-        message("m1", "user", [text("b1", "add a button")]),
-        message("m2", "assistant", [toolUse("t1", "Read", { file_path: "/a/b.ts" })]),
-        message("m3", "user", [toolResult("t1")]),
-        message("m4", "assistant", [text("b2", "done")]),
-        message("m5", "user", [text("b3", "now style it")]),
+      sessionOf("s1", [
+        userItem("u1", "add a button"),
+        toolItem("t1", "Read", { file_path: "/a/b.ts" }),
+        textItem("a1", "done"),
+        userItem("u2", "now style it"),
       ]),
     );
 
-    expect(exchanges[0]!.messageIds).toEqual(["m1", "m2", "m4"]);
-    expect(exchanges[1]!.messageIds).toEqual(["m5"]);
+    expect(exchanges[0]!.messageIds).toEqual(["u1", "t1"]);
+    expect(exchanges[1]!.messageIds).toEqual(["u2"]);
   });
 });

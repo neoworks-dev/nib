@@ -38,7 +38,10 @@ export class HarnessEventLog {
   private changedEvents(sessionId: string): EmittedEvent[] {
     this.lastUsage = "";
     return [
-      { type: "session.cleared", data: { reason: "the harness started a new conversation", nativeSessionId: sessionId } },
+      {
+        type: "session.cleared",
+        data: { reason: "the harness started a new conversation", nativeSessionId: sessionId },
+      },
     ];
   }
 
@@ -77,7 +80,10 @@ export class HarnessEventLog {
   }
 
   /** The session's running totals, when they differ from the last report. */
-  private usageEvents(total: Usage, context: { used: number; size: number } | undefined): EmittedEvent[] {
+  private usageEvents(
+    total: Usage,
+    context: { used: number; size: number } | undefined,
+  ): EmittedEvent[] {
     if (Object.keys(total).length === 0) return [];
     const serialized = JSON.stringify([total, context]);
     if (serialized === this.lastUsage) return [];
@@ -85,7 +91,6 @@ export class HarnessEventLog {
     return [{ type: "usage", data: { total, context } }];
   }
 }
-
 
 /** What to tell the person about a turn that stopped short of finishing. */
 function stopNotice(stopReason: string): string | null {

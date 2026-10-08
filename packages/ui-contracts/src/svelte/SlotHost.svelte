@@ -1,17 +1,17 @@
 <script lang="ts">
-  import type { MessageView, SessionView } from "@nib-ui/protocol";
+  import type { AgentTurn, SessionView } from "@nib-ui/protocol";
   import type { SlotName } from "../index";
   import { kernelContext } from "./context";
 
   const {
     slot,
     session,
-    message,
+    turn,
     class: className = "",
   }: {
     slot: SlotName;
     session: SessionView | null;
-    message?: MessageView;
+    turn?: AgentTurn;
     class?: string;
   } = $props();
 
@@ -23,7 +23,7 @@
   <div class={className}>
     {#each entries as entry, index (index)}
       {@const Contribution = entry.component}
-      <Contribution {session} {message} />
+      <Contribution {session} {turn} />
     {/each}
   </div>
 {/if}

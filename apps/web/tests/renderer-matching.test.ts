@@ -1,22 +1,36 @@
 import { describe, expect, test } from "bun:test";
-import type { BlockView } from "@nib-ui/protocol";
+import type { MessageItem, ToolItem } from "@nib-ui/protocol";
 import type {
+  MessageRendererRegistration,
   PermissionRendererProps,
   PermissionRendererRegistration,
   RendererProps,
-  RendererRegistration,
+  ToolRendererRegistration,
 } from "@nib-ui/ui-contracts";
 import type { Component } from "svelte";
-import { matchBlockRenderer, matchPermissionRenderer } from "../src/lib/client/renderer-matching";
+import {
+  matchMessageRenderer,
+  matchPermissionRenderer,
+  matchToolRenderer,
+} from "../src/lib/client/renderer-matching";
 
-const generic = {} as Component<RendererProps>;
-const bash = {} as Component<RendererProps>;
+const anyTool = {} as Component<RendererProps<ToolItem>>;
+const executeKind = {} as Component<RendererProps<ToolItem>>;
+const bashByName = {} as Component<RendererProps<ToolItem>>;
+const text = {} as Component<RendererProps<MessageItem>>;
+const thought = {} as Component<RendererProps<MessageItem>>;
 const askQuestion = {} as Component<PermissionRendererProps>;
 const askQuestionOverride = {} as Component<PermissionRendererProps>;
 
-const blockRegistrations: RendererRegistration[] = [
-  { kind: "tool_use", component: generic },
-  { kind: "tool_use", toolName: "Bash", priority: 10, component: bash },
+const toolRegistrations: ToolRendererRegistration[] = [
+  { type: "tool", component: anyTool },
+  { type: "tool", toolKind: "execute", priority: 10, component: executeKind },
+  { type: "tool", toolName: "Bash", toolKind: "execute", component: bashByName },
+];
+
+const messageRegistrations: MessageRendererRegistration[] = [
+  { type: "text", component: text },
+  { type: "thought", component: thought },
 ];
 
 const permissionRegistrations: PermissionRendererRegistration[] = [
@@ -24,27 +38,67 @@ const permissionRegistrations: PermissionRendererRegistration[] = [
   { toolName: "AskUserQuestion", priority: 5, component: askQuestionOverride },
 ];
 
-function block(kind: string, toolName: string | null): BlockView {
+function tool(name: string, kind: string): ToolItem {
   return {
-    id: "b1",
-    messageId: "m1",
+    type: "tool",
+    id: "t1",
+    toolCallId: "t1",
+    seq: 1,
+    name,
+    title: "",
     kind,
-    toolName,
-    toolUseId: null,
-    text: "",
-    inputJson: "",
-    content: null,
-    completed: false,
+    status: "pending",
+    rawInput: undefined,
+    rawOutput: undefined,
+    content: [],
+    locations: [],
+    terminal: null,
+    parentToolCallId: null,
   };
 }
 
-describe("matchBlockRenderer", () => {
-  test("prefers an exact tool match over the kind default", () => {
-    expect(matchBlockRenderer(blockRegistrations, block("tool_use", "Bash"))?.component).toBe(bash);
-    expect(matchBlockRenderer(blockRegistrations, block("tool_use", "Read"))?.component).toBe(
-      generic,
+function message(type: MessageItem["type"]): MessageItem {
+  return {
+    type,
+    id: "m1",
+    seq: 1,
+    messageId: null,
+    text: "",
+    streaming: false,
+    parentToolCallId: null,
+  };
+}
+
+describe("matchToolRenderer", () => {
+  test("prefers a renderer naming the tool over one naming its kind", () => {
+    expect(matchToolRenderer(toolRegistrations, tool("Bash", "execute"))?.component).toBe(
+      bashByName,
     );
-    expect(matchBlockRenderer(blockRegistrations, block("text", null))).toBeUndefined();
+  });
+
+  test("matches every harness's shell tool by kind, whatever it calls the tool", () => {
+    expect(matchToolRenderer(toolRegistrations, tool("bash", "execute"))?.component).toBe(
+      executeKind,
+    );
+    expect(matchToolRenderer(toolRegistrations, tool("shell", "execute"))?.component).toBe(
+      executeKind,
+    );
+  });
+
+  test("leaves a kind nobody claims to the renderer that claims none", () => {
+    expect(matchToolRenderer(toolRegistrations, tool("Read", "read"))?.component).toBe(anyTool);
+  });
+
+  test("a registration naming a tool does not match another tool of the same kind", () => {
+    const onlyBash = toolRegistrations.filter((entry) => entry.toolName === "Bash");
+    expect(matchToolRenderer(onlyBash, tool("bash", "execute"))).toBeUndefined();
+  });
+});
+
+describe("matchMessageRenderer", () => {
+  test("picks the renderer for the message's type", () => {
+    expect(matchMessageRenderer(messageRegistrations, message("text"))?.component).toBe(text);
+    expect(matchMessageRenderer(messageRegistrations, message("thought"))?.component).toBe(thought);
   });
 });
 

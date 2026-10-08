@@ -1,14 +1,14 @@
 <script lang="ts">
   import { Button, Card } from "@neoworks-dev/ui";
-  import { permissionPreviewBlock } from "@nib-ui/protocol";
+  import { permissionPreviewTool } from "@nib-ui/protocol";
   import type { PermissionRendererProps } from "@nib-ui/ui-contracts";
   import ShieldWarningIcon from "phosphor-svelte/lib/ShieldWarningIcon";
-  import BlockHost from "./BlockHost.svelte";
+  import ItemHost from "./ItemHost.svelte";
 
   const { request, session, respond }: PermissionRendererProps = $props();
 
   // The pending call is previewed by the same renderers that draw it once it runs.
-  const preview = $derived(permissionPreviewBlock(request));
+  const preview = $derived(permissionPreviewTool(session, request));
 </script>
 
 <Card surface="raised" padding="md" class="border border-amber">
@@ -19,7 +19,7 @@
       <span class="font-mono text-xs text-default">{request.toolName}</span>
     </header>
 
-    <BlockHost block={preview} {session} />
+    <ItemHost item={preview} {session} />
 
     <footer class="flex gap-2">
       <Button onclick={() => respond("allow")}>Allow</Button>

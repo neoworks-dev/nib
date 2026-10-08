@@ -7,7 +7,12 @@ import type { Effort, HarnessId, PermissionPolicy } from "@neoworks/harness";
 import type { HarnessCapabilities, ModelInfo } from "@nib-ui/protocol";
 
 /** The permission policies every harness takes, in the order the composer offers them. */
-export const permissionPolicies: PermissionPolicy[] = ["ask", "auto-edit", "read-only", "full-access"];
+export const permissionPolicies: PermissionPolicy[] = [
+  "ask",
+  "auto-edit",
+  "read-only",
+  "full-access",
+];
 
 export const defaultPermissionPolicy: PermissionPolicy = "ask";
 
@@ -71,8 +76,6 @@ export function capabilitiesOf(spec: SharedHarnessSpec): HarnessCapabilities {
     slashCommands: true,
     models: true,
     effortLevels: spec.efforts,
-    // ACP has no way to restore the working tree to before a turn.
-    checkpoints: false,
   };
 }
 

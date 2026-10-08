@@ -1,5 +1,5 @@
 import type { SessionView } from "@nib-ui/protocol";
-import { HANDOVER_BUDGET, handoverSeed } from "./transcript";
+import { HANDOVER_BUDGET, handoverSeed, replayTurns } from "./transcript";
 
 /** What switching harness would do, worked out before anything is created. */
 export interface HarnessSwitchPlan {
@@ -37,7 +37,7 @@ export function planHarnessSwitch(
     toHarnessId,
     cwd,
     seed,
-    turns: session.messages.filter((message) => message.blocks.length > 0).length,
+    turns: replayTurns(session).length,
     characters: seed.length,
   };
 }

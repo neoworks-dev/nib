@@ -128,16 +128,19 @@ function upgradeUsage(input: RawEvent): RawEvent {
   });
 }
 
+/** A string field, or empty when the log has none. */
+function textOf(value: unknown): string {
+  if (typeof value === "string") return value;
+  return "";
+}
+
 function numberOrUndefined(value: unknown): number | undefined {
   if (typeof value === "number") return value;
   return undefined;
 }
 
 /** A tool call begins as soon as its block does; text and thinking begin with their first delta. */
-function upgradeBlockStarted(
-  input: RawEvent,
-  blocks: Map<string, SeenBlock>,
-): RawEvent | null {
+function upgradeBlockStarted(input: RawEvent, blocks: Map<string, SeenBlock>): RawEvent | null {
   const data = input.data;
   const blockId = String(data.blockId);
   const kind = String(data.kind);
@@ -145,7 +148,7 @@ function upgradeBlockStarted(
   blocks.set(blockId, { kind, messageId: String(data.messageId), streamed: false, toolUseId });
   if (kind !== "tool_use" || toolUseId === null) return null;
 
-  const toolName = typeof data.toolName === "string" ? data.toolName : "";
+  const toolName = textOf(data.toolName);
   return updateEvent(input, {
     sessionUpdate: "tool_call",
     toolCallId: toolUseId,
@@ -204,7 +207,7 @@ function upgradeBlockCompleted(
   if (content.kind === "tool_result") return upgradeToolResult(input, content);
   if (content.kind !== "text" && content.kind !== "thinking") return null;
 
-  const text = typeof content.text === "string" ? content.text : "";
+  const text = textOf(content.text);
   const message = messages.get(block.messageId);
   if (message?.role === "user" && content.kind === "text") {
     return rewrite(input, "user.message", { text, attachments: message.attachments });
@@ -219,7 +222,7 @@ function upgradeBlockCompleted(
 function upgradeToolUse(input: RawEvent, content: Record<string, unknown>): RawEvent | null {
   const toolUseId = typeof content.toolUseId === "string" ? content.toolUseId : null;
   if (toolUseId === null) return null;
-  const toolName = typeof content.toolName === "string" ? content.toolName : "";
+  const toolName = textOf(content.toolName);
   const rawInput = content.input;
   const update: Record<string, unknown> = {
     sessionUpdate: "tool_call_update",
@@ -253,7 +256,9 @@ export function toolKindOfName(toolName: string): string {
   if (["edit", "multiedit", "write", "notebookedit", "apply_patch", "file_change"].includes(name)) {
     return "edit";
   }
-  if (["bash", "bashoutput", "killshell", "shell", "exec_command", "command_execution"].includes(name)) {
+  if (
+    ["bash", "bashoutput", "killshell", "shell", "exec_command", "command_execution"].includes(name)
+  ) {
     return "execute";
   }
   if (["grep", "glob", "ls", "find"].includes(name)) return "search";

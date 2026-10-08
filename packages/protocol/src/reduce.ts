@@ -186,7 +186,10 @@ function slashCommandsOf(update: UpdateOf<"available_commands_update">) {
 }
 
 /** The harness titled the conversation. */
-function applySessionInfo(state: SessionView, update: UpdateOf<"session_info_update">): SessionView {
+function applySessionInfo(
+  state: SessionView,
+  update: UpdateOf<"session_info_update">,
+): SessionView {
   if (typeof update.title !== "string" || update.title.trim().length === 0) return state;
   return { ...state, title: update.title };
 }

@@ -2,7 +2,6 @@ import type { Plugin } from "@nib-ui/kernel";
 import TargetIcon from "phosphor-svelte/lib/TargetIcon";
 import ProgressPanel from "./ProgressPanel.svelte";
 import TodoBlock from "./TodoBlock.svelte";
-import TodoResultBlock from "./TodoResultBlock.svelte";
 
 const paneId = "progress";
 const toolName = "TodoWrite";
@@ -23,15 +22,7 @@ export const taskProgressPlugin: Plugin = {
       }),
     );
     ctx.effect(() =>
-      renderers.register({ kind: "tool_use", toolName, priority: 10, component: TodoBlock }),
-    );
-    ctx.effect(() =>
-      renderers.register({
-        kind: "tool_result",
-        toolName,
-        priority: 10,
-        component: TodoResultBlock,
-      }),
+      renderers.register({ type: "tool", toolName, priority: 10, component: TodoBlock }),
     );
     ctx.effect(() =>
       ctx.require("commands").register({
@@ -44,7 +35,7 @@ export const taskProgressPlugin: Plugin = {
 };
 
 export {
-  isTodoBlock,
+  isTodoCall,
   parseTodos,
   readTodos,
   type TodoItem,

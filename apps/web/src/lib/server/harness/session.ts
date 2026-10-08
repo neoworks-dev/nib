@@ -1,9 +1,9 @@
 // One nib session on a shared-harness session.
 //
-// The harness session does the work; this keeps nib's side of it: turning its
-// events into nib's through the mapper, holding permission requests and
-// questions until the person answers them, and turning nib's commands into the
-// harness's.
+// The harness session does the work; this keeps nib's side of it: logging what
+// it reports (ACP, as reported), recording the prompts it never echoes, holding
+// permission requests and questions until the person answers them, and turning
+// nib's commands into the harness's.
 
 import { readFile } from "node:fs/promises";
 import type {
@@ -24,6 +24,7 @@ import {
   composeAttachmentPrompt,
   type CreateSessionOptions,
   type EmitEvent,
+  HarnessEventLog,
   type HarnessSession,
   type PermissionBehavior,
   type SessionAttachment,
@@ -35,7 +36,6 @@ import {
   permissionPolicyOf,
   type SharedHarnessSpec,
 } from "./harnesses";
-import { AcpEventMapper, toolNameOf } from "./mapping";
 import { nibSystemPrompt } from "./system-prompt";
 
 /** The media types every harness takes as an image; other files are referenced by path. */
@@ -60,14 +60,29 @@ export async function startSharedSession(
   emit: EmitEvent,
   start: SessionStart,
 ): Promise<HarnessSession> {
-  const mapper = new AcpEventMapper(emit, spec.id, opts.cwd, capabilitiesOf(spec));
   const pending = new PendingAnswers(emit);
   const init = sessionInit(spec, opts, pending);
   const session = await openSession(harness, init, start);
-  session.onEvent((event) => mapper.handle(event));
-  mapper.attached(session.id);
+  const log = new HarnessEventLog();
+  session.onEvent((event) => {
+    for (const logged of log.events(event)) {
+      emit(logged);
+    }
+    if (event.type === "session_changed") {
+      emit(sessionCreated(spec, opts.cwd, event.sessionId));
+    }
+  });
+  emit(sessionCreated(spec, opts.cwd, session.id));
   void publishModels(harness, spec, emit);
-  return wrapSession(session, spec, mapper, pending, emit);
+  return wrapSession(session, spec, pending, emit);
+}
+
+/** The session exists in the harness under `nativeSessionId`, which is what resumes it. */
+function sessionCreated(spec: SharedHarnessSpec, cwd: string, nativeSessionId: string) {
+  return {
+    type: "session.created" as const,
+    data: { harnessId: spec.id, cwd, nativeSessionId, capabilities: capabilitiesOf(spec) },
+  };
 }
 
 /** What the harness is told about the session: its prompt, tools, model and answerers. */
@@ -108,7 +123,11 @@ export function sessionInit(
   return init;
 }
 
-function openSession(harness: Harness, init: SessionInit, start: SessionStart): Promise<SharedSession> {
+function openSession(
+  harness: Harness,
+  init: SessionInit,
+  start: SessionStart,
+): Promise<SharedSession> {
   if (start.kind === "resume") {
     return harness.resumeSession(start.nativeSessionId, init);
   }
@@ -119,7 +138,11 @@ function openSession(harness: Harness, init: SessionInit, start: SessionStart): 
 }
 
 /** The models the signed-in account can run, for the composer once the session is up. */
-async function publishModels(harness: Harness, spec: SharedHarnessSpec, emit: EmitEvent): Promise<void> {
+async function publishModels(
+  harness: Harness,
+  spec: SharedHarnessSpec,
+  emit: EmitEvent,
+): Promise<void> {
   try {
     const listed = await harness.listModels(spec.runsOn);
     const models = listed.map((model) => ({
@@ -136,10 +159,10 @@ async function publishModels(harness: Harness, spec: SharedHarnessSpec, emit: Em
   }
 }
 
+/** Wraps a shared-harness session as the `HarnessSession` the session host drives. */
 function wrapSession(
   session: SharedSession,
   spec: SharedHarnessSpec,
-  mapper: AcpEventMapper,
   pending: PendingAnswers,
   emit: EmitEvent,
 ): HarnessSession {
@@ -147,9 +170,16 @@ function wrapSession(
     async send(text, attachments = []) {
       const { images, referenced } = await readImages(attachments, emit);
       const prompt = composeAttachmentPrompt(text, referenced);
-      mapper.userMessage(prompt, attachmentMetadata(attachments));
+      // The harness does not echo prompts back, so the log is their only record.
+      emit({
+        type: "user.message",
+        data: { text: prompt, attachments: attachmentMetadata(attachments) },
+      });
+      emit({ type: "session.status", data: { status: "working" } });
       const run = session.prompt(promptContent(prompt, images));
-      run.then(undefined, (error: unknown) => mapper.failTurn(error));
+      run.then(undefined, (error: unknown) => {
+        emit({ type: "session.status", data: { status: "error", detail: describeError(error) } });
+      });
     },
 
     async interrupt() {
@@ -202,11 +232,7 @@ export class PendingAnswers {
 
   /** Holds a tool call until the person allows or denies it. */
   async permission(request: RequestPermissionRequest): Promise<PermissionReply> {
-    const answer = await this.ask(
-      request.toolCall.toolCallId,
-      toolNameOf(request.toolCall),
-      request.toolCall.rawInput,
-    );
+    const answer = await this.ask(request.toolCall.toolCallId, request);
     if (answer.behavior === "deny") {
       return "reject";
     }
@@ -215,9 +241,7 @@ export class PendingAnswers {
 
   /** Holds the agent's questions until the person answers or skips them. */
   async question(request: QuestionRequest): Promise<QuestionReply> {
-    const answer = await this.ask(`question:${request.toolCallId}`, askUserQuestionToolName, {
-      questions: request.questions,
-    });
+    const answer = await this.ask(`question:${request.toolCallId}`, questionAsRequest(request));
     if (answer.behavior === "deny") {
       return "cancel";
     }
@@ -250,16 +274,38 @@ export class PendingAnswers {
     }
   }
 
-  private ask(requestId: string, toolName: string, input: unknown): Promise<PermissionAnswer> {
+  private ask(requestId: string, request: RequestPermissionRequest): Promise<PermissionAnswer> {
     // The resolver is in place before the request goes out, so an answer that
     // comes back at once finds it.
     const answered = new Promise<PermissionAnswer>((resolve) => {
       this.waiting.set(requestId, resolve);
     });
     this.emit({ type: "session.status", data: { status: "awaiting-permission" } });
-    this.emit({ type: "permission.requested", data: { requestId, toolName, input } });
+    this.emit({ type: "permission.requested", data: { requestId, request } });
     return answered;
   }
+}
+
+/**
+ * A question as the permission request the chat pane answers inline: the
+ * AskUserQuestion tool call, with the questions as its input.
+ */
+function questionAsRequest(request: QuestionRequest): RequestPermissionRequest {
+  return {
+    sessionId: "",
+    toolCall: {
+      toolCallId: request.toolCallId,
+      name: askUserQuestionToolName,
+      title: "Question",
+      kind: "other",
+      status: "pending",
+      rawInput: { questions: request.questions },
+    },
+    options: [
+      { optionId: "answer", name: "Answer", kind: "allow_once" },
+      { optionId: "skip", name: "Skip", kind: "reject_once" },
+    ],
+  };
 }
 
 /** The prompt as ACP content: the images, then the text, which may not be empty. */

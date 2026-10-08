@@ -1,48 +1,47 @@
 import { describe, expect, test } from "bun:test";
-import { message, session, toolResult, toolUse } from "../../../plugins/canvas/tests/fixtures";
+import { sessionOf, toolItem } from "../../../packages/protocol/tests/builders";
 import { latestReadPath, routeRead } from "../src/lib/client/read-routing";
 
 const following = { lastRouted: null, following: true };
 
 describe("what the agent read", () => {
   test("the newest read is the one that counts", () => {
-    const view = session("s1", [
-      message("a0", "assistant", [
-        toolUse("t0", "Read", { file_path: "src/first.ts" }),
-        toolUse("t1", "Read", { file_path: "src/second.ts" }),
-      ]),
+    const view = sessionOf("s1", [
+      toolItem("t0", "Read", { file_path: "src/first.ts" }),
+      toolItem("t1", "Read", { file_path: "src/second.ts" }),
     ]);
 
     expect(latestReadPath(view)).toBe("src/second.ts");
   });
 
+  test("a harness that calls its read tool something else is read just the same", () => {
+    const view = sessionOf("s1", [toolItem("t0", "read", { path: "src/pi.ts" })]);
+
+    expect(latestReadPath(view)).toBe("src/pi.ts");
+  });
+
   test("a tool the shared vocabulary does not call a read is not one", () => {
-    const view = session("s1", [
-      message("a0", "assistant", [toolUse("t0", "Bash", { command: "cat src/a.ts" })]),
-    ]);
+    const view = sessionOf("s1", [toolItem("t0", "Bash", { command: "cat src/a.ts" })]);
 
     expect(latestReadPath(view)).toBeNull();
   });
 
   test("a tool nothing knows about at all is not one either", () => {
-    const view = session("s1", [
-      message("a0", "assistant", [toolUse("t0", "mcp__acme__peek", { file_path: "a.ts" })]),
-    ]);
+    const view = sessionOf("s1", [toolItem("t0", "mcp__acme__peek", { file_path: "a.ts" })]);
 
     expect(latestReadPath(view)).toBeNull();
   });
 
   test("the result coming back does not make the call newer than it is", () => {
-    const view = session("s1", [
-      message("a0", "assistant", [toolUse("t0", "Read", { file_path: "src/a.ts" })]),
-      message("u0", "user", [toolResult("t0")]),
+    const view = sessionOf("s1", [
+      toolItem("t0", "Read", { file_path: "src/a.ts" }, { rawOutput: "ok", status: "completed" }),
     ]);
 
     expect(latestReadPath(view)).toBe("src/a.ts");
   });
 
   test("a session that has run no tools has read nothing", () => {
-    expect(latestReadPath(session("s1", []))).toBeNull();
+    expect(latestReadPath(sessionOf("s1", []))).toBeNull();
   });
 });
 

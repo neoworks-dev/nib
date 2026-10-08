@@ -11,7 +11,7 @@
   import MagnifyingGlassIcon from "phosphor-svelte/lib/MagnifyingGlassIcon";
   import XIcon from "phosphor-svelte/lib/XIcon";
   import DetailPane from "./DetailPane.svelte";
-  import { categorizeEvent, type EventCategory, eventCategories, indexBlockKinds } from "./filter";
+  import { categorizeEvent, type EventCategory, eventCategories } from "./filter";
   import TimelineStrip from "./TimelineStrip.svelte";
   import { buildTimeline, markIndex, type TimeRange, withinRange } from "./timeline";
   import TraceRow from "./TraceRow.svelte";
@@ -41,7 +41,6 @@
     if (!session) return [];
     return sessions.events(session.sessionId);
   });
-  const blockKinds = $derived(indexBlockKinds(events));
   const trace = $derived(buildTrace(events));
   const marks = $derived(markIndex(buildTimeline(trace)));
   const visible = $derived(trace.filter(matches));
@@ -52,7 +51,7 @@
 
     if (
       categories.length > 0 &&
-      !node.events.some((event) => categories.includes(categorizeEvent(event, blockKinds)))
+      !node.events.some((event) => categories.includes(categorizeEvent(event)))
     )
       return false;
 

@@ -40,7 +40,6 @@ export type {
   HarnessAdapter,
   HarnessRegistry,
   HarnessSession,
-  RewindResult,
   SessionAttachment,
   SessionSummary,
 } from "@nib-ui/protocol";

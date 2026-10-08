@@ -1,38 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import {
-  type BlockView,
   createSessionView,
-  type MessageView,
+  type PlanEntry,
   type SessionView,
+  type ToolItem,
 } from "@nib-ui/protocol";
+import { sessionOf, toolItem } from "../../../packages/protocol/tests/builders";
 import { parseTodos, readTodos, todoProgress } from "../src/todos";
 
-function todoBlock(id: string, todos: unknown): BlockView {
-  return {
-    id,
-    messageId: "m1",
-    kind: "tool_use",
-    toolName: "TodoWrite",
-    toolUseId: id,
-    text: "",
-    inputJson: "",
-    content: { kind: "tool_use", toolName: "TodoWrite", toolUseId: id, input: { todos } },
-    completed: true,
-  };
+function todoBlock(id: string, todos: unknown): ToolItem {
+  return toolItem(id, "TodoWrite", { todos });
 }
 
-function session(messages: { id: string; blocks: BlockView[] }[]): SessionView {
-  const view = createSessionView("s1");
-  return {
-    ...view,
-    messages: messages.map(({ id, blocks }): MessageView => ({
-      id,
-      role: "assistant",
-      blocks,
-      completed: true,
-      stopReason: null,
-    })),
-  };
+function session(calls: ToolItem[]): SessionView {
+  return sessionOf("s1", calls);
 }
 
 const firstPlan = [
@@ -75,18 +56,27 @@ describe("parseTodos", () => {
 describe("readTodos", () => {
   test("the newest plan replaces the older one instead of merging", () => {
     const view = session([
-      { id: "m1", blocks: [todoBlock("b1", firstPlan)] },
-      { id: "m2", blocks: [todoBlock("b2", [{ content: "Only this", status: "completed" }])] },
+      todoBlock("b1", firstPlan),
+      todoBlock("b2", [{ content: "Only this", status: "completed" }]),
     ]);
     expect(readTodos(view).map((item) => item.content)).toEqual(["Only this"]);
   });
 
   test("skips a call whose input has not finished streaming", () => {
-    const view = session([
-      { id: "m1", blocks: [todoBlock("b1", firstPlan)] },
-      { id: "m2", blocks: [todoBlock("b2", [])] },
-    ]);
+    const view = session([todoBlock("b1", firstPlan), todoBlock("b2", [])]);
     expect(readTodos(view)).toHaveLength(3);
+  });
+
+  test("reads the ACP plan the harness reported, over any TodoWrite call", () => {
+    const plan: PlanEntry[] = [
+      { content: "Write the fold", status: "completed", priority: "high" },
+      { content: "Move the renderers", status: "in_progress", priority: "medium" },
+    ];
+    const view = { ...session([todoBlock("b1", firstPlan)]), plan };
+    expect(readTodos(view)).toEqual([
+      { content: "Write the fold", activeForm: "Write the fold", status: "completed" },
+      { content: "Move the renderers", activeForm: "Move the renderers", status: "in_progress" },
+    ]);
   });
 
   test("is empty when no plan was ever written", () => {

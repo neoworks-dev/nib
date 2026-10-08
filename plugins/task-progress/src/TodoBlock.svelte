@@ -1,11 +1,12 @@
 <script lang="ts">
+  import type { ToolItem } from "@nib-ui/protocol";
   import type { RendererProps } from "@nib-ui/ui-contracts";
   import ListChecksIcon from "phosphor-svelte/lib/ListChecksIcon";
   import { parseTodos, todoProgress } from "./todos";
 
-  const { block }: RendererProps = $props();
+  const { item }: RendererProps<ToolItem> = $props();
 
-  const progress = $derived(todoProgress(parseTodos(block)));
+  const progress = $derived(todoProgress(parseTodos(item)));
   const label = $derived(
     progress.total === 0
       ? "Writing the plan…"

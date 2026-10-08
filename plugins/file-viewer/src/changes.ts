@@ -1,14 +1,9 @@
-import {
-  blockToolInput,
-  findToolResultBlock,
-  type MessageView,
-  type SessionView,
-} from "@nib-ui/protocol";
+import { type AgentTurn, type SessionView, toolDiffs, transcriptTurns } from "@nib-ui/protocol";
 
 export type Verdict = "accepted" | "rejected";
 
 export interface FileEdit {
-  /** The tool call's block id, which is what a verdict is keyed by. */
+  /** The tool call's id, which is what a verdict is keyed by. */
   id: string;
   path: string;
   before: string;
@@ -41,39 +36,32 @@ export interface ReviewOutcome {
   lines: [number, number] | null;
 }
 
-const editTools = new Set(["Edit", "Write", "NotebookEdit"]);
-
 /**
  * The edits from the most recent turn that touched this file. Earlier turns are
  * history the user has already lived with — only the newest change is up for review.
  */
 export function latestEdits(session: SessionView, path: string): FileEdit[] {
-  for (let index = session.messages.length - 1; index >= 0; index -= 1) {
-    const edits = editsIn(session, session.messages[index]!, path);
+  const turns = transcriptTurns(session);
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index]!;
+    if (turn.type !== "agent") continue;
+    const edits = editsIn(turn, path);
     if (edits.length > 0) return edits;
   }
   return [];
 }
 
-function editsIn(session: SessionView, message: MessageView, path: string): FileEdit[] {
+/** The settled changes a turn made to one file, each as the diff its tool call carried. */
+function editsIn(turn: AgentTurn, path: string): FileEdit[] {
   const edits: FileEdit[] = [];
-  for (const block of message.blocks) {
-    if (block.kind !== "tool_use" || !block.toolName || !editTools.has(block.toolName)) continue;
-    const input = (blockToolInput(block) ?? {}) as Record<string, unknown>;
-    if (input.file_path !== path) continue;
-    // An edit that is still streaming or still running has nothing settled to review.
-    if (!block.completed || !findToolResultBlock(session, block.toolUseId)) continue;
-
-    edits.push({
-      id: block.id,
-      path,
-      before: typeof input.old_string === "string" ? input.old_string : "",
-      after:
-        typeof input.new_string === "string"
-          ? input.new_string
-          : typeof input.content === "string"
-            ? input.content
-            : "",
+  for (const item of turn.items) {
+    // An edit that is still running has nothing settled to review.
+    if (item.type !== "tool" || item.status !== "completed") continue;
+    const diffs = toolDiffs(item).filter((diff) => diff.path === path);
+    diffs.forEach((diff, position) => {
+      let id = item.id;
+      if (position > 0) id = `${item.id}:${position}`;
+      edits.push({ id, path, before: diff.oldText ?? "", after: diff.newText });
     });
   }
   return edits;

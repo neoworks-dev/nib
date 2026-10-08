@@ -102,7 +102,10 @@ describe("converting a log's lines", () => {
     const events = readLog(
       lines(
         ["message.started", { messageId: "m", role: "assistant" }],
-        ["block.started", { messageId: "m", blockId: "b", kind: "tool_use", toolName: "Edit", toolUseId: "t" }],
+        [
+          "block.started",
+          { messageId: "m", blockId: "b", kind: "tool_use", toolName: "Edit", toolUseId: "t" },
+        ],
         [
           "block.completed",
           {
@@ -127,7 +130,10 @@ describe("converting a log's lines", () => {
     const events = readLog(
       lines(
         ["message.started", { messageId: "m", role: "assistant" }],
-        ["block.started", { messageId: "m", blockId: "b", kind: "tool_use", toolName: "Write", toolUseId: "t" }],
+        [
+          "block.started",
+          { messageId: "m", blockId: "b", kind: "tool_use", toolName: "Write", toolUseId: "t" },
+        ],
         [
           "block.completed",
           {
@@ -150,12 +156,18 @@ describe("converting a log's lines", () => {
     const events = readLog(
       lines(
         ["message.started", { messageId: "m", role: "assistant" }],
-        ["block.started", { messageId: "m", blockId: "b", kind: "tool_use", toolName: "Bash", toolUseId: "t" }],
+        [
+          "block.started",
+          { messageId: "m", blockId: "b", kind: "tool_use", toolName: "Bash", toolUseId: "t" },
+        ],
         ["message.started", { messageId: "u", role: "user" }],
         ["block.started", { messageId: "u", blockId: "r", kind: "tool_result", toolUseId: "t" }],
         [
           "block.completed",
-          { blockId: "r", content: { kind: "tool_result", toolUseId: "t", output: "boom", isError: true } },
+          {
+            blockId: "r",
+            content: { kind: "tool_result", toolUseId: "t", output: "boom", isError: true },
+          },
         ],
       ),
     );

@@ -1,27 +1,29 @@
 import { describe, expect, test } from "bun:test";
+import {
+  sessionOf,
+  textItem,
+  thoughtItem,
+  toolItem,
+  userItem,
+} from "../../../packages/protocol/tests/builders";
 import { DROPPED_MARKER, handoverSeed, transcriptText } from "../src/transcript";
-import { message, session, text, toolResult, toolUse } from "./fixtures";
 
 describe("transcriptText", () => {
   test("a conversation that has not started yet replays as nothing", () => {
-    expect(transcriptText(session("s1", []))).toBe("");
+    expect(transcriptText(sessionOf("s1", []))).toBe("");
   });
 
   test("a message with nothing in it is not a turn", () => {
-    expect(
-      transcriptText(
-        session("s1", [message("m1", "user", []), message("m2", "assistant", [text("b1", "  ")])]),
-      ),
-    ).toBe("");
+    expect(transcriptText(sessionOf("s1", [userItem("u1", ""), textItem("a1", "  ")]))).toBe("");
   });
 
   test("every turn is written out, oldest first, named by who said it", () => {
     const replay = transcriptText(
-      session("s1", [
-        message("m1", "user", [text("b1", "add a button")]),
-        message("m2", "assistant", [text("b2", "done")]),
-        message("m3", "user", [text("b3", "now style it")]),
-        message("m4", "assistant", [text("b4", "styled")]),
+      sessionOf("s1", [
+        userItem("u1", "add a button"),
+        textItem("a1", "done"),
+        userItem("u2", "now style it"),
+        textItem("a2", "styled"),
       ]),
     );
 
@@ -32,14 +34,12 @@ describe("transcriptText", () => {
 
   test("a tool call becomes the phrase the turn card shows; its output stays behind", () => {
     const replay = transcriptText(
-      session("s1", [
-        message("m1", "user", [text("b1", "look around")]),
-        message("m2", "assistant", [
-          text("b2", "checking"),
-          toolUse("t1", "Bash", { command: "git status" }),
-          toolUse("t2", "Read", { file_path: "/repo/src/index.ts" }),
-        ]),
-        message("m3", "user", [toolResult("t1", "nothing to commit")]),
+      sessionOf("s1", [
+        userItem("u1", "look around"),
+        textItem("a1", "checking"),
+        thoughtItem("th1", "hmm, which files"),
+        toolItem("t1", "Bash", { command: "git status" }, { rawOutput: "nothing to commit" }),
+        toolItem("t2", "read", { path: "/repo/src/index.ts" }),
       ]),
     );
 
@@ -48,19 +48,31 @@ describe("transcriptText", () => {
     );
   });
 
+  test("a subagent's work is not the conversation's", () => {
+    const replay = transcriptText(
+      sessionOf("s1", [
+        userItem("u1", "delegate"),
+        toolItem("task", "Task", { description: "dig" }),
+        toolItem("inner", "Read", { file_path: "/a.ts" }, { parentToolCallId: "task" }),
+      ]),
+    );
+
+    expect(replay).toBe("User: delegate\n\nAssistant: [Delegated dig]");
+  });
+
   test("the newest turn goes in whatever it costs, even alone over budget", () => {
     const long = "x".repeat(500);
-    const replay = transcriptText(session("s1", [message("m1", "user", [text("b1", long)])]), 10);
+    const replay = transcriptText(sessionOf("s1", [userItem("u1", long)]), 10);
 
     expect(replay).toBe(`User: ${long}`);
   });
 
   test("past the budget the oldest turns drop off and say so", () => {
     const replay = transcriptText(
-      session("s1", [
-        message("m1", "user", [text("b1", "the first thing")]),
-        message("m2", "assistant", [text("b2", "the second thing")]),
-        message("m3", "user", [text("b3", "the third thing")]),
+      sessionOf("s1", [
+        userItem("u1", "the first thing"),
+        textItem("a1", "the second thing"),
+        userItem("u2", "the third thing"),
       ]),
       30,
     );
@@ -73,10 +85,7 @@ describe("transcriptText", () => {
 describe("handoverSeed", () => {
   test("the transcript is framed as work already done, between markers", () => {
     const seed = handoverSeed(
-      session("s1", [
-        message("m1", "user", [text("b1", "add a button")]),
-        message("m2", "assistant", [text("b2", "done")]),
-      ]),
+      sessionOf("s1", [userItem("u1", "add a button"), textItem("a1", "done")]),
     );
 
     expect(seed).toContain("ran on another agent");
@@ -87,7 +96,7 @@ describe("handoverSeed", () => {
   });
 
   test("an empty conversation still seeds a prompt, without empty markers", () => {
-    const seed = handoverSeed(session("s1", []));
+    const seed = handoverSeed(sessionOf("s1", []));
 
     expect(seed).not.toContain("--- transcript begins ---");
     expect(seed).toContain("has not said anything yet");

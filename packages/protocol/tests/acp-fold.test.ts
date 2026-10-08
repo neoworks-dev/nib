@@ -30,7 +30,16 @@ describe("a Claude Code stream", async () => {
   const view = project("claude", events);
 
   test("keeps the order the harness reported things in", () => {
-    expect(describe_(view.items)).toEqual(["user", "tool", "tool", "tool", "tool", "text", "user", "text"]);
+    expect(describe_(view.items)).toEqual([
+      "user",
+      "tool",
+      "tool",
+      "tool",
+      "tool",
+      "text",
+      "user",
+      "text",
+    ]);
   });
 
   test("fills a tool call's input in over its updates", () => {
@@ -78,10 +87,12 @@ describe("a Claude Code stream", async () => {
   });
 
   test("starts a message for every message id the harness names", () => {
-    expect(messages(view).map((message) => [message.text, message.messageId?.slice(0, 4)])).toEqual([
-      ["done", "msg_"],
-      ["again", "msg_"],
-    ]);
+    expect(messages(view).map((message) => [message.text, message.messageId?.slice(0, 4)])).toEqual(
+      [
+        ["done", "msg_"],
+        ["again", "msg_"],
+      ],
+    );
     expect(messages(view).every((message) => !message.streaming)).toBe(true);
   });
 
@@ -141,7 +152,12 @@ describe("a pi stream", async () => {
     const [bash] = tools(view);
     expect(bash!.name).toBe("bash");
     expect(bash!.kind).toBe("execute");
-    expect(bash!.terminal).toEqual({ output: "hello\n", exitCode: 0, signal: null, finished: true });
+    expect(bash!.terminal).toEqual({
+      output: "hello\n",
+      exitCode: 0,
+      signal: null,
+      finished: true,
+    });
     expect(bash!.status).toBe("completed");
   });
 

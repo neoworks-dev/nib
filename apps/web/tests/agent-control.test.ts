@@ -56,7 +56,7 @@ async function mount(): Promise<{
   const child = host.add("child", { parentSessionId: "root", title: "Child", model: "opus" });
   host.views.set("child", {
     ...child,
-    messages: [message("user", "find the bug"), message("assistant", "it is in the reducer")],
+    items: [message("user", "find the bug"), message("assistant", "it is in the reducer")],
   });
 
   const ctx = createContext();
@@ -201,9 +201,7 @@ describe("shared harness sessions", () => {
   test("every harness gets the nib server and is told to use it", () => {
     for (const harnessId of ["claude-code", "codex", "pi"]) {
       const init = initFor(harnessId, { cwd: "/repo", agentControl: link });
-      expect(init.mcpServers).toEqual([
-        { type: "http", name: "nib", url: link.url, headers: [] },
-      ]);
+      expect(init.mcpServers).toEqual([{ type: "http", name: "nib", url: link.url, headers: [] }]);
       const prompt = readPrompt(init);
       expect(prompt).toContain("/repo/.nib");
       expect(prompt).toContain(agentControlInstructions);

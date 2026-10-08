@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { BlockView } from "@nib-ui/protocol";
+import type { ToolItem } from "@nib-ui/protocol";
+import { toolItem } from "../../protocol/tests/builders";
 import {
   describeCall,
   describeStep,
@@ -8,18 +9,8 @@ import {
   toolDisplayName,
 } from "../src/tool-summary";
 
-function toolUse(toolName: string, input: unknown): BlockView {
-  return {
-    id: `${toolName}-${JSON.stringify(input)}`,
-    messageId: "m1",
-    kind: "tool_use",
-    toolName,
-    toolUseId: "tu-1",
-    text: "",
-    inputJson: "",
-    content: { kind: "tool_use", toolName, toolUseId: "tu-1", input },
-    completed: true,
-  };
+function toolUse(toolName: string, input: unknown, overrides: Partial<ToolItem> = {}): ToolItem {
+  return toolItem(`${toolName}-1`, toolName, input, overrides);
 }
 
 describe("describeStep", () => {
@@ -59,36 +50,51 @@ describe("describeStep", () => {
   });
 });
 
-function streamingCall(toolName: string, inputJson: string): BlockView {
-  return {
-    id: `${toolName}-streaming`,
-    messageId: "m1",
-    kind: "tool_use",
-    toolName,
-    toolUseId: "tu-2",
-    text: "",
-    inputJson,
-    content: null,
-    completed: false,
-  };
-}
-
 describe("describeCall", () => {
-  test("reads the command out of half-arrived input", () => {
-    expect(describeCall(streamingCall("Bash", '{"command": "git status --por')).detail).toBe(
-      "git status --por",
+  test("reads the command from the call's input", () => {
+    expect(describeCall(toolUse("Bash", { command: "git status --porcelain" })).detail).toBe(
+      "git status --porcelain",
     );
-    expect(describeCall(streamingCall("Bash", '{"command": "echo \\"hi\\" && ls')).detail).toBe(
-      'echo "hi" && ls',
-    );
-    expect(describeCall(streamingCall("Bash", '{"comm')).detail).toBe("");
   });
 
-  test("survives a command clipped mid-escape", () => {
-    expect(describeCall(streamingCall("Bash", '{"command": "echo one\\')).detail).toBe("echo one");
-    expect(describeCall(streamingCall("Bash", '{"command": "echo one\\u00')).detail).toBe(
-      "echo one",
-    );
+  test("a command whose input has not arrived reads as the title the harness gave it", () => {
+    expect(describeCall(toolUse("Bash", {}, { title: "echo hello" })).detail).toBe("echo hello");
+  });
+
+  test("tells every harness's tools apart by ACP kind, whatever they are called", () => {
+    expect(describeCall(toolUse("bash", { command: "ls" }))).toMatchObject({
+      label: "Terminal",
+      verb: "Ran",
+      detail: "ls",
+    });
+    expect(describeCall(toolUse("read", { path: "src/a.ts" }))).toMatchObject({
+      label: "Explore",
+      verb: "Read",
+      detail: "a.ts",
+    });
+    expect(describeCall(toolUse("edit", { path: "src/a.ts" }))).toMatchObject({
+      label: "Edit",
+      verb: "Updated",
+      detail: "a.ts",
+    });
+    expect(
+      describeCall(
+        toolUse(
+          "apply_patch",
+          {},
+          {
+            kind: "edit",
+            content: [{ type: "diff", path: "/r/b.ts", oldText: null, newText: "x" }],
+          },
+        ),
+      ),
+    ).toMatchObject({ label: "Edit", detail: "b.ts" });
+  });
+
+  test("takes the file of an edit from its diff or its location when the input names none", () => {
+    expect(
+      describeCall(toolUse("X", {}, { kind: "read", locations: [{ path: "/r/c.ts" }] })).subject,
+    ).toBe("/r/c.ts");
   });
 
   test("names the run a call belongs to", () => {

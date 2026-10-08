@@ -21,7 +21,11 @@ function update(value: unknown): EmittedEvent {
 }
 
 function chunk(text: string, extra: Record<string, unknown> = {}): EmittedEvent {
-  return update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text }, ...extra });
+  return update({
+    sessionUpdate: "agent_message_chunk",
+    content: { type: "text", text },
+    ...extra,
+  });
 }
 
 function view(events: EmittedEvent[]) {
@@ -89,14 +93,25 @@ describe("messages", () => {
 describe("tool calls", () => {
   test("a report for a call the log never announced still makes the call", () => {
     const result = view([
-      update({ sessionUpdate: "tool_call_update", toolCallId: "t", status: "completed", rawOutput: "ok" }),
+      update({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "t",
+        status: "completed",
+        rawOutput: "ok",
+      }),
     ]);
     expect(result.items[0]).toMatchObject({ type: "tool", toolCallId: "t", status: "completed" });
   });
 
   test("a later report keeps the fields it leaves out", () => {
     const result = view([
-      update({ sessionUpdate: "tool_call", toolCallId: "t", title: "Read a", kind: "read", rawInput: { path: "a" } }),
+      update({
+        sessionUpdate: "tool_call",
+        toolCallId: "t",
+        title: "Read a",
+        kind: "read",
+        rawInput: { path: "a" },
+      }),
       update({ sessionUpdate: "tool_call_update", toolCallId: "t", status: "in_progress" }),
     ]);
     expect(result.items[0]).toMatchObject({
@@ -128,7 +143,13 @@ describe("tool calls", () => {
     const meta = { neoworks: { parentToolCallId: "task" } };
     const result = view([
       update({ sessionUpdate: "tool_call", toolCallId: "task", kind: "think", name: "Task" }),
-      update({ sessionUpdate: "tool_call", toolCallId: "inner", kind: "read", name: "Read", _meta: meta }),
+      update({
+        sessionUpdate: "tool_call",
+        toolCallId: "inner",
+        kind: "read",
+        name: "Read",
+        _meta: meta,
+      }),
       chunk("inner words", { _meta: meta }),
       chunk("outer words"),
     ]);
@@ -136,15 +157,24 @@ describe("tool calls", () => {
     const turns = transcriptTurns(result);
     expect(turns).toHaveLength(1);
     const turn = turns[0]!;
-    expect(turn.type === "agent" && turn.items.map((item) => item.id)).toEqual(["task", result.items[3]!.id]);
+    expect(turn.type === "agent" && turn.items.map((item) => item.id)).toEqual([
+      "task",
+      result.items[3]!.id,
+    ]);
   });
 });
 
 describe("the plan and the session's own fields", () => {
   test("the latest plan replaces the one before", () => {
     const result = view([
-      update({ sessionUpdate: "plan", entries: [{ content: "a", status: "pending", priority: "high" }] }),
-      update({ sessionUpdate: "plan", entries: [{ content: "b", status: "completed", priority: "low" }] }),
+      update({
+        sessionUpdate: "plan",
+        entries: [{ content: "a", status: "pending", priority: "high" }],
+      }),
+      update({
+        sessionUpdate: "plan",
+        entries: [{ content: "b", status: "completed", priority: "low" }],
+      }),
     ]);
     expect(result.plan.map((entry) => entry.content)).toEqual(["b"]);
   });
@@ -189,7 +219,10 @@ describe("permissions", () => {
 
     const resolved = view([
       requested,
-      { type: "permission.resolved", data: { requestId: "r1", behavior: "deny", resolvedBy: "user" } },
+      {
+        type: "permission.resolved",
+        data: { requestId: "r1", behavior: "deny", resolvedBy: "user" },
+      },
     ]);
     expect(resolved.pendingPermissions).toEqual([]);
     expect(resolved.resolvedPermissions).toEqual([
@@ -198,9 +231,15 @@ describe("permissions", () => {
   });
 
   test("previews a call the transcript does not hold yet from the request", () => {
-    const result = view([{ type: "permission.requested", data: { requestId: "r1", request: editRequest } }]);
+    const result = view([
+      { type: "permission.requested", data: { requestId: "r1", request: editRequest } },
+    ]);
     const preview = permissionPreviewTool(result, result.pendingPermissions[0]!);
-    expect(preview).toMatchObject({ type: "tool", kind: "edit", rawInput: { file_path: "/a.txt" } });
+    expect(preview).toMatchObject({
+      type: "tool",
+      kind: "edit",
+      rawInput: { file_path: "/a.txt" },
+    });
     expect(preview.content).toHaveLength(1);
   });
 
@@ -237,7 +276,9 @@ describe("tolerance", () => {
   test("a known event type with malformed data fails to parse rather than corrupting state", () => {
     const envelope = { id: "e", sessionId: "s1", seq: 1, ts: 1 };
     expect(safeParseAgentEvent({ ...envelope, type: "update", data: { update: 3 } })).toBeNull();
-    expect(safeParseAgentEvent({ ...envelope, type: "user.message", data: { text: 3 } })).toBeNull();
+    expect(
+      safeParseAgentEvent({ ...envelope, type: "user.message", data: { text: 3 } }),
+    ).toBeNull();
     expect(
       safeParseAgentEvent({ ...envelope, type: "permission.requested", data: { requestId: "r" } }),
     ).toBeNull();
@@ -272,10 +313,7 @@ describe("the digest", () => {
 
   test("clips a long message", () => {
     const digest = sessionDigest(
-      view([
-        { type: "user.message", data: { text: "go" } },
-        chunk("x".repeat(1000)),
-      ]),
+      view([{ type: "user.message", data: { text: "go" } }, chunk("x".repeat(1000))]),
     );
     expect(digest.recent[0]!.text.length).toBeLessThan(400);
     expect(digest.reply!.length).toBe(1000);
@@ -285,7 +323,9 @@ describe("the digest", () => {
 describe("commands", () => {
   test("valid commands parse and unknown ones are rejected", () => {
     expect(sessionCommandSchema.safeParse({ type: "session.interrupt" }).success).toBe(true);
-    expect(sessionCommandSchema.safeParse({ type: "session.rewind", messageId: "m" }).success).toBe(false);
+    expect(sessionCommandSchema.safeParse({ type: "session.rewind", messageId: "m" }).success).toBe(
+      false,
+    );
     expect(sessionCommandSchema.safeParse({ type: "session.send" }).success).toBe(false);
   });
 });

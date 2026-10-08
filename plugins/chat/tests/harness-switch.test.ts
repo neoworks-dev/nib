@@ -1,16 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { describeHarnessSwitch, planHarnessSwitch } from "../src/harness-switch";
-import { message, session, text } from "./fixtures";
+import { sessionOf, textItem, userItem } from "../../../packages/protocol/tests/builders";
 
 const conversation = () =>
-  session(
-    "s1",
-    [
-      message("m1", "user", [text("b1", "add a button")]),
-      message("m2", "assistant", [text("b2", "done")]),
-    ],
-    { harnessId: "claude-code", cwd: "/repo" },
-  );
+  sessionOf("s1", [userItem("u1", "add a button"), textItem("a1", "done")], {
+    harnessId: "claude-code",
+    cwd: "/repo",
+  });
 
 describe("planHarnessSwitch", () => {
   test("the plan is a new session in the same directory, seeded with the transcript", () => {
@@ -34,13 +30,13 @@ describe("planHarnessSwitch", () => {
 
   test("a session with no working directory has nowhere to be recreated", () => {
     expect(
-      planHarnessSwitch(session("s1", [], { harnessId: "claude-code", cwd: null }), "codex"),
+      planHarnessSwitch(sessionOf("s1", [], { harnessId: "claude-code", cwd: null }), "codex"),
     ).toBeNull();
   });
 
   test("a conversation with nothing in it still switches, on an empty-handed seed", () => {
     const plan = planHarnessSwitch(
-      session("s1", [], { harnessId: "claude-code", cwd: "/repo" }),
+      sessionOf("s1", [], { harnessId: "claude-code", cwd: "/repo" }),
       "codex",
     );
 
@@ -75,7 +71,7 @@ describe("describeHarnessSwitch", () => {
 
   test("one turn is not counted as turns", () => {
     const plan = planHarnessSwitch(
-      session("s1", [message("m1", "user", [text("b1", "hello")])], {
+      sessionOf("s1", [userItem("u1", "hello")], {
         harnessId: "claude-code",
         cwd: "/repo",
       }),

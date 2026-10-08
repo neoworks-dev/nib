@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { blockToolInput, blockToolOutput, findToolResultBlock } from "@nib-ui/protocol";
-  import type { SpawnAgentInput } from "@nib-ui/protocol";
+  import { toolInput, toolOutputText, type SpawnAgentInput, type ToolItem } from "@nib-ui/protocol";
   import {
     type RendererProps,
     showAgentSession,
@@ -11,13 +10,13 @@
   import BlockShell from "./BlockShell.svelte";
   import { parseSpawnResult } from "./spawn-result";
 
-  const { block, session }: RendererProps = $props();
+  const { item, session }: RendererProps<ToolItem> = $props();
 
   const context = kernelContext();
   const sessions = context.require("sessions");
   const panes = context.require("panes");
 
-  const input = $derived(blockToolInput<Partial<SpawnAgentInput>>(block));
+  const input: Partial<SpawnAgentInput> | undefined = $derived(toolInput(item));
   const HarnessIcon = $derived(harnessIcon(input?.harness ?? ""));
   const harnessName = $derived.by(() => {
     const descriptor = sessions.harnesses.find((entry) => entry.id === input?.harness);
@@ -28,8 +27,9 @@
 
   /** Null until the harness answers: the agent does not exist before then. */
   const spawned = $derived.by(() => {
-    const result = findToolResultBlock(session, block.toolUseId);
-    return parseSpawnResult(blockToolOutput(result));
+    const fromRaw = parseSpawnResult(item.rawOutput);
+    if (fromRaw) return fromRaw;
+    return parseSpawnResult(toolOutputText(item));
   });
   // What the agent is called and where it has got to are its own to say, so they
   // are read off the live session rather than off what the spawn answered with.

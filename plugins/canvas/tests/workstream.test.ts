@@ -9,7 +9,7 @@ import {
   type WorkstreamObject,
   workstreamView,
 } from "../src/workstream";
-import { chat, message, session, text, toolUse } from "./fixtures";
+import { chat, sessionOf, toolItem, userItem } from "./fixtures";
 
 function card(overrides: Partial<WorkstreamObject> = {}): WorkstreamObject {
   return { kind: "workstream", id: "w1", goal: "", x: 0, y: 0, ...overrides };
@@ -225,12 +225,10 @@ describe("workstreamView", () => {
   });
 
   test("steps are summarised across every turn, edits excluded", () => {
-    const live = session("s", [
-      message("u0", "user", [text("t0", "go")]),
-      message("a0", "assistant", [
-        toolUse("b0", "Read", { file_path: "/a.ts" }),
-        toolUse("b1", "Read", { file_path: "/b.ts" }),
-      ]),
+    const live = sessionOf("s", [
+      userItem("u0", "go"),
+      toolItem("b0", "Read", { file_path: "/a.ts" }),
+      toolItem("b1", "Read", { file_path: "/b.ts" }),
     ]);
     const view = workstreamView(card({ sessionId: "s" }), live);
 

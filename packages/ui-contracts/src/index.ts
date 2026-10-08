@@ -1,17 +1,18 @@
 import type { Disposer } from "@nib-ui/kernel";
 import type {
+  AgentTurn,
   AnyAgentEvent,
-  BlockKind,
-  BlockView,
   HarnessDescriptor,
   MessageAttachment,
-  MessageView,
+  MessageItem,
   ModelInfo,
   PermissionBehavior,
   PermissionRequestView,
   SessionCommand,
   SessionDigest,
   SessionView,
+  ToolItem,
+  TranscriptItem,
 } from "@nib-ui/protocol";
 import type { Component } from "svelte";
 import type { TrashEntry, VaultDoc } from "@nib-ui/vault";
@@ -247,8 +248,6 @@ export interface SessionsService {
   setModel(model: string): Promise<void>;
   setEffort(effort: string): Promise<void>;
   setLabel(label: string): Promise<void>;
-  /** Restores the working tree to the checkpoint before `messageId`; the transcript stays. */
-  rewind(sessionId: string, messageId: string): Promise<void>;
   /** Session ids visited in this window, so the shell can step back and forward. */
   readonly canGoBack: boolean;
   readonly canGoForward: boolean;
@@ -260,19 +259,38 @@ export interface SessionsService {
   close(sessionId: string): Promise<void>;
 }
 
-export interface RendererProps {
-  block: BlockView;
+/** What a transcript renderer is handed: the item it draws, and the session it is in. */
+export interface RendererProps<Item extends TranscriptItem = TranscriptItem> {
+  item: Item;
   session: SessionView;
   /** The turn already names this call: render the body, not another header row. */
   detail?: boolean;
 }
 
-export interface RendererRegistration {
-  kind: BlockKind;
+/** Draws what the agent said or thought; one per `type`, the latest registered wins on equal priority. */
+export interface MessageRendererRegistration {
+  type: "text" | "thought";
+  priority?: number;
+  component: Component<RendererProps<MessageItem>>;
+}
+
+/**
+ * Draws a tool call. A call is matched by its `name` and by ACP's `toolKind`
+ * (`edit`, `execute`, `read`, …), which every harness reports whatever it calls
+ * the tool; a registration naming the tool beats one naming the kind, and one
+ * with neither matches every call.
+ */
+export interface ToolRendererRegistration {
+  type: "tool";
+  /** Only tool calls of this ACP kind. */
+  toolKind?: string;
+  /** Only tool calls with this name. */
   toolName?: string;
   priority?: number;
-  component: Component<RendererProps>;
+  component: Component<RendererProps<ToolItem>>;
 }
+
+export type RendererRegistration = MessageRendererRegistration | ToolRendererRegistration;
 
 export interface PermissionRendererProps {
   request: PermissionRequestView;
@@ -289,9 +307,11 @@ export interface PermissionRendererRegistration {
 
 export interface RendererRegistry {
   register(registration: RendererRegistration): Disposer;
-  setFallback(component: Component<RendererProps>): Disposer;
-  /** Exact `(kind, toolName)` match first, then `kind`, then the fallback. */
-  resolve(block: BlockView): Component<RendererProps> | null;
+  /** What draws a tool call nobody claims. */
+  setFallback(component: Component<RendererProps<ToolItem>>): Disposer;
+  /** Exact tool name first, then ACP tool kind, then any tool renderer, then the fallback. */
+  resolveTool(item: ToolItem): Component<RendererProps<ToolItem>> | null;
+  resolveMessage(item: MessageItem): Component<RendererProps<MessageItem>> | null;
   registerPermission(registration: PermissionRendererRegistration): Disposer;
   /** Null means no plugin claims the tool, so the generic allow/deny card renders. */
   resolvePermission(toolName: string): Component<PermissionRendererProps> | null;
@@ -333,8 +353,8 @@ export type SlotName = (typeof slotNames)[number];
 
 export interface SlotProps {
   session: SessionView | null;
-  /** Set for the per-message slots, so a plugin can summarise the turn it belongs to. */
-  message?: MessageView;
+  /** Set for the per-turn slots, so a plugin can summarise the turn it belongs to. */
+  turn?: AgentTurn;
 }
 
 export interface SlotRegistration {

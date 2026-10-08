@@ -3,37 +3,28 @@ import type {
   AnyAgentEvent,
   HarnessAdapter,
   HarnessRegistry,
-  MessageRole,
-  MessageView,
   ModelInfo,
   SessionCommand,
   SessionStatus,
   SessionSummary,
   SessionView,
+  TranscriptItem,
 } from "@nib-ui/protocol";
 import { createSessionView, sessionDigest } from "@nib-ui/protocol";
 import type { AgentControlProvider, SessionHost } from "../src/lib/server/services";
 
-/** One completed message with prose in it, which is all a digest reads. */
-export function message(role: MessageRole, text: string): MessageView {
+/** One message with prose in it, which is all a digest reads. */
+export function message(role: "user" | "assistant", text: string): TranscriptItem {
+  const id = `${role}:${text}`;
+  if (role === "user") return { type: "user", id, seq: 1, text, attachments: [] };
   return {
-    id: `${role}:${text}`,
-    role,
-    completed: true,
-    stopReason: null,
-    blocks: [
-      {
-        id: `${role}:${text}:block`,
-        messageId: `${role}:${text}`,
-        kind: "text",
-        toolName: null,
-        toolUseId: null,
-        text,
-        inputJson: "",
-        content: null,
-        completed: true,
-      },
-    ],
+    type: "text",
+    id,
+    seq: 1,
+    messageId: null,
+    text,
+    streaming: false,
+    parentToolCallId: null,
   };
 }
 

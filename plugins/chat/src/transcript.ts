@@ -1,4 +1,4 @@
-import type { BlockView, MessageView, SessionView } from "@nib-ui/protocol";
+import { type AgentTurn, type SessionView, transcriptTurns, type UserItem } from "@nib-ui/protocol";
 import { describeStep } from "@nib-ui/ui-contracts";
 
 /**
@@ -17,7 +17,7 @@ export const DROPPED_MARKER = "[earlier turns dropped to fit]";
  * what ran matters to the hand-over, its output belongs to the session that ran it.
  */
 export function transcriptText(session: SessionView, budget = HANDOVER_BUDGET): string {
-  const turns = session.messages.map(messageText).filter((turn) => turn.length > 0);
+  const turns = replayTurns(session);
   if (turns.length === 0) return "";
 
   const kept: string[] = [];
@@ -56,24 +56,31 @@ export function handoverSeed(session: SessionView, budget = HANDOVER_BUDGET): st
   ].join("\n");
 }
 
-function messageText(message: MessageView): string {
-  const speaker = message.role === "user" ? "User" : "Assistant";
-  const lines: string[] = [];
+/** Each turn that said anything, as the line block it replays as. */
+export function replayTurns(session: SessionView): string[] {
+  const written: string[] = [];
+  for (const turn of transcriptTurns(session)) {
+    const text = replayText(turn);
+    if (text.length > 0) written.push(text);
+  }
+  return written;
+}
 
-  for (const block of message.blocks) {
-    if (block.kind === "text") {
-      const text = blockText(block).trim();
+function replayText(turn: { type: "user"; item: UserItem } | AgentTurn): string {
+  if (turn.type === "user") {
+    const prompt = turn.item.text.trim();
+    if (prompt.length === 0) return "";
+    return `User: ${prompt}`;
+  }
+  const lines: string[] = [];
+  for (const item of turn.items) {
+    if (item.type === "text") {
+      const text = item.text.trim();
       if (text.length > 0) lines.push(text);
       continue;
     }
-    if (block.kind === "tool_use") lines.push(`[${describeStep(block)}]`);
+    if (item.type === "tool") lines.push(`[${describeStep(item)}]`);
   }
-
   if (lines.length === 0) return "";
-  return `${speaker}: ${lines.join("\n")}`;
-}
-
-function blockText(block: BlockView): string {
-  if (block.content?.kind === "text") return (block.content as { text: string }).text;
-  return block.text;
+  return `Assistant: ${lines.join("\n")}`;
 }

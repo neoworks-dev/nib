@@ -219,7 +219,7 @@ describe("createAgentTools", () => {
     const host = new FakeSessionHost();
     host.add("root");
     const child = host.add("child", { parentSessionId: "root", status: "working" });
-    host.views.set("child", { ...child, messages: [message("assistant", "all done")] });
+    host.views.set("child", { ...child, items: [message("assistant", "all done")] });
 
     const pending = call(host, "root", "read_agent", { sessionId: "child", wait: true });
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -330,7 +330,7 @@ describe("createAgentTools", () => {
     const child = host.add("child", { parentSessionId: "root", model: "opus", title: "Child" });
     host.views.set("child", {
       ...child,
-      messages: [message("user", "find the bug"), message("assistant", "it is in the reducer")],
+      items: [message("user", "find the bug"), message("assistant", "it is in the reducer")],
     });
 
     const report = (await call(host, "root", "read_agent", {
@@ -525,7 +525,7 @@ describe("createAgentNotifier", () => {
     const host = new FakeSessionHost();
     host.add("root");
     const child = host.add("child", { parentSessionId: "root", title: "Auditor", harnessId: "pi" });
-    host.views.set("child", { ...child, messages: [message("assistant", "no bugs found")] });
+    host.views.set("child", { ...child, items: [message("assistant", "no bugs found")] });
     notifying(host, "child");
 
     host.status("child", "working");

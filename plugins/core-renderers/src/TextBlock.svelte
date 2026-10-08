@@ -1,5 +1,6 @@
 <script lang="ts">
   import { renderMermaid, renderedMermaid } from "@nib-ui/render";
+  import type { MessageItem } from "@nib-ui/protocol";
   import type { RendererProps } from "@nib-ui/ui-contracts";
   // KaTeX draws with its own fonts and its own metrics; without the stylesheet
   // a formula is a pile of overlapping characters.
@@ -7,8 +8,8 @@
   import { documentTheme } from "./document-theme.svelte";
   import { MERMAID_SOURCE_ATTRIBUTE, openFence, renderMarkdown } from "./markdown";
 
-  const { block }: RendererProps = $props();
-  const html = $derived(renderMarkdown(block.text));
+  const { item }: RendererProps<MessageItem> = $props();
+  const html = $derived(renderMarkdown(item.text));
   const theme = $derived(documentTheme());
 
   let host = $state<HTMLElement | null>(null);
@@ -33,7 +34,7 @@
     // A reply still arriving can stop mid-diagram. Rendering that draws an error
     // where the diagram is about to be, so the open one is left blank until the
     // fence that closes it turns up.
-    if (openFence(block.text)) placeholders.pop();
+    if (openFence(item.text)) placeholders.pop();
 
     let dropped = false;
     for (const placeholder of placeholders) {
@@ -75,7 +76,7 @@
 
 <div bind:this={host} class="markdown text-base leading-relaxed text-default">
   {@html html}
-  {#if !block.completed}
+  {#if item.streaming}
     <span class="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-muted align-text-bottom"></span>
   {/if}
 </div>

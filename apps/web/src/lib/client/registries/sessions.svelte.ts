@@ -205,10 +205,6 @@ export class ReactiveSessionsStore implements SessionsService {
     return this.dispatch({ type: "session.setEffort", effort });
   }
 
-  rewind(sessionId: string, messageId: string) {
-    return this.dispatchTo(sessionId, { type: "session.rewind", messageId });
-  }
-
   setLabel(label: string) {
     return this.dispatch({ type: "session.setLabel", label });
   }
