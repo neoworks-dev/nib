@@ -6,18 +6,12 @@ export const rendererTerminalPlugin: Plugin = {
   inject: ["renderers"],
   apply(ctx) {
     const renderers = ctx.require("renderers");
+    // Every harness files a shell command under ACP's `execute` kind, whatever
+    // its tool is called (Claude's `Bash`, pi's `bash`, Codex's own).
     ctx.effect(() =>
       renderers.register({
-        kind: "tool_use",
-        toolName: "Bash",
-        priority: 10,
-        component: TerminalBlock,
-      }),
-    );
-    ctx.effect(() =>
-      renderers.register({
-        kind: "tool_result",
-        toolName: "Bash",
+        type: "tool",
+        toolKind: "execute",
         priority: 10,
         component: TerminalBlock,
       }),

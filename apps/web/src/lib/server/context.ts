@@ -1,8 +1,5 @@
 import { join } from "node:path";
 import { type Context, createContext } from "@nib-ui/kernel";
-import { claudeCodeHarness } from "@nib-ui/plugin-harness-claude-code";
-import { codexHarness } from "@nib-ui/plugin-harness-codex";
-import { piHarness } from "@nib-ui/plugin-harness-pi";
 import { migrateLegacySessionLogs } from "./data-dir";
 import {
   migrateSessionLogsIntoVaults,
@@ -19,6 +16,7 @@ import { harnessRegistryPlugin } from "./plugins/harness-registry";
 import { linkPreviewsPlugin } from "./plugins/link-previews";
 import { pinterestPlugin } from "./plugins/pinterest";
 import { sessionHostPlugin } from "./plugins/session-host";
+import { sharedHarnessPlugin } from "./plugins/shared-harness";
 import { vaultPlugin } from "./plugins/vault";
 import { workspacePlugin } from "./plugins/workspace";
 import type {
@@ -52,11 +50,8 @@ export function serverContext(): Context {
     logDirectoryFor: sessionLogDirectory,
     logDirectories: sessionLogDirectories,
   });
-  // Harnesses are ordinary plugin packages; every mount's id, models and defaults
-  // come from the config passed here, not from the adapter's own literals.
-  context.use(claudeCodeHarness, {});
-  context.use(codexHarness, {});
-  context.use(piHarness, {});
+  // Claude Code, Codex and pi, all driven through the shared harness.
+  context.use(sharedHarnessPlugin);
   context.use(workspacePlugin);
   context.use(gitPlugin);
   context.use(boardsPlugin);

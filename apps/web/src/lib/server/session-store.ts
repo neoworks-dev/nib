@@ -10,6 +10,7 @@ import { join } from "node:path";
 import type { Disposer } from "@nib-ui/kernel";
 import {
   type AnyAgentEvent,
+  createLegacyUpgrader,
   createSessionView,
   type EmittedEvent,
   reduceSession,
@@ -107,6 +108,9 @@ export interface StoredSessionLog {
 /**
  * Every session ever hosted, oldest first. A truncated or corrupt line is
  * dropped rather than failing the boot: a partial history beats none.
+ *
+ * Lines written before nib stored ACP are converted to today's events as they
+ * are read. The files are left as they are.
  */
 export function readSessionLogs(logDirectory: string): StoredSessionLog[] {
   let files: string[] = [];
@@ -125,10 +129,11 @@ export function readSessionLogs(logDirectory: string): StoredSessionLog[] {
     } catch {
       continue;
     }
+    const upgrade = createLegacyUpgrader();
     for (const line of raw.split("\n")) {
       if (line.length === 0) continue;
       try {
-        const event = safeParseAgentEvent(JSON.parse(line));
+        const event = safeParseAgentEvent(upgrade(JSON.parse(line)));
         if (event) events.push(event);
       } catch {}
     }

@@ -2,17 +2,10 @@ import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 /**
- * Runtime dependencies that must stay real files on disk. The Claude Code and
- * Codex SDKs locate and spawn their own CLI relative to their package directory,
- * and pi loads its extensions, skills and prompt templates the same way; a bundle
- * breaks all three.
+ * Runtime dependencies that must stay real files on disk. The shared harness
+ * spawns its ACP adapters from paths inside its own package; a bundle breaks it.
  */
-const external = [
-  "@anthropic-ai/claude-agent-sdk",
-  "@earendil-works/pi-ai",
-  "@earendil-works/pi-coding-agent",
-  "@openai/codex-sdk",
-];
+const external = ["@neoworks/harness"];
 
 /**
  * Emits `build/client` plus a single bundled `build/entry.js` exporting

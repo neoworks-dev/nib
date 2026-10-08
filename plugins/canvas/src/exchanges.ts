@@ -1,5 +1,5 @@
 import { type ChangedFile, summarizeChanges } from "@nib-ui/plugin-renderer-diff/changed-files";
-import type { BlockView, MessageView, SessionView } from "@nib-ui/protocol";
+import { type AgentTurn, type SessionView, transcriptTurns } from "@nib-ui/protocol";
 import { describeCall } from "@nib-ui/ui-contracts";
 import type { Exchange } from "./model";
 
@@ -8,38 +8,35 @@ export function exchangeId(sessionId: string, messageId: string): string {
 }
 
 /**
- * Folds a transcript into the unit the canvas draws: a prompt plus the turns that
- * answered it. A user message carrying only tool results is bookkeeping inside the
- * current exchange, not the start of a new one.
+ * Folds a transcript into the unit the canvas draws: a prompt plus the turn that
+ * answered it.
  */
 export function toExchanges(session: SessionView): Exchange[] {
   const exchanges: Exchange[] = [];
 
-  for (const message of session.messages) {
-    if (message.role === "user" && message.blocks.some((block) => block.kind === "text")) {
+  for (const turn of transcriptTurns(session)) {
+    if (turn.type === "user") {
       exchanges.push({
-        id: exchangeId(session.sessionId, message.id),
+        id: exchangeId(session.sessionId, turn.id),
         sessionId: session.sessionId,
-        messageId: message.id,
-        prompt: messageText(message),
+        messageId: turn.id,
+        prompt: turn.item.text.trim(),
         reply: "",
         steps: [],
         changes: [],
         working: false,
-        messageIds: [message.id],
+        messageIds: [turn.id],
       });
       continue;
     }
-
-    if (message.role !== "assistant") continue;
 
     // A transcript that opens with harness output (a resumed session, a slash
     // command) still needs somewhere to put it.
     if (exchanges.length === 0) {
       exchanges.push({
-        id: exchangeId(session.sessionId, message.id),
+        id: exchangeId(session.sessionId, turn.id),
         sessionId: session.sessionId,
-        messageId: message.id,
+        messageId: turn.id,
         prompt: "",
         reply: "",
         steps: [],
@@ -48,20 +45,7 @@ export function toExchanges(session: SessionView): Exchange[] {
         messageIds: [],
       });
     }
-    const current = exchanges[exchanges.length - 1]!;
-    current.messageIds.push(message.id);
-
-    const reply = messageText(message);
-    if (reply.length > 0)
-      current.reply = current.reply.length > 0 ? `${current.reply}\n\n${reply}` : reply;
-
-    for (const block of message.blocks) {
-      if (block.kind !== "tool_use") continue;
-      const call = describeCall(block);
-      if (call.label !== "Edit")
-        current.steps.push({ ...call, messageId: message.id, blockId: block.id });
-    }
-    mergeChanges(current.changes, summarizeChanges(message).files);
+    foldTurn(exchanges[exchanges.length - 1]!, turn);
   }
 
   const last = exchanges.at(-1);
@@ -70,17 +54,26 @@ export function toExchanges(session: SessionView): Exchange[] {
   return exchanges;
 }
 
-export function messageText(message: MessageView): string {
-  return message.blocks
-    .filter((block) => block.kind === "text")
-    .map(blockText)
-    .join("\n")
-    .trim();
-}
+/** Adds what the agent said, did and changed in a turn to the exchange it answers. */
+function foldTurn(exchange: Exchange, turn: AgentTurn): void {
+  exchange.messageIds.push(turn.id);
 
-export function blockText(block: BlockView): string {
-  if (block.content?.kind === "text") return (block.content as { text: string }).text;
-  return block.text;
+  const reply = turn.items
+    .flatMap((item) => (item.type === "text" ? [item.text.trim()] : []))
+    .filter((text) => text.length > 0)
+    .join("\n\n");
+  if (reply.length > 0) {
+    exchange.reply = exchange.reply.length > 0 ? `${exchange.reply}\n\n${reply}` : reply;
+  }
+
+  for (const item of turn.items) {
+    if (item.type !== "tool") continue;
+    const call = describeCall(item);
+    if (call.label !== "Edit") {
+      exchange.steps.push({ ...call, turnId: turn.id, toolCallId: item.toolCallId });
+    }
+  }
+  mergeChanges(exchange.changes, summarizeChanges(turn).files);
 }
 
 function mergeChanges(target: ChangedFile[], incoming: ChangedFile[]): void {

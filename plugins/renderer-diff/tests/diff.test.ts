@@ -21,4 +21,9 @@ describe("diffLines", () => {
   test("identical input produces only context lines", () => {
     expect(diffLines("x\ny", "x\ny").every((line) => line.kind === "context")).toBe(true);
   });
+
+  test("the newline that ends a file is not a line of its own", () => {
+    expect(diffLines("", "hi there\n")).toEqual([{ kind: "added", text: "hi there" }]);
+    expect(diffLines("a\n", "a\nb\n").map((line) => line.kind)).toEqual(["context", "added"]);
+  });
 });

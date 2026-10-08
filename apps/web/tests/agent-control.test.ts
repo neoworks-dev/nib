@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { Options } from "@anthropic-ai/claude-agent-sdk";
+import type { SessionInit } from "@neoworks/harness";
 import type { Context, ForkHandle } from "@nib-ui/kernel";
 import { createContext } from "@nib-ui/kernel";
 import {
@@ -11,9 +11,8 @@ import {
   type AgentToolName,
   type CreateSessionOptions,
 } from "@nib-ui/protocol";
-import { agentControlTools } from "../../../plugins/harness-pi/src/adapter";
-import { withAgentControl } from "../../../plugins/harness-claude-code/src/adapter";
-import { codexOptions } from "../../../plugins/harness-codex/src/adapter";
+import { sharedHarnessSpecs } from "../src/lib/server/harness/harnesses";
+import { PendingAnswers, sessionInit } from "../src/lib/server/harness/session";
 import { agentControlPlugin } from "../src/lib/server/plugins/agent-control";
 import { FakeSessionHost, fakeHarnesses, message } from "./fake-session-host";
 import { FakeBoards, FakeVault, fakeVaultEntries } from "./fake-vault";
@@ -57,7 +56,7 @@ async function mount(): Promise<{
   const child = host.add("child", { parentSessionId: "root", title: "Child", model: "opus" });
   host.views.set("child", {
     ...child,
-    messages: [message("user", "find the bug"), message("assistant", "it is in the reducer")],
+    items: [message("user", "find the bug"), message("assistant", "it is in the reducer")],
   });
 
   const ctx = createContext();
@@ -184,75 +183,43 @@ describe("agentControlPlugin", () => {
 
 const link: AgentControlLink = { url: "http://127.0.0.1:4242/mcp/s1/secret", tools: [] };
 
-function readAppend(options: Options): string {
-  const prompt = options.systemPrompt;
-  if (typeof prompt !== "object" || Array.isArray(prompt)) throw new Error("no preset prompt");
-  return prompt.append ?? "";
+/** The prompt a session replaces its harness's own with. */
+function readPrompt(init: SessionInit): string {
+  const prompt = init.options?.systemPrompt?.replace;
+  if (prompt === undefined) throw new Error("the session does not replace the system prompt");
+  return prompt;
 }
 
-describe("harness adapters", () => {
-  test("claude code merges the nib server into the caller's mcp servers and says to use it", () => {
-    const opts: CreateSessionOptions = {
-      cwd: "/repo",
-      options: { model: "opus", mcpServers: { other: { type: "http", url: "http://elsewhere" } } },
-      agentControl: link,
-    };
-    const options = withAgentControl(opts);
-    expect(options).toMatchObject({
-      model: "opus",
-      mcpServers: {
-        other: { type: "http", url: "http://elsewhere" },
-        nib: { type: "http", url: link.url, timeout: 3_600_000 },
-      },
-      systemPrompt: { type: "preset", preset: "claude_code" },
-    });
-    const append = readAppend(options);
-    expect(append).toContain(".nib");
-    expect(append).toContain(agentControlInstructions);
-    expect(append).toContain("never a built-in Agent or Task tool");
+/** The session setup for one harness, with answers nobody gives. */
+function initFor(harnessId: string, opts: CreateSessionOptions): SessionInit {
+  const spec = sharedHarnessSpecs.find((candidate) => candidate.id === harnessId);
+  if (!spec) throw new Error(`no harness "${harnessId}"`);
+  return sessionInit(spec, opts, new PendingAnswers(() => {}));
+}
+
+describe("shared harness sessions", () => {
+  test("every harness gets the nib server and is told to use it", () => {
+    for (const harnessId of ["claude-code", "codex", "pi"]) {
+      const init = initFor(harnessId, { cwd: "/repo", agentControl: link });
+      expect(init.mcpServers).toEqual([{ type: "http", name: "nib", url: link.url, headers: [] }]);
+      const prompt = readPrompt(init);
+      expect(prompt).toContain("/repo/.nib");
+      expect(prompt).toContain(agentControlInstructions);
+      expect(prompt).toContain("never a built-in Agent or Task tool");
+    }
   });
 
-  test("claude code keeps the vault rules, and only those, when there is no link", () => {
-    const options = withAgentControl({ cwd: "/repo", options: { model: "opus" } });
-    expect(options.model).toBe("opus");
-    expect(options.mcpServers).toBeUndefined();
-    const append = readAppend(options);
-    expect(append).toContain(".nib");
-    expect(append).not.toContain("Agent or Task tool");
+  test("claude code waits as long as an agent-control call may run", () => {
+    const init = initFor("claude-code", { cwd: "/repo", agentControl: link });
+    expect(init.env).toEqual({ MCP_TOOL_TIMEOUT: "3600000" });
   });
 
-  test("codex takes the endpoint as an mcp_servers config override", () => {
-    expect(codexOptions("/usr/bin/codex", { cwd: "/repo", agentControl: link })).toEqual({
-      codexPathOverride: "/usr/bin/codex",
-      config: { mcp_servers: { nib: { url: link.url, tool_timeout_sec: 3600 } } },
-    });
-    expect(codexOptions("/usr/bin/codex", { cwd: "/repo" })).toEqual({
-      codexPathOverride: "/usr/bin/codex",
-    });
-  });
-
-  test("pi takes the tools in process, with json schema parameters", async () => {
-    const { link: rootLink } = await mount();
-    const tools = agentControlTools(rootLink.tools);
-    expect(tools.map((tool) => tool.name)).toEqual(toolNames);
-
-    const read = tools.find((tool) => tool.name === "read_agent");
-    if (!read) throw new Error("pi was handed no read_agent tool");
-    expect(read.parameters).toMatchObject({
-      type: "object",
-      properties: { sessionId: { type: "string" } },
-      required: ["sessionId"],
-    });
-
-    // pi passes its own ExtensionContext as the fifth argument; these tools never read it.
-    const extensionContext = undefined as never;
-    const result = await read.execute(
-      "call-1",
-      { sessionId: "child" },
-      undefined,
-      undefined,
-      extensionContext,
-    );
-    expect(parseResult<AgentReport>(result.content).sessionId).toBe("child");
+  test("without a link there is no server, and the prompt keeps only the vault rules", () => {
+    const init = initFor("claude-code", { cwd: "/repo", options: { model: "opus" } });
+    expect(init.options?.model).toBe("opus");
+    expect(init.mcpServers).toBeUndefined();
+    const prompt = readPrompt(init);
+    expect(prompt).toContain("/repo/.nib");
+    expect(prompt).not.toContain("Agent or Task tool");
   });
 });

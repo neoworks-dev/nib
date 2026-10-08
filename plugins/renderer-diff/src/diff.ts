@@ -5,8 +5,8 @@ export type DiffLine = { kind: "context" | "added" | "removed"; text: string };
  * the quadratic table costs nothing, and it keeps the plugin dependency-free.
  */
 export function diffLines(before: string, after: string): DiffLine[] {
-  const left = before.length > 0 ? before.split("\n") : [];
-  const right = after.length > 0 ? after.split("\n") : [];
+  const left = splitLines(before);
+  const right = splitLines(after);
   const table = buildLcsTable(left, right);
 
   const lines: DiffLine[] = [];
@@ -29,6 +29,14 @@ export function diffLines(before: string, after: string): DiffLine[] {
     lines.push({ kind: "removed", text: left[leftIndex]! });
   for (; rightIndex < right.length; rightIndex += 1)
     lines.push({ kind: "added", text: right[rightIndex]! });
+  return lines;
+}
+
+/** The lines of a text; the newline that ends a file does not start a line of its own. */
+function splitLines(text: string): string[] {
+  if (text.length === 0) return [];
+  const lines = text.split("\n");
+  if (lines.at(-1) === "") lines.pop();
   return lines;
 }
 

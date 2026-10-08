@@ -5,14 +5,9 @@ import type {
   MessageAttachment,
   SessionCommand,
   SessionView,
+  UsageTotals,
 } from "@nib-ui/protocol";
-import {
-  checkpointBefore,
-  createSessionView,
-  deriveTaskTitle,
-  reduceSession,
-  sessionDigest,
-} from "@nib-ui/protocol";
+import { createSessionView, deriveTaskTitle, reduceSession, sessionDigest } from "@nib-ui/protocol";
 import type {
   AgentControlProvider,
   CreateSessionOptions,
@@ -176,8 +171,6 @@ class SessionHostService implements SessionHost {
       case "session.setEffort":
         if (!session.setEffort) throw new Error("harness does not support reasoning effort");
         return session.setEffort(command.effort);
-      case "session.rewind":
-        return this.rewind(hosted, session, command.messageId);
       case "session.create":
         throw new Error("session.create is not a per-session command");
     }
@@ -210,34 +203,6 @@ class SessionHostService implements SessionHost {
       resolved.push({ ...attachment, path });
     }
     return resolved;
-  }
-
-  /**
-   * Only the working tree moves: the transcript keeps describing edits that are
-   * no longer on disk, so the outcome is logged where the turn can show it.
-   */
-  private async rewind(
-    hosted: HostedSession,
-    session: HarnessSession,
-    messageId: string,
-  ): Promise<void> {
-    const checkpointId = checkpointBefore(hosted.view, messageId);
-    if (!session.rewind) throw new Error("harness does not support checkpoints");
-    if (!checkpointId) throw new Error(`message "${messageId}" has no checkpoint to rewind to`);
-
-    const result = await session.rewind(checkpointId);
-    // A rewind that only deletes files reports no changed paths, so the count
-    // is mentioned only when the harness actually named some.
-    const changed = result.filesChanged.length;
-    this.emit(hosted, {
-      type: "log",
-      data: {
-        level: result.ok ? "info" : "warn",
-        message: result.ok
-          ? `restored the working tree to the state before this turn${changed > 0 ? ` (${changed} file(s))` : ""}`
-          : `rewind failed: ${result.error ?? "unknown error"}`,
-      },
-    });
   }
 
   eventsSince(sessionId: string, fromSeq: number): AnyAgentEvent[] {
@@ -401,9 +366,14 @@ class SessionHostService implements SessionHost {
     // A session revived after a restart is as much an agent as a fresh one, so
     // it gets its own link rather than coming back without the tools.
     const agentControl = await this.agentControl?.(hosted.id);
-    await this.attach(hosted, () =>
-      adapter.resumeSession!(nativeSessionId, { cwd: hosted.cwd, fork, agentControl }, emit),
-    );
+    const opts: CreateSessionOptions & { fork?: boolean } = {
+      cwd: hosted.cwd,
+      options: resumeOptions(hosted.view),
+      fork,
+      agentControl,
+      usage: usageTotals(hosted.view),
+    };
+    await this.attach(hosted, () => adapter.resumeSession!(nativeSessionId, opts, emit));
   }
 
   private require(sessionId: string): HostedSession {
@@ -411,6 +381,27 @@ class SessionHostService implements SessionHost {
     if (!hosted) throw new Error(`unknown session "${sessionId}"`);
     return hosted;
   }
+}
+
+/** The picks a session was last given, so a resumed session carries on under them. */
+function resumeOptions(view: SessionView): Record<string, unknown> {
+  const options: Record<string, unknown> = {};
+  if (view.permissionMode) options.permissionMode = view.permissionMode;
+  if (view.model) options.model = view.model;
+  if (view.effort) options.effort = view.effort;
+  return options;
+}
+
+/** What the session has used so far, as the harness reports it. */
+function usageTotals(view: SessionView): UsageTotals {
+  const { usage } = view;
+  return {
+    input: usage.inputTokens,
+    output: usage.outputTokens,
+    cacheRead: usage.cacheReadTokens,
+    cacheWrite: usage.cacheWriteTokens,
+    costUsd: usage.costUsd,
+  };
 }
 
 function readStringOption(

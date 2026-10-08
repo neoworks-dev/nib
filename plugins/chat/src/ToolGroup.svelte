@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { IconComponent } from "@neoworks-dev/ui";
-  import type { SessionView } from "@nib-ui/protocol";
+  import { isToolSettled, type SessionView } from "@nib-ui/protocol";
   import { describeCall, parseMcpToolName } from "@nib-ui/ui-contracts";
   import CaretDownIcon from "phosphor-svelte/lib/CaretDownIcon";
   import CaretUpIcon from "phosphor-svelte/lib/CaretUpIcon";
@@ -13,7 +13,7 @@
   import TerminalWindowIcon from "phosphor-svelte/lib/TerminalWindowIcon";
   import WrenchIcon from "phosphor-svelte/lib/WrenchIcon";
   import { slide } from "svelte/transition";
-  import BlockHost from "./BlockHost.svelte";
+  import ItemHost from "./ItemHost.svelte";
   import { groupCount, type ToolGroup } from "./tool-groups";
 
   const { group, session }: { group: ToolGroup; session: SessionView } = $props();
@@ -31,17 +31,17 @@
   const reveal = { duration: 120 };
 
   let collapsed = $state(false);
-  let openBlockId = $state<string | null>(null);
+  let openToolId = $state<string | null>(null);
 
   const Icon = $derived.by(() => {
     const known = icons[group.label];
     if (known) return known;
     // A run the vocabulary has no verb for still says where it came from: an MCP
     // server is a connection, anything else is a plain tool.
-    if (parseMcpToolName(group.blocks[0]?.toolName ?? "")) return PlugsConnectedIcon;
+    if (parseMcpToolName(group.tools[0]?.name ?? "")) return PlugsConnectedIcon;
     return WrenchIcon;
   });
-  const running = $derived(group.blocks.some((block) => !block.completed));
+  const running = $derived(group.tools.some((tool) => !isToolSettled(tool)));
 </script>
 
 <section class="flex flex-col gap-1">
@@ -67,14 +67,14 @@
 
   {#if !collapsed}
     <ul class="ml-3 flex flex-col gap-1 border-l border-line-faint pl-4" transition:slide={reveal}>
-      {#each group.blocks as block (block.id)}
-        {@const step = describeCall(block)}
-        {@const open = openBlockId === block.id}
+      {#each group.tools as tool (tool.id)}
+        {@const step = describeCall(tool)}
+        {@const open = openToolId === tool.id}
         <li class="flex min-w-0 flex-col gap-2">
           <button
             type="button"
             class="group flex w-fit max-w-full min-w-0 items-center gap-2 rounded-md px-1 py-0.5 text-left text-sm hover:bg-hover"
-            onclick={() => (openBlockId = open ? null : block.id)}
+            onclick={() => (openToolId = open ? null : tool.id)}
           >
             <span class="shrink-0 text-dim">{step.verb}</span>
             {#if !open && step.detail.length > 0}
@@ -92,7 +92,7 @@
 
           {#if open}
             <div transition:slide={reveal}>
-              <BlockHost {block} {session} detail />
+              <ItemHost item={tool} {session} detail />
             </div>
           {/if}
         </li>

@@ -9,12 +9,9 @@ import { canvasObjectKindForPath } from "./workspace-files";
  * history, not a request to open anything.
  */
 export function latestReadPath(session: SessionView): string | null {
-  for (let message = session.messages.length - 1; message >= 0; message -= 1) {
-    const blocks = session.messages[message]!.blocks;
-    for (let index = blocks.length - 1; index >= 0; index -= 1) {
-      const block = blocks[index]!;
-      if (block.kind === "tool_use") return readFilePath(block);
-    }
+  for (let index = session.items.length - 1; index >= 0; index -= 1) {
+    const item = session.items[index]!;
+    if (item.type === "tool") return readFilePath(item);
   }
   return null;
 }

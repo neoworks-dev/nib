@@ -1,40 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import type { BlockView } from "@nib-ui/protocol";
-import { groupCount, groupTurnBlocks, type ToolGroup } from "../src/tool-groups";
+import type { MessageItem, ToolItem } from "@nib-ui/protocol";
+import { textItem, toolItem } from "../../../packages/protocol/tests/builders";
+import { groupCount, groupTurnItems, type ToolGroup } from "../src/tool-groups";
 
-function toolUse(id: string, toolName: string, input: unknown): BlockView {
-  return {
-    id,
-    messageId: "m1",
-    kind: "tool_use",
-    toolName,
-    toolUseId: id,
-    text: "",
-    inputJson: "",
-    content: { kind: "tool_use", toolName, toolUseId: id, input },
-    completed: true,
-  };
+const toolUse = toolItem;
+
+function prose(id: string): MessageItem {
+  return textItem(id, "hello");
 }
 
-function prose(id: string): BlockView {
-  return {
-    id,
-    messageId: "m1",
-    kind: "text",
-    toolName: null,
-    toolUseId: null,
-    text: "hello",
-    inputJson: "",
-    content: null,
-    completed: true,
-  };
+function groups(items: Array<MessageItem | ToolItem>): ToolGroup[] {
+  return groupTurnItems(items).flatMap((item) => (item.kind === "group" ? [item.group] : []));
 }
 
-function groups(blocks: BlockView[]): ToolGroup[] {
-  return groupTurnBlocks(blocks).flatMap((item) => (item.kind === "group" ? [item.group] : []));
-}
-
-describe("groupTurnBlocks", () => {
+describe("groupTurnItems", () => {
   test("collapses adjacent calls of the same kind into one run", () => {
     const [group, ...rest] = groups([
       toolUse("b1", "Bash", { command: "ls" }),
@@ -43,7 +22,7 @@ describe("groupTurnBlocks", () => {
     ]);
     expect(rest).toHaveLength(0);
     expect(group?.label).toBe("Terminal");
-    expect(group?.blocks.map((block) => block.id)).toEqual(["b1", "b2", "b3"]);
+    expect(group?.tools.map((tool) => tool.id)).toEqual(["b1", "b2", "b3"]);
   });
 
   test("splits runs that describe different work", () => {
@@ -67,8 +46,8 @@ describe("groupTurnBlocks", () => {
   });
 
   test("keeps non-tool blocks in place", () => {
-    const items = groupTurnBlocks([prose("t1"), toolUse("b1", "Bash", { command: "ls" })]);
-    expect(items.map((item) => item.kind)).toEqual(["block", "group"]);
+    const items = groupTurnItems([prose("t1"), toolUse("b1", "Bash", { command: "ls" })]);
+    expect(items.map((item) => item.kind)).toEqual(["item", "group"]);
   });
 
   test("agent-control calls run under one header whichever harness spelled them", () => {
@@ -82,12 +61,12 @@ describe("groupTurnBlocks", () => {
   });
 
   test("leaves a spawned agent standing in the turn, under either tool name", () => {
-    const items = groupTurnBlocks([
+    const items = groupTurnItems([
       toolUse("b1", "spawn_agent", { harness: "codex", prompt: "port the API" }),
       toolUse("b2", "mcp__nib__spawn_agent", { harness: "pi", prompt: "review it" }),
       toolUse("b3", "mcp__nib__read_agent", { sessionId: "agent-1", wait: true }),
     ]);
-    expect(items.map((item) => item.kind)).toEqual(["block", "block", "group"]);
+    expect(items.map((item) => item.kind)).toEqual(["item", "item", "group"]);
   });
 });
 

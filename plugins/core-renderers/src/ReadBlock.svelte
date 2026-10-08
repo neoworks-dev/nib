@@ -1,21 +1,21 @@
 <script lang="ts">
   import { FileIcon } from "@nib-ui/file-icons";
-  import { blockToolInput, blockToolOutput, findToolResultBlock } from "@nib-ui/protocol";
+  import { toolInputString, toolOutputText, type ToolItem } from "@nib-ui/protocol";
   import type { RendererProps } from "@nib-ui/ui-contracts";
 
-  const { block, session }: RendererProps = $props();
+  const { item }: RendererProps<ToolItem> = $props();
 
   const path = $derived.by(() => {
-    const input = blockToolInput<{ file_path?: string; notebook_path?: string }>(block);
-    if (input?.file_path) return input.file_path;
-    if (input?.notebook_path) return input.notebook_path;
+    const fromInput = toolInputString(item, "file_path", "path", "notebook_path");
+    if (fromInput !== undefined) return fromInput;
+    const location = item.locations[0];
+    if (location) return location.path;
     return "unknown file";
   });
 
   const text = $derived.by(() => {
-    const output = blockToolOutput(findToolResultBlock(session, block.toolUseId));
-    if (typeof output === "string") return output;
-    if (output) return JSON.stringify(output, null, 2);
+    const output = toolOutputText(item);
+    if (output.length > 0) return output;
     return "no output yet";
   });
 </script>

@@ -1,64 +1,75 @@
 <script lang="ts">
-  import type { BlockView, MessageView, SessionView } from "@nib-ui/protocol";
-  import { messageText, parseAgentNotification } from "@nib-ui/protocol";
+  import {
+    parseAgentNotification,
+    type MessageItem,
+    type SessionView,
+    type TranscriptTurn,
+    type UserItem,
+  } from "@nib-ui/protocol";
   import { SlotHost } from "@nib-ui/ui-contracts/svelte";
   import AgentNotificationCard from "./AgentNotificationCard.svelte";
-  import BlockHost from "./BlockHost.svelte";
+  import ItemHost from "./ItemHost.svelte";
   import ToolGroup from "./ToolGroup.svelte";
-  import { groupTurnBlocks } from "./tool-groups";
+  import { groupTurnItems } from "./tool-groups";
 
-  const { message, session }: { message: MessageView; session: SessionView } = $props();
+  const { turn, session }: { turn: TranscriptTurn; session: SessionView } = $props();
 
-  const isUser = $derived(message.role === "user");
-  // A user turn carrying only tool results is bookkeeping, not a prompt: its
-  // blocks fold into the calls above them, so the card would frame nothing.
-  const isPrompt = $derived(isUser && message.blocks.some(isProse));
-  // A spawned agent's report enters the harness as a user turn, since nothing
-  // else can; nobody typed it, so it is drawn as the report it is.
-  const notification = $derived(isPrompt ? parseAgentNotification(messageText(message)) : null);
-  const items = $derived(groupTurnBlocks(message.blocks));
+  // A spawned agent's report enters the harness as a prompt, since nothing else
+  // can; nobody typed it, so it is drawn as the report it is.
+  const notification = $derived(
+    turn.type === "user" ? parseAgentNotification(turn.item.text.trim()) : null,
+  );
+  const entries = $derived.by(() => {
+    if (turn.type === "user") return [];
+    return groupTurnItems(turn.items);
+  });
 
-  function isProse(block: BlockView): boolean {
-    return block.kind === "text";
+  /** The prompt as a message, so the same renderer that draws the agent's prose draws it. */
+  function promptAsMessage(prompt: UserItem): MessageItem {
+    return {
+      type: "text",
+      id: prompt.id,
+      seq: prompt.seq,
+      messageId: null,
+      text: prompt.text,
+      streaming: false,
+      parentToolCallId: null,
+    };
   }
 </script>
 
-{#if notification}
-  <AgentNotificationCard {notification} {session} />
-{:else if isPrompt}
-  <article
-    data-message={message.id}
-    class="flex flex-col gap-2 rounded-xl border border-line-faint bg-raised px-4 py-3"
-  >
-    {#each message.blocks as block (block.id)}
-      <BlockHost {block} {session} />
-    {/each}
-  </article>
-{:else if isUser}
-  {#each message.blocks as block (block.id)}
-    <BlockHost {block} {session} />
-  {/each}
+{#if turn.type === "user"}
+  {#if notification}
+    <AgentNotificationCard {notification} {session} />
+  {:else}
+    <article
+      data-message={turn.id}
+      class="flex flex-col gap-2 rounded-xl border border-line-faint bg-raised px-4 py-3"
+    >
+      <ItemHost item={promptAsMessage(turn.item)} {session} />
+    </article>
+  {/if}
 {:else}
-  <!-- The assistant turn is the page, not a card: blocks flow at the full column width. -->
-  <article data-message={message.id} class="flex flex-col gap-3">
-    {#each items as item (item.kind === "group" ? item.group.id : item.block.id)}
-      {#if item.kind === "group"}
-        <ToolGroup group={item.group} {session} />
+  <!-- The agent's turn is the page, not a card: items flow at the full column width. -->
+  <article data-message={turn.id} class="flex flex-col gap-3">
+    {#each entries as entry (entry.kind === "group" ? entry.group.id : entry.item.id)}
+      {#if entry.kind === "group"}
+        <ToolGroup group={entry.group} {session} />
       {:else}
-        <BlockHost block={item.block} {session} />
+        <ItemHost item={entry.item} {session} />
       {/if}
     {/each}
 
-    {#if !message.completed}
+    {#if !turn.completed}
       <span class="flex items-center gap-2 text-2xs text-faint">
         <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-blue"></span>
         working
       </span>
-    {:else if message.stopReason && message.stopReason !== "end_turn"}
-      <span class="text-2xs text-amber">{message.stopReason}</span>
+    {:else if turn.stopReason && turn.stopReason !== "end_turn"}
+      <span class="text-2xs text-amber">{turn.stopReason}</span>
     {/if}
 
-    <SlotHost slot="message.footer" {session} {message} class="flex flex-col gap-2" />
-    <SlotHost slot="message.actions" {session} {message} class="flex items-center gap-2" />
+    <SlotHost slot="message.footer" {session} {turn} class="flex flex-col gap-2" />
+    <SlotHost slot="message.actions" {session} {turn} class="flex items-center gap-2" />
   </article>
 {/if}

@@ -1,29 +1,17 @@
-import { type AnyAgentEvent, isKnownEvent } from "@nib-ui/protocol";
+import { type AnyAgentEvent, isKnownEvent, toolNameOf } from "@nib-ui/protocol";
 
 export type EventCategory = "error" | "tool" | "stream" | "state" | "other";
 
 export const eventCategories: { id: EventCategory; label: string }[] = [
   { id: "error", label: "Errors" },
   { id: "tool", label: "Tool calls" },
-  { id: "stream", label: "Deltas" },
+  { id: "stream", label: "Messages" },
   { id: "state", label: "State" },
   { id: "other", label: "Other" },
 ];
 
-/** `block.delta` only carries a block id, so kinds are recovered from the log. */
-export function indexBlockKinds(events: AnyAgentEvent[]): Map<string, string> {
-  const kinds = new Map<string, string>();
-  for (const event of events) {
-    if (isKnownEvent(event) && event.type === "block.started")
-      kinds.set(event.data.blockId, event.data.kind);
-  }
-  return kinds;
-}
-
-export function categorizeEvent(
-  event: AnyAgentEvent,
-  blockKinds: Map<string, string>,
-): EventCategory {
+/** Which of the filter's groups an event belongs to. */
+export function categorizeEvent(event: AnyAgentEvent): EventCategory {
   if (!isKnownEvent(event)) return "other";
   switch (event.type) {
     case "log":
@@ -33,22 +21,28 @@ export function categorizeEvent(
     case "session.created":
     case "session.meta":
     case "session.cleared":
-    case "usage.updated":
+    case "usage":
+    case "turn.done":
       return "state";
     case "permission.requested":
     case "permission.resolved":
       return "tool";
-    case "block.started":
-      return isToolKind(event.data.kind) ? "tool" : "stream";
-    case "block.delta":
-    case "block.completed":
-      return isToolKind(blockKinds.get(event.data.blockId)) ? "tool" : "stream";
-    case "message.started":
-    case "message.completed":
+    case "user.message":
       return "stream";
+    case "update":
+      return categorizeUpdate(event.data.update.sessionUpdate);
     case "ext":
       return "other";
   }
+}
+
+/** ACP's updates: messages stream, tool calls are tools, the rest is session state. */
+function categorizeUpdate(sessionUpdate: string): EventCategory {
+  if (sessionUpdate === "agent_message_chunk" || sessionUpdate === "agent_thought_chunk") {
+    return "stream";
+  }
+  if (sessionUpdate === "tool_call" || sessionUpdate === "tool_call_update") return "tool";
+  return "state";
 }
 
 /** One line describing the event, used for the row label and the text search. */
@@ -65,26 +59,43 @@ export function eventSummary(event: AnyAgentEvent): string {
       return event.data.reason ?? "conversation cleared";
     case "session.status":
       return event.data.detail ? `${event.data.status} — ${event.data.detail}` : event.data.status;
-    case "message.started":
-      return `${event.data.role} ${event.data.messageId}`;
-    case "message.completed":
-      return event.data.stopReason ?? event.data.messageId;
-    case "block.started":
-      return `${event.data.kind}${event.data.toolName ? ` · ${event.data.toolName}` : ""}`;
-    case "block.delta":
-      return (event.data.textDelta ?? event.data.inputJsonDelta ?? "").slice(0, 80);
-    case "block.completed":
-      return event.data.content.kind;
+    case "user.message":
+      return event.data.text.slice(0, 80);
+    case "update":
+      return updateSummary(event.data.update);
     case "permission.requested":
-      return event.data.toolName;
+      return toolNameOf(event.data.request.toolCall) || event.data.request.toolCall.title || "tool";
     case "permission.resolved":
       return `${event.data.behavior} by ${event.data.resolvedBy}`;
-    case "usage.updated":
-      return `${event.data.inputTokens} in · ${event.data.outputTokens} out`;
+    case "usage":
+      return `${event.data.total.input ?? 0} in · ${event.data.total.output ?? 0} out`;
+    case "turn.done":
+      return event.data.stopReason;
     case "log":
       return event.data.message;
     case "ext":
       return `${event.data.ns}/${event.data.type}`;
+  }
+}
+
+/** What an ACP update says in a line: the chunk's text, the call's name, else its kind. */
+function updateSummary(
+  update: Extract<AnyAgentEvent, { type: "update" }>["data"]["update"],
+): string {
+  switch (update.sessionUpdate) {
+    case "agent_message_chunk":
+    case "agent_thought_chunk":
+      return update.content.type === "text"
+        ? update.content.text.slice(0, 80)
+        : update.content.type;
+    case "tool_call":
+    case "tool_call_update": {
+      const name = toolNameOf(update);
+      const status = update.status ? ` · ${update.status}` : "";
+      return `${name || update.title || update.toolCallId}${status}`;
+    }
+    default:
+      return update.sessionUpdate;
   }
 }
 
@@ -94,14 +105,11 @@ export interface EventFilter {
 }
 
 export function filterEvents(events: AnyAgentEvent[], filter: EventFilter): AnyAgentEvent[] {
-  const blockKinds = indexBlockKinds(events);
   const query = filter.query.trim().toLowerCase();
   return events.filter((event) => {
-    if (
-      filter.categories.length > 0 &&
-      !filter.categories.includes(categorizeEvent(event, blockKinds))
-    )
+    if (filter.categories.length > 0 && !filter.categories.includes(categorizeEvent(event))) {
       return false;
+    }
     if (query.length === 0) return true;
     return searchText(event).includes(query);
   });
@@ -109,8 +117,4 @@ export function filterEvents(events: AnyAgentEvent[], filter: EventFilter): AnyA
 
 function searchText(event: AnyAgentEvent): string {
   return `${event.type} ${eventSummary(event)} ${JSON.stringify(event.data ?? null)}`.toLowerCase();
-}
-
-function isToolKind(kind: string | undefined): boolean {
-  return kind === "tool_use" || kind === "tool_result";
 }

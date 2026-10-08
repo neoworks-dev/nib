@@ -1,4 +1,11 @@
-import { type AnyAgentEvent, type BlockContent, isKnownEvent } from "@nib-ui/protocol";
+import {
+  type AnyAgentEvent,
+  isKnownEvent,
+  parentToolCallOf,
+  rawOutputText,
+  type SessionUpdate,
+  toolNameOf,
+} from "@nib-ui/protocol";
 
 export type TraceKind =
   "session" | "message" | "text" | "thinking" | "tool" | "permission" | "state" | "log" | "other";
@@ -22,23 +29,35 @@ export interface TraceNode {
   events: AnyAgentEvent[];
 }
 
+type UpdateOf<Kind extends SessionUpdate["sessionUpdate"]> = Extract<
+  SessionUpdate,
+  { sessionUpdate: Kind }
+>;
+
 /**
- * Folds the flat log into the call tree it describes: one node per message, its
- * blocks nested underneath, and each tool call carrying the result it produced.
- * Deltas disappear into the node they were streaming into.
+ * Folds the flat log into the call tree it describes: one node per prompt, the
+ * agent's messages and tool calls nested underneath, and each tool call carrying
+ * the result it produced. Streamed chunks and call updates disappear into the
+ * node they belong to.
  */
 export function buildTrace(events: AnyAgentEvent[]): TraceNode[] {
   const nodes: TraceNode[] = [];
-  const byBlockId = new Map<string, TraceNode>();
-  const byToolUseId = new Map<string, TraceNode>();
-  const byMessageId = new Map<string, TraceNode>();
-  const turnByMessageId = new Map<string, number>();
-  const stepByMessageId = new Map<string, number>();
+  const byToolCallId = new Map<string, TraceNode>();
+  let openText: TraceNode | null = null;
   let turn = 0;
+  let step = 0;
 
   const push = (node: TraceNode) => {
     nodes.push(node);
     return node;
+  };
+
+  /** Ends the message being streamed, with the time it took. */
+  const closeText = (ts: number) => {
+    if (openText === null) return;
+    openText.status = "ok";
+    openText.durationMs = ts - openText.ts;
+    openText = null;
   };
 
   for (const event of events) {
@@ -83,6 +102,20 @@ export function buildTrace(events: AnyAgentEvent[]): TraceNode[] {
         );
         break;
       }
+      case "session.cleared": {
+        closeText(event.ts);
+        push(
+          base(event, {
+            depth: 0,
+            kind: "state",
+            badge: "STATE",
+            title: "session.cleared",
+            detail: event.data.reason ?? "",
+            turn,
+          }),
+        );
+        break;
+      }
       case "session.status": {
         push(
           base(event, {
@@ -97,87 +130,66 @@ export function buildTrace(events: AnyAgentEvent[]): TraceNode[] {
         );
         break;
       }
-      case "message.started": {
+      case "user.message": {
+        closeText(event.ts);
         turn += 1;
-        turnByMessageId.set(event.data.messageId, turn);
-        stepByMessageId.set(event.data.messageId, 0);
-        byMessageId.set(
-          event.data.messageId,
-          push(
-            base(event, {
-              depth: 0,
-              kind: "message",
-              badge: event.data.role.toUpperCase(),
-              title: event.data.role === "user" ? "user message" : "assistant message",
-              status: "streaming",
-              turn,
-            }),
-          ),
-        );
-        break;
-      }
-      case "message.completed": {
-        const node = byMessageId.get(event.data.messageId);
-        if (node) {
-          node.status = "ok";
-          node.detail = event.data.stopReason ?? node.detail;
-          node.durationMs = event.ts - node.ts;
-          node.events.push(event);
-        }
-        break;
-      }
-      case "block.started": {
-        // A result block is not its own step: it completes the call that opened the id.
-        const call =
-          event.data.kind === "tool_result"
-            ? byToolUseId.get(event.data.toolUseId ?? "")
-            : undefined;
-        if (call) {
-          byBlockId.set(event.data.blockId, call);
-          call.events.push(event);
-          break;
-        }
-
-        const messageTurn = turnByMessageId.get(event.data.messageId) ?? turn;
-        const step = (stepByMessageId.get(event.data.messageId) ?? 0) + 1;
-        stepByMessageId.set(event.data.messageId, step);
-        const node = push(
+        step = 0;
+        push(
           base(event, {
-            depth: 1,
-            kind: blockKind(event.data.kind),
-            badge: isToolKind(event.data.kind) ? "TOOL" : "BLOCK",
-            title: event.data.toolName ?? event.data.kind,
-            status: "streaming",
-            turn: messageTurn,
-            step,
+            depth: 0,
+            kind: "message",
+            badge: "USER",
+            title: "user message",
+            detail: event.data.text,
+            turn,
           }),
         );
-        byBlockId.set(event.data.blockId, node);
-        if (event.data.toolUseId) byToolUseId.set(event.data.toolUseId, node);
         break;
       }
-      case "block.delta": {
-        const node = byBlockId.get(event.data.blockId);
-        if (!node) break;
-        node.detail += event.data.textDelta ?? event.data.inputJsonDelta ?? "";
-        node.events.push(event);
-        break;
-      }
-      case "block.completed": {
-        const node = byBlockId.get(event.data.blockId);
-        if (!node) break;
-        node.events.push(event);
-        applyContent(node, event.data.content, event.ts);
+      case "update": {
+        const update = event.data.update;
+        switch (update.sessionUpdate) {
+          case "agent_message_chunk":
+          case "agent_thought_chunk": {
+            openText = applyChunk(event, update, openText, nodes, turn, (next) => {
+              step += 1;
+              next.step = step;
+            });
+            break;
+          }
+          case "tool_call":
+          case "tool_call_update": {
+            if (update.sessionUpdate === "tool_call") closeText(event.ts);
+            applyToolReport(event, update, byToolCallId, push, turn, () => {
+              step += 1;
+              return step;
+            });
+            break;
+          }
+          default: {
+            push(
+              base(event, {
+                depth: 1,
+                kind: "state",
+                badge: "ACP",
+                title: update.sessionUpdate,
+                detail: preview(update),
+                turn,
+              }),
+            );
+          }
+        }
         break;
       }
       case "permission.requested": {
+        const call = event.data.request.toolCall;
         push(
           base(event, {
             depth: 1,
             kind: "permission",
             badge: "PERM",
-            title: event.data.toolName,
-            detail: preview(event.data.input),
+            title: toolNameOf(call) || call.title || "tool",
+            detail: preview(call.rawInput),
             status: "streaming",
             turn,
           }),
@@ -194,14 +206,28 @@ export function buildTrace(events: AnyAgentEvent[]): TraceNode[] {
         }
         break;
       }
-      case "usage.updated": {
+      case "usage": {
         push(
           base(event, {
             depth: 0,
             kind: "state",
             badge: "USAGE",
             title: "usage",
-            detail: `${event.data.inputTokens} in · ${event.data.outputTokens} out`,
+            detail: `${event.data.total.input ?? 0} in · ${event.data.total.output ?? 0} out`,
+            turn,
+          }),
+        );
+        break;
+      }
+      case "turn.done": {
+        closeText(event.ts);
+        push(
+          base(event, {
+            depth: 0,
+            kind: "state",
+            badge: "STATE",
+            title: "turn.done",
+            detail: event.data.stopReason,
             turn,
           }),
         );
@@ -239,36 +265,81 @@ export function buildTrace(events: AnyAgentEvent[]): TraceNode[] {
   return nodes;
 }
 
-function isToolKind(kind: string): boolean {
-  return kind === "tool_use" || kind === "tool_result";
+/** Adds a chunk to the message being streamed, or opens a node for a new one. */
+function applyChunk(
+  event: AnyAgentEvent,
+  chunk: UpdateOf<"agent_message_chunk"> | UpdateOf<"agent_thought_chunk">,
+  open: TraceNode | null,
+  nodes: TraceNode[],
+  turn: number,
+  numbered: (node: TraceNode) => void,
+): TraceNode {
+  const kind: TraceKind = chunk.sessionUpdate === "agent_thought_chunk" ? "thinking" : "text";
+  const text = chunk.content.type === "text" ? chunk.content.text : "";
+  if (open !== null && open.kind === kind) {
+    open.detail += text;
+    open.events.push(event);
+    return open;
+  }
+  if (open !== null) {
+    open.status = "ok";
+    open.durationMs = event.ts - open.ts;
+  }
+  const node = base(event, {
+    depth: 1,
+    kind,
+    badge: "BLOCK",
+    title: kind,
+    detail: text,
+    status: "streaming",
+    turn,
+  });
+  numbered(node);
+  nodes.push(node);
+  return node;
 }
 
-function applyContent(node: TraceNode, content: BlockContent, ts: number): void {
+/** Opens a node for a new tool call, or folds an update into the one it belongs to. */
+function applyToolReport(
+  event: AnyAgentEvent,
+  report: UpdateOf<"tool_call"> | UpdateOf<"tool_call_update">,
+  byToolCallId: Map<string, TraceNode>,
+  push: (node: TraceNode) => TraceNode,
+  turn: number,
+  nextStep: () => number,
+): void {
+  let node = byToolCallId.get(report.toolCallId);
+  if (node === undefined) {
+    node = push(
+      base(event, {
+        depth: parentToolCallOf(report) === null ? 1 : 2,
+        kind: "tool",
+        badge: "TOOL",
+        title: "tool",
+        status: "streaming",
+        turn,
+        step: nextStep(),
+      }),
+    );
+    byToolCallId.set(report.toolCallId, node);
+  } else {
+    node.events.push(event);
+  }
+
+  const name = toolNameOf(report);
+  if (name.length > 0) node.title = name;
+  else if (report.title && node.title === "tool") node.title = report.title;
+  if (report.rawInput !== undefined && report.rawInput !== null)
+    node.detail = preview(report.rawInput);
+  const output = rawOutputText(report.rawOutput);
+  if (output.length > 0) node.result = output;
+  if (report.status === "completed") settle(node, event.ts, "ok");
+  if (report.status === "failed") settle(node, event.ts, "error");
+}
+
+function settle(node: TraceNode, ts: number, status: TraceStatus): void {
+  node.status = status;
   node.durationMs = ts - node.ts;
-  node.status = "ok";
-  // `BlockContent` stays open for unknown kinds, so each branch reads its own fields.
-  if (content.kind === "tool_use") {
-    const call = content as { toolName?: string; input?: unknown };
-    node.title = call.toolName ?? node.title;
-    node.detail = preview(call.input);
-    return;
-  }
-  if (content.kind === "tool_result") {
-    const result = content as { output?: unknown; isError?: boolean };
-    node.result = preview(result.output);
-    if (result.isError) node.status = "error";
-    return;
-  }
-  if (content.kind === "text" || content.kind === "thinking") {
-    node.detail = (content as { text?: string }).text ?? "";
-  }
-}
-
-function blockKind(kind: string): TraceKind {
-  if (kind === "text") return "text";
-  if (kind === "thinking") return "thinking";
-  if (kind === "tool_use" || kind === "tool_result") return "tool";
-  return "other";
 }
 
 function preview(value: unknown): string {

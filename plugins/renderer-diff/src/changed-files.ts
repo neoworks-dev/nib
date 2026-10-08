@@ -1,4 +1,4 @@
-import { blockToolInput, type MessageView } from "@nib-ui/protocol";
+import { type AgentTurn, toolDiffs } from "@nib-ui/protocol";
 import { diffLines } from "./diff";
 
 export interface ChangedFile {
@@ -13,30 +13,23 @@ export interface ChangeSummary {
   removed: number;
 }
 
-const editTools = new Set(["Edit", "Write", "NotebookEdit"]);
-
-/** One entry per file: repeated edits to the same path accumulate. */
-export function summarizeChanges(message: MessageView): ChangeSummary {
+/**
+ * The files a turn changed, read from the ACP diffs its tool calls carry. One
+ * entry per file: repeated edits to the same path accumulate, and only a call that
+ * completed changed anything: a pending one may still be refused.
+ */
+export function summarizeChanges(turn: AgentTurn): ChangeSummary {
   const byPath = new Map<string, ChangedFile>();
 
-  for (const block of message.blocks) {
-    if (block.kind !== "tool_use" || !block.toolName || !editTools.has(block.toolName)) continue;
-    const input = (blockToolInput(block) ?? {}) as Record<string, unknown>;
-    const path = typeof input.file_path === "string" ? input.file_path : null;
-    if (!path) continue;
-
-    const before = typeof input.old_string === "string" ? input.old_string : "";
-    const after =
-      typeof input.new_string === "string"
-        ? input.new_string
-        : typeof input.content === "string"
-          ? input.content
-          : "";
-    const lines = diffLines(before, after);
-    const entry = byPath.get(path) ?? { path, added: 0, removed: 0 };
-    entry.added += lines.filter((line) => line.kind === "added").length;
-    entry.removed += lines.filter((line) => line.kind === "removed").length;
-    byPath.set(path, entry);
+  for (const item of turn.items) {
+    if (item.type !== "tool" || item.status !== "completed") continue;
+    for (const diff of toolDiffs(item)) {
+      const lines = diffLines(diff.oldText ?? "", diff.newText);
+      const entry = byPath.get(diff.path) ?? { path: diff.path, added: 0, removed: 0 };
+      entry.added += lines.filter((line) => line.kind === "added").length;
+      entry.removed += lines.filter((line) => line.kind === "removed").length;
+      byPath.set(diff.path, entry);
+    }
   }
 
   const files = [...byPath.values()];

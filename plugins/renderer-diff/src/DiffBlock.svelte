@@ -1,46 +1,52 @@
 <script lang="ts">
   import { FileIcon } from "@nib-ui/file-icons";
-  import { blockToolInput, findToolResultBlock } from "@nib-ui/protocol";
+  import { isToolSettled, type ToolItem, toolDiffs } from "@nib-ui/protocol";
   import type { RendererProps } from "@nib-ui/ui-contracts";
   import CaretDownIcon from "phosphor-svelte/lib/CaretDownIcon";
   import CaretRightIcon from "phosphor-svelte/lib/CaretRightIcon";
-  import { diffLines } from "./diff";
+  import { type DiffLine, diffLines } from "./diff";
 
-  const { block, session, detail = false }: RendererProps = $props();
+  const { item, detail = false }: RendererProps<ToolItem> = $props();
 
   let expanded = $state(false);
   const open = $derived(detail || expanded);
 
-  const input = $derived((blockToolInput(block) ?? {}) as Record<string, unknown>);
-  const filePath = $derived(typeof input.file_path === "string" ? input.file_path : "unknown file");
-  const before = $derived(typeof input.old_string === "string" ? input.old_string : "");
-  const after = $derived(
-    typeof input.new_string === "string"
-      ? input.new_string
-      : typeof input.content === "string"
-        ? input.content
-        : "",
+  /** The diffs the call carries, each with its lines worked out. */
+  const files = $derived(
+    toolDiffs(item).map((diff) => {
+      const lines = diffLines(diff.oldText ?? "", diff.newText);
+      return {
+        path: diff.path,
+        created: diff.oldText === null,
+        lines,
+        added: countOf(lines, "added"),
+        removed: countOf(lines, "removed"),
+      };
+    }),
   );
-  const lines = $derived(diffLines(before, after));
-  const added = $derived(lines.filter((line) => line.kind === "added").length);
-  const removed = $derived(lines.filter((line) => line.kind === "removed").length);
-  const verb = $derived(block.toolName === "Write" ? "Wrote" : "Updated");
+  const filePath = $derived.by(() => {
+    if (files.length === 1) return files[0]!.path;
+    if (files.length > 1) return `${files.length} files`;
+    return item.locations[0]?.path ?? "unknown file";
+  });
+  const added = $derived(files.reduce((total, file) => total + file.added, 0));
+  const removed = $derived(files.reduce((total, file) => total + file.removed, 0));
+  const verb = $derived(files.length === 1 && files[0]!.created ? "Wrote" : "Updated");
 
-  const result = $derived(findToolResultBlock(session, block.toolUseId));
-  const failed = $derived(
-    result?.content?.kind === "tool_result" &&
-      (result.content as { isError?: boolean }).isError === true,
-  );
-  const phase = $derived(
-    !block.completed ? "writing" : !result ? "pending" : failed ? "failed" : "applied",
-  );
-  const phaseTone = $derived(
-    phase === "failed"
-      ? "text-red"
-      : phase === "applied"
-        ? "text-green"
-        : "text-amber animate-pulse",
-  );
+  const phase = $derived.by(() => {
+    if (item.status === "failed") return "failed";
+    if (isToolSettled(item)) return "applied";
+    return "pending";
+  });
+  const phaseTone = $derived.by(() => {
+    if (phase === "failed") return "text-red";
+    if (phase === "applied") return "text-green";
+    return "text-amber animate-pulse";
+  });
+
+  function countOf(lines: DiffLine[], kind: DiffLine["kind"]): number {
+    return lines.filter((line) => line.kind === kind).length;
+  }
 
   const markers = { added: "+", removed: "-", context: " " } as const;
   const styles = {
@@ -74,23 +80,27 @@
   {/if}
 
   {#if open}
-    {#if lines.length === 0}
+    {#if files.length === 0}
       <p class="px-3 py-2 text-xs text-dim {detail ? '' : 'border-t border-line-faint'}">
-        Waiting for the tool input to finish streaming…
+        The harness has not reported the change yet…
       </p>
-    {:else}
+    {/if}
+    {#each files as file (file.path)}
       <div
-        class="max-h-96 overflow-auto font-mono text-xs {detail
+        class="max-h-96 overflow-auto font-mono text-xs {detail && files.length === 1
           ? ''
           : 'border-t border-line-faint'}"
       >
-        {#each lines as line, index (index)}
+        {#if files.length > 1}
+          <p class="px-3 py-1 text-2xs text-dim">{file.path}</p>
+        {/if}
+        {#each file.lines as line, index (index)}
           <div class="flex gap-2 px-3 py-px {styles[line.kind]}">
             <span class="select-none opacity-60">{markers[line.kind]}</span>
             <span class="whitespace-pre-wrap">{line.text}</span>
           </div>
         {/each}
       </div>
-    {/if}
+    {/each}
   {/if}
 </div>

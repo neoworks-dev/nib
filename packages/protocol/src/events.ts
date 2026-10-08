@@ -1,3 +1,4 @@
+import type { RequestPermissionRequest, SessionUpdate } from "@neoworks/harness";
 import { z } from "zod";
 import { harnessCapabilitiesSchema } from "./capabilities";
 import { modelInfoSchema, slashCommandSchema } from "./metadata";
@@ -10,15 +11,6 @@ export const sessionStatusSchema = z.enum([
   "closed",
 ]);
 export type SessionStatus = z.infer<typeof sessionStatusSchema>;
-
-export const knownBlockKinds = ["text", "thinking", "tool_use", "tool_result", "image"] as const;
-export type KnownBlockKind = (typeof knownBlockKinds)[number];
-/** Open on purpose: a harness may stream a block kind this build has never seen. */
-export type BlockKind = KnownBlockKind | (string & {});
-export const blockKindSchema = z.string() as unknown as z.ZodType<BlockKind>;
-
-export const messageRoleSchema = z.enum(["user", "assistant"]);
-export type MessageRole = z.infer<typeof messageRoleSchema>;
 
 export const permissionBehaviorSchema = z.enum(["allow", "deny"]);
 export type PermissionBehavior = z.infer<typeof permissionBehaviorSchema>;
@@ -42,36 +34,47 @@ export {
   slashCommandSchema,
 } from "./metadata";
 
-const blockContentSchema = z.union([
-  z.object({ kind: z.literal("text"), text: z.string() }),
-  z.object({ kind: z.literal("thinking"), text: z.string(), signature: z.string().optional() }),
-  z.object({
-    kind: z.literal("tool_use"),
-    toolName: z.string(),
-    toolUseId: z.string(),
-    input: z.unknown(),
-  }),
-  z.object({
-    kind: z.literal("tool_result"),
-    toolUseId: z.string(),
-    output: z.unknown(),
-    isError: z.boolean().optional(),
-  }),
-  z.object({
-    kind: z.literal("image"),
-    mediaType: z.string(),
-    data: z.string().optional(),
-    url: z.string().optional(),
-  }),
-  z.looseObject({ kind: z.string() }),
-]);
+// ACP's own types, re-exported so the rest of nib reaches them through the protocol.
+export type {
+  ContentBlock,
+  RequestPermissionRequest,
+  SessionUpdate,
+  ToolCallUpdate,
+} from "@neoworks/harness";
 
-export type BlockContent = z.infer<typeof blockContentSchema>;
+const sessionUpdateSchema = z.custom<SessionUpdate>(
+  (value) =>
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { sessionUpdate?: unknown }).sessionUpdate === "string",
+);
+
+const permissionRequestSchema = z.custom<RequestPermissionRequest>(
+  (value) =>
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { toolCall?: unknown }).toolCall === "object",
+);
+
+/** What the session has used so far, as the harness totals it. */
+export const usageTotalsSchema = z.object({
+  input: z.number().optional(),
+  output: z.number().optional(),
+  cacheRead: z.number().optional(),
+  cacheWrite: z.number().optional(),
+  costUsd: z.number().optional(),
+});
+export type UsageTotals = z.infer<typeof usageTotalsSchema>;
 
 /**
  * Data schema per event type. The envelope stays open (`type: string`) so a
  * harness can emit types this build has never seen; consumers fall back to
  * treating those as opaque.
+ *
+ * What a harness says is ACP, stored as the shared harness reported it (`update`).
+ * Everything else is what nib itself knows and ACP has no word for: the session's
+ * own metadata, the prompt as the user sent it, the answers to permission
+ * requests, and where a turn ended.
  */
 export const eventDataSchemas = {
   "session.created": z.object({
@@ -93,50 +96,32 @@ export const eventDataSchemas = {
     slashCommands: z.array(slashCommandSchema).optional(),
     models: z.array(modelInfoSchema).optional(),
   }),
-  /** The harness dropped its conversation (`/clear`); the projection follows suit. */
+  /**
+   * The harness dropped its conversation (`/clear`) and carries on under a new
+   * id; the transcript starts over with it.
+   */
   "session.cleared": z.object({
     reason: z.string().optional(),
+    nativeSessionId: z.string().optional(),
   }),
   "session.status": z.object({
     status: sessionStatusSchema,
     detail: z.string().optional(),
   }),
-  "message.started": z.object({
-    messageId: z.string(),
-    role: messageRoleSchema,
+  /** The prompt as sent. The harness never echoes it back, so the log is its only record. */
+  "user.message": z.object({
+    text: z.string(),
     /** Absent on every event logged before attachments existed, which reduces to none. */
     attachments: z.array(messageAttachmentSchema).optional(),
   }),
-  "message.completed": z.object({
-    messageId: z.string(),
-    stopReason: z.string().optional(),
+  /** One ACP session update, as the shared harness reported it. */
+  update: z.object({
+    update: sessionUpdateSchema,
   }),
-  /** The harness can restore the working tree to how it looked before this message. */
-  "message.checkpoint": z.object({
-    messageId: z.string(),
-    checkpointId: z.string(),
-  }),
-  "block.started": z.object({
-    messageId: z.string(),
-    blockId: z.string(),
-    kind: blockKindSchema,
-    toolName: z.string().optional(),
-    toolUseId: z.string().optional(),
-  }),
-  "block.delta": z.object({
-    blockId: z.string(),
-    textDelta: z.string().optional(),
-    inputJsonDelta: z.string().optional(),
-  }),
-  "block.completed": z.object({
-    blockId: z.string(),
-    content: blockContentSchema,
-  }),
+  /** A tool call held for a decision, answered by a `permission.resolved`. */
   "permission.requested": z.object({
     requestId: z.string(),
-    toolName: z.string(),
-    input: z.unknown(),
-    suggestions: z.array(z.unknown()).optional(),
+    request: permissionRequestSchema,
   }),
   "permission.resolved": z.object({
     requestId: z.string(),
@@ -144,11 +129,15 @@ export const eventDataSchemas = {
     updatedInput: z.unknown().optional(),
     resolvedBy: z.enum(["user", "policy"]),
   }),
-  "usage.updated": z.object({
-    inputTokens: z.number(),
-    outputTokens: z.number(),
-    cacheReadTokens: z.number().optional(),
-    costUsd: z.number().optional(),
+  /** The session's running totals, and how full the model's context is. */
+  usage: z.object({
+    total: usageTotalsSchema,
+    context: z.object({ used: z.number(), size: z.number() }).optional(),
+  }),
+  /** A turn ended; `usage` is that turn's alone. */
+  "turn.done": z.object({
+    stopReason: z.string(),
+    usage: usageTotalsSchema.optional(),
   }),
   log: z.object({
     level: z.enum(["debug", "info", "warn", "error"]),

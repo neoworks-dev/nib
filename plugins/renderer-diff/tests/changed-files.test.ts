@@ -1,35 +1,33 @@
 import { describe, expect, test } from "bun:test";
-import type { BlockView, MessageView } from "@nib-ui/protocol";
+import type { AgentTurn, ToolItem } from "@nib-ui/protocol";
+import { toolItem } from "../../../packages/protocol/tests/builders";
 import { summarizeChanges } from "../src/changed-files";
 
-function editBlock(id: string, toolName: string, input: Record<string, unknown>): BlockView {
-  return {
+/** A tool call that changed files, the way ACP reports it: as diffs in its content. */
+function edit(
+  id: string,
+  changes: Array<{ path: string; oldText: string | null; newText: string }>,
+  overrides: Partial<ToolItem> = {},
+): ToolItem {
+  return toolItem(
     id,
-    messageId: "m1",
-    kind: "tool_use",
-    toolName,
-    toolUseId: `t-${id}`,
-    text: "",
-    inputJson: "",
-    content: { kind: "tool_use", toolName, toolUseId: `t-${id}`, input },
-    completed: true,
-  };
+    "Edit",
+    {},
+    {
+      content: changes.map((change) => ({ type: "diff" as const, ...change })),
+      ...overrides,
+    },
+  );
 }
 
-function message(blocks: BlockView[]): MessageView {
-  return { id: "m1", role: "assistant", blocks, completed: true, stopReason: null };
+function turn(items: AgentTurn["items"]): AgentTurn {
+  return { type: "agent", id: "t1", items, completed: true, stopReason: null };
 }
 
 describe("summarizeChanges", () => {
   test("counts added and removed lines per file", () => {
     const summary = summarizeChanges(
-      message([
-        editBlock("b1", "Edit", {
-          file_path: "src/app.ts",
-          old_string: "a\nb",
-          new_string: "a\nc\nd",
-        }),
-      ]),
+      turn([edit("b1", [{ path: "src/app.ts", oldText: "a\nb", newText: "a\nc\nd" }])]),
     );
 
     expect(summary.files).toHaveLength(1);
@@ -40,9 +38,9 @@ describe("summarizeChanges", () => {
 
   test("accumulates repeated edits to one file", () => {
     const summary = summarizeChanges(
-      message([
-        editBlock("b1", "Edit", { file_path: "a.ts", old_string: "x", new_string: "y" }),
-        editBlock("b2", "Edit", { file_path: "a.ts", old_string: "p", new_string: "q" }),
+      turn([
+        edit("b1", [{ path: "a.ts", oldText: "x", newText: "y" }]),
+        edit("b2", [{ path: "a.ts", oldText: "p", newText: "q" }]),
       ]),
     );
 
@@ -51,15 +49,44 @@ describe("summarizeChanges", () => {
     expect(summary.files[0]!.removed).toBe(2);
   });
 
-  test("treats a Write as pure additions and ignores other tools", () => {
+  test("treats a new file as pure additions and ignores calls without a diff", () => {
     const summary = summarizeChanges(
-      message([
-        editBlock("b1", "Write", { file_path: "new.ts", content: "one\ntwo" }),
-        editBlock("b2", "Bash", { command: "ls" }),
+      turn([
+        edit("b1", [{ path: "new.ts", oldText: null, newText: "one\ntwo" }]),
+        toolItem("b2", "Bash", { command: "ls" }),
       ]),
     );
 
     expect(summary.files.map((file) => file.path)).toEqual(["new.ts"]);
     expect(summary).toMatchObject({ added: 2, removed: 0 });
+  });
+
+  test("reads one call that changes several files, whichever harness reported it", () => {
+    const summary = summarizeChanges(
+      turn([
+        edit("b1", [
+          { path: "a.ts", oldText: "1", newText: "2" },
+          { path: "b.ts", oldText: null, newText: "x" },
+        ]),
+      ]),
+    );
+
+    expect(summary.files.map((file) => file.path)).toEqual(["a.ts", "b.ts"]);
+  });
+
+  test("a call that failed changed nothing", () => {
+    const summary = summarizeChanges(
+      turn([edit("b1", [{ path: "a.ts", oldText: "1", newText: "2" }], { status: "failed" })]),
+    );
+
+    expect(summary.files).toEqual([]);
+  });
+
+  test("a call still waiting on its permission has not changed anything yet", () => {
+    const summary = summarizeChanges(
+      turn([edit("b1", [{ path: "a.ts", oldText: "1", newText: "2" }], { status: "pending" })]),
+    );
+
+    expect(summary.files).toEqual([]);
   });
 });

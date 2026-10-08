@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import {
-  type BlockView,
-  createSessionView,
-  type MessageView,
-  type SessionView,
-} from "@nib-ui/protocol";
+import type { ToolItem } from "@nib-ui/protocol";
+import { sessionOf, toolItem, userItem } from "../../../packages/protocol/tests/builders";
 import {
   type FileEdit,
   hunkRange,
@@ -15,77 +11,35 @@ import {
   reviewMessage,
 } from "../src/changes";
 
-function editBlock(id: string, toolName: string, input: unknown): BlockView {
-  return {
+/** A file edit the way ACP reports it: a tool call whose content is a diff. */
+function edit(
+  id: string,
+  path: string,
+  oldText: string | null,
+  newText: string,
+  overrides: Partial<ToolItem> = {},
+): ToolItem {
+  return toolItem(
     id,
-    messageId: "m",
-    kind: "tool_use",
-    toolName,
-    toolUseId: `tu-${id}`,
-    text: "",
-    inputJson: "",
-    content: { kind: "tool_use", toolName, toolUseId: `tu-${id}`, input },
-    completed: true,
-  };
-}
-
-function resultBlock(id: string): BlockView {
-  return {
-    id: `r-${id}`,
-    messageId: "m",
-    kind: "tool_result",
-    toolName: "Edit",
-    toolUseId: `tu-${id}`,
-    text: "",
-    inputJson: "",
-    content: { kind: "tool_result", toolUseId: `tu-${id}`, output: "ok" },
-    completed: true,
-  };
-}
-
-function session(messages: { id: string; blocks: BlockView[] }[]): SessionView {
-  return {
-    ...createSessionView("s1"),
-    messages: messages.map(({ id, blocks }): MessageView => ({
-      id,
-      role: "assistant",
-      blocks,
-      completed: true,
-      stopReason: null,
-    })),
-  };
+    "Edit",
+    {},
+    {
+      content: [{ type: "diff", path, oldText, newText }],
+      ...overrides,
+    },
+  );
 }
 
 describe("latestEdits", () => {
   test("reads applied edits for the file", () => {
-    const view = session([
-      {
-        id: "m1",
-        blocks: [
-          editBlock("b1", "Edit", {
-            file_path: "/repo/a.ts",
-            old_string: "one",
-            new_string: "ONE",
-          }),
-          resultBlock("b1"),
-        ],
-      },
-    ]);
+    const view = sessionOf("s1", [userItem("u1", "go"), edit("b1", "/repo/a.ts", "one", "ONE")]);
     expect(latestEdits(view, "/repo/a.ts")).toEqual([
       { id: "b1", path: "/repo/a.ts", before: "one", after: "ONE" },
     ]);
   });
 
-  test("takes the whole content of a Write as the change", () => {
-    const view = session([
-      {
-        id: "m1",
-        blocks: [
-          editBlock("b1", "Write", { file_path: "/repo/a.ts", content: "new file" }),
-          resultBlock("b1"),
-        ],
-      },
-    ]);
+  test("takes the whole content of a new file as the change", () => {
+    const view = sessionOf("s1", [edit("b1", "/repo/a.ts", null, "new file")]);
     expect(latestEdits(view, "/repo/a.ts")[0]).toEqual({
       id: "b1",
       path: "/repo/a.ts",
@@ -95,47 +49,41 @@ describe("latestEdits", () => {
   });
 
   test("only the newest turn that touched the file is reviewable", () => {
-    const view = session([
-      {
-        id: "m1",
-        blocks: [
-          editBlock("b1", "Edit", { file_path: "/repo/a.ts", new_string: "first" }),
-          resultBlock("b1"),
-        ],
-      },
-      {
-        id: "m2",
-        blocks: [
-          editBlock("b2", "Edit", { file_path: "/repo/b.ts", new_string: "other" }),
-          resultBlock("b2"),
-        ],
-      },
-      {
-        id: "m3",
-        blocks: [
-          editBlock("b3", "Edit", { file_path: "/repo/a.ts", new_string: "second" }),
-          resultBlock("b3"),
-        ],
-      },
+    const view = sessionOf("s1", [
+      userItem("u1", "first"),
+      edit("b1", "/repo/a.ts", null, "first"),
+      userItem("u2", "second"),
+      edit("b2", "/repo/b.ts", null, "other"),
+      userItem("u3", "third"),
+      edit("b3", "/repo/a.ts", null, "second"),
     ]);
-    expect(latestEdits(view, "/repo/a.ts").map((edit) => edit.id)).toEqual(["b3"]);
+    expect(latestEdits(view, "/repo/a.ts").map((entry) => entry.id)).toEqual(["b3"]);
   });
 
-  test("ignores edits to other files and calls that have not returned", () => {
-    const view = session([
-      {
-        id: "m1",
-        blocks: [
-          editBlock("b1", "Edit", { file_path: "/repo/other.ts", new_string: "x" }),
-          resultBlock("b1"),
-        ],
-      },
-      {
-        id: "m2",
-        blocks: [editBlock("b2", "Edit", { file_path: "/repo/a.ts", new_string: "pending" })],
-      },
+  test("ignores edits to other files and calls that have not finished", () => {
+    const view = sessionOf("s1", [
+      userItem("u1", "go"),
+      edit("b1", "/repo/other.ts", null, "x"),
+      edit("b2", "/repo/a.ts", null, "pending", { status: "in_progress" }),
     ]);
     expect(latestEdits(view, "/repo/a.ts")).toEqual([]);
+  });
+
+  test("keeps every file of a call that changes several, each under its own id", () => {
+    const view = sessionOf("s1", [
+      toolItem(
+        "b1",
+        "apply_patch",
+        {},
+        {
+          content: [
+            { type: "diff", path: "/repo/a.ts", oldText: "1", newText: "2" },
+            { type: "diff", path: "/repo/a.ts", oldText: "3", newText: "4" },
+          ],
+        },
+      ),
+    ]);
+    expect(latestEdits(view, "/repo/a.ts").map((entry) => entry.id)).toEqual(["b1", "b1:1"]);
   });
 });
 

@@ -1,8 +1,10 @@
 import {
   agentControlServerName,
   agentToolNames,
-  type BlockView,
-  blockToolInput,
+  toolDiffs,
+  toolInput,
+  toolInputString,
+  type ToolItem,
 } from "@nib-ui/protocol";
 
 /**
@@ -42,39 +44,39 @@ export function toolDisplayName(toolName: string): string {
   return mcp ? sentenceCase(mcp.tool) : toolName;
 }
 
-export function describeCall(block: BlockView): StepDescriptor {
-  const called = block.toolName ?? "tool";
-  const mcp = parseMcpToolName(called);
+/**
+ * How a tool call reads in the transcript. Tools are told apart by name first,
+ * for the ones with a vocabulary of their own (the agent tools, a task, the
+ * web), and then by ACP's kind of call, which every harness reports whatever it
+ * calls the tool.
+ */
+export function describeCall(tool: ToolItem): StepDescriptor {
+  const mcp = parseMcpToolName(tool.name);
   // pi runs the agent-control tools in-process under their bare names while the
   // other harnesses reach them over MCP. One spelling here, so a run of them
   // reads the same whichever harness logged it.
-  const toolName = mcp?.server === agentControlServerName ? mcp.tool : called;
-  const raw = blockToolInput(block);
-  // While the call streams, the input is still unparseable JSON — the row reads
-  // the value out of the fragment so the command appears as it is written.
-  const input = raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  const fragment = typeof raw === "string" ? raw : "";
-  const field = (key: string): string =>
-    typeof input[key] === "string" ? (input[key] as string) : streamedField(fragment, key);
+  let toolName = tool.name;
+  if (mcp?.server === agentControlServerName) toolName = mcp.tool;
 
+  const named = describeNamedTool(toolName, tool);
+  if (named) return named;
+  const byKind = describeByKind(tool);
+  if (byKind) return byKind;
+
+  // An MCP server is a run of its own: its calls file under the server, and
+  // each line says which of its tools ran rather than repeating the header.
+  const input = toolInput(tool) ?? {};
+  if (mcp) {
+    return step(sentenceCase(mcp.server), "call", sentenceCase(mcp.tool), lead(input), oneLine);
+  }
+  const label = toolName.length > 0 ? toolName : tool.title || "tool";
+  return { label, noun: "call", verb: label, detail: lead(input), subject: "" };
+}
+
+/** Tools with a vocabulary of their own, whichever kind the harness filed them under. */
+function describeNamedTool(toolName: string, tool: ToolItem): StepDescriptor | null {
+  const field = (...keys: string[]): string => toolInputString(tool, ...keys) ?? "";
   switch (toolName) {
-    case "Read":
-    case "NotebookRead":
-      return step("Explore", "file", "Read", field("file_path"), basename);
-    case "Edit":
-    case "MultiEdit":
-    case "NotebookEdit":
-      return step("Edit", "change", "Updated", field("file_path"), basename);
-    case "Write":
-      return step("Edit", "change", "Wrote", field("file_path"), basename);
-    case "Bash":
-    case "BashOutput":
-    case "KillShell":
-      return step("Terminal", "command", "Ran", field("command"), oneLine);
-    case "Grep":
-      return step("Explore", "search", "Searched for", field("pattern"), oneLine);
-    case "Glob":
-      return step("Explore", "search", "Listed", field("pattern"), oneLine);
     case "TodoWrite":
       return {
         label: "Plan",
@@ -111,13 +113,57 @@ export function describeCall(block: BlockView): StepDescriptor {
       return step("Web", "fetch", "Fetched", field("url"), hostname);
     case "WebSearch":
       return step("Web", "search", "Searched the web for", field("query"), oneLine);
+    case "Glob":
+      return step("Explore", "search", "Listed", field("pattern"), oneLine);
+    case "Write":
+    case "write":
+      return step("Edit", "change", "Wrote", filePath(tool), basename);
     default:
-      // An MCP server is a run of its own: its calls file under the server, and
-      // each line says which of its tools ran rather than repeating the header.
-      if (mcp)
-        return step(sentenceCase(mcp.server), "call", sentenceCase(mcp.tool), lead(input), oneLine);
-      return { label: toolName, noun: "call", verb: toolName, detail: lead(input), subject: "" };
+      return null;
   }
+}
+
+/** The vocabulary of ACP's kinds of call, which the three harnesses share. */
+function describeByKind(tool: ToolItem): StepDescriptor | null {
+  switch (tool.kind) {
+    case "read":
+      return step("Explore", "file", "Read", filePath(tool), basename);
+    case "edit":
+    case "delete":
+    case "move":
+      return step("Edit", "change", "Updated", filePath(tool), basename);
+    case "execute":
+      return step("Terminal", "command", "Ran", commandOf(tool), oneLine);
+    case "search":
+      return step("Explore", "search", "Searched for", searchTermOf(tool), oneLine);
+    case "fetch":
+      return step("Web", "fetch", "Fetched", toolInputString(tool, "url") ?? "", hostname);
+    default:
+      return null;
+  }
+}
+
+/** The file a call is about: its input's path, else the file its diff changes, else its location. */
+function filePath(tool: ToolItem): string {
+  const fromInput = toolInputString(tool, "file_path", "path", "notebook_path");
+  if (fromInput !== undefined) return fromInput;
+  const diff = toolDiffs(tool)[0];
+  if (diff) return diff.path;
+  return tool.locations[0]?.path ?? "";
+}
+
+/** The command a shell call runs: its input, else what the harness titled the call. */
+function commandOf(tool: ToolItem): string {
+  const fromInput = toolInputString(tool, "command", "cmd");
+  if (fromInput !== undefined) return fromInput;
+  return tool.title;
+}
+
+/** What a search looks for: its pattern or query, else the harness's title for it. */
+function searchTermOf(tool: ToolItem): string {
+  const fromInput = toolInputString(tool, "pattern", "query");
+  if (fromInput !== undefined) return fromInput;
+  return tool.title;
 }
 
 /**
@@ -157,8 +203,8 @@ function step(
  * vocabulary the transcript prints, so a tool nothing knows how to describe is
  * also a tool nothing tries to route.
  */
-export function readFilePath(block: BlockView): string | null {
-  const call = describeCall(block);
+export function readFilePath(tool: ToolItem): string | null {
+  const call = describeCall(tool);
   if (call.noun !== "file" || call.verb !== "Read") return null;
   return call.subject.length > 0 ? call.subject : null;
 }
@@ -168,8 +214,8 @@ export function readFilePath(block: BlockView): string | null {
  * the tool's own input already spells out — a name alone ("Bash", "Edit") says
  * which tool ran, not what happened.
  */
-export function describeStep(block: BlockView): string {
-  return stepPhrase(describeCall(block));
+export function describeStep(tool: ToolItem): string {
+  return stepPhrase(describeCall(tool));
 }
 
 /** The same line, for callers that already hold the descriptor. */
@@ -186,19 +232,6 @@ export function countedNoun(count: number, noun: string): string {
       ? "es"
       : "s";
   return `${count} ${noun}${suffix}`;
-}
-
-/** Pulls a string field out of half-arrived JSON, escapes and all. */
-function streamedField(fragment: string, key: string): string {
-  const match = new RegExp(`"${key}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)`).exec(fragment);
-  if (!match) return "";
-  const body = match[1] ?? "";
-  try {
-    return JSON.parse(`"${body}"`) as string;
-  } catch {
-    // A trailing half-written escape (`\`, `\u12`) is not valid JSON on its own.
-    return JSON.parse(`"${body.replace(/\\[^"\\/bfnrtu]?$|\\u[0-9a-fA-F]{0,3}$/, "")}"`) as string;
-  }
 }
 
 function basename(path: string): string {

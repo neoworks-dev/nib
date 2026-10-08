@@ -13,6 +13,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@neoworks-dev/ui": "link:@neoworks-dev/ui",
+    "@neoworks/harness": "link:@neoworks/harness",
     "@nib-ui/comfy": "workspace:*",
     "@nib-ui/file-icons": "workspace:*",
     "@nib-ui/kernel": "workspace:*",
@@ -29,9 +30,6 @@
     "@nib-ui/plugin-file-viewer": "workspace:*",
     "@nib-ui/plugin-git-graph": "workspace:*",
     "@nib-ui/plugin-git-panel": "workspace:*",
-    "@nib-ui/plugin-harness-claude-code": "workspace:*",
-    "@nib-ui/plugin-harness-codex": "workspace:*",
-    "@nib-ui/plugin-harness-pi": "workspace:*",
     "@nib-ui/plugin-pinterest": "workspace:*",
     "@nib-ui/plugin-project-explorer": "workspace:*",
     "@nib-ui/plugin-renderer-diff": "workspace:*",

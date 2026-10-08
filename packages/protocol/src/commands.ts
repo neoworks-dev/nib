@@ -27,8 +27,6 @@ export const sessionCommandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("session.setLabel"), label: z.string() }),
   z.object({ type: z.literal("session.setEffort"), effort: z.string() }),
   z.object({ type: z.literal("session.setArchived"), archived: z.boolean() }),
-  /** Restores the working tree to the checkpoint the message carries; the transcript is untouched. */
-  z.object({ type: z.literal("session.rewind"), messageId: z.string() }),
   /** Omit `nativeSessionId` to reattach to whatever the session's log last recorded. */
   z.object({
     type: z.literal("session.resume"),
