@@ -107,6 +107,7 @@ export function sessionInit(
       model: modelOf(readString(options, "model")),
       effort: effortOf(spec, readString(options, "effort")),
     },
+    usage: opts.usage,
     onPermission: (request) => pending.permission(request),
     onQuestion: (request) => pending.question(request),
   };

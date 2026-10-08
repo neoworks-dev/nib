@@ -15,14 +15,14 @@ export interface ChangeSummary {
 
 /**
  * The files a turn changed, read from the ACP diffs its tool calls carry. One
- * entry per file: repeated edits to the same path accumulate, and a call that
- * failed changed nothing.
+ * entry per file: repeated edits to the same path accumulate, and only a call that
+ * completed changed anything: a pending one may still be refused.
  */
 export function summarizeChanges(turn: AgentTurn): ChangeSummary {
   const byPath = new Map<string, ChangedFile>();
 
   for (const item of turn.items) {
-    if (item.type !== "tool" || item.status === "failed") continue;
+    if (item.type !== "tool" || item.status !== "completed") continue;
     for (const diff of toolDiffs(item)) {
       const lines = diffLines(diff.oldText ?? "", diff.newText);
       const entry = byPath.get(diff.path) ?? { path: diff.path, added: 0, removed: 0 };

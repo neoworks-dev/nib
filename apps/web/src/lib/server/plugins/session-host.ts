@@ -5,6 +5,7 @@ import type {
   MessageAttachment,
   SessionCommand,
   SessionView,
+  UsageTotals,
 } from "@nib-ui/protocol";
 import { createSessionView, deriveTaskTitle, reduceSession, sessionDigest } from "@nib-ui/protocol";
 import type {
@@ -365,9 +366,14 @@ class SessionHostService implements SessionHost {
     // A session revived after a restart is as much an agent as a fresh one, so
     // it gets its own link rather than coming back without the tools.
     const agentControl = await this.agentControl?.(hosted.id);
-    await this.attach(hosted, () =>
-      adapter.resumeSession!(nativeSessionId, { cwd: hosted.cwd, fork, agentControl }, emit),
-    );
+    const opts: CreateSessionOptions & { fork?: boolean } = {
+      cwd: hosted.cwd,
+      options: resumeOptions(hosted.view),
+      fork,
+      agentControl,
+      usage: usageTotals(hosted.view),
+    };
+    await this.attach(hosted, () => adapter.resumeSession!(nativeSessionId, opts, emit));
   }
 
   private require(sessionId: string): HostedSession {
@@ -375,6 +381,27 @@ class SessionHostService implements SessionHost {
     if (!hosted) throw new Error(`unknown session "${sessionId}"`);
     return hosted;
   }
+}
+
+/** The picks a session was last given, so a resumed session carries on under them. */
+function resumeOptions(view: SessionView): Record<string, unknown> {
+  const options: Record<string, unknown> = {};
+  if (view.permissionMode) options.permissionMode = view.permissionMode;
+  if (view.model) options.model = view.model;
+  if (view.effort) options.effort = view.effort;
+  return options;
+}
+
+/** What the session has used so far, as the harness reports it. */
+function usageTotals(view: SessionView): UsageTotals {
+  const { usage } = view;
+  return {
+    input: usage.inputTokens,
+    output: usage.outputTokens,
+    cacheRead: usage.cacheReadTokens,
+    cacheWrite: usage.cacheWriteTokens,
+    costUsd: usage.costUsd,
+  };
 }
 
 function readStringOption(

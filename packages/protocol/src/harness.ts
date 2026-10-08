@@ -1,7 +1,13 @@
 import type { Disposer } from "@nib-ui/kernel";
 import type { AgentControlLink } from "./agent-control";
 import type { HarnessCapabilities, HarnessDescriptor } from "./capabilities";
-import type { EmittedEvent, MessageAttachment, ModelInfo, PermissionBehavior } from "./events";
+import type {
+  EmittedEvent,
+  MessageAttachment,
+  ModelInfo,
+  PermissionBehavior,
+  UsageTotals,
+} from "./events";
 
 /** What an adapter calls to push a normalized event; the host stamps id/seq/sessionId/ts. */
 export type EmitEvent = (event: EmittedEvent) => void;
@@ -38,6 +44,11 @@ export interface CreateSessionOptions {
    * agent-control service, in which case the agent works alone.
    */
   agentControl?: AgentControlLink;
+  /**
+   * What the session has used so far, for a session resumed in a new process:
+   * the harness counts from nothing, and its totals carry on from these.
+   */
+  usage?: UsageTotals;
 }
 
 export interface HarnessAdapter {

@@ -81,4 +81,12 @@ describe("summarizeChanges", () => {
 
     expect(summary.files).toEqual([]);
   });
+
+  test("a call still waiting on its permission has not changed anything yet", () => {
+    const summary = summarizeChanges(
+      turn([edit("b1", [{ path: "a.ts", oldText: "1", newText: "2" }], { status: "pending" })]),
+    );
+
+    expect(summary.files).toEqual([]);
+  });
 });

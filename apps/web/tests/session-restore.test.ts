@@ -71,3 +71,32 @@ describe("readSessionLogs", () => {
     expect(readSessionLogs(directory).map((log) => log.id)).toEqual(["zzz", "aaa"]);
   });
 });
+
+describe("readSessionLogs on a log written before nib stored ACP", () => {
+  const legacyFixture = new URL(
+    "../../../packages/protocol/tests/fixtures/legacy-claude-session.jsonl",
+    import.meta.url,
+  ).pathname;
+
+  test("converts the old events as it reads and leaves the file as it was", async () => {
+    const original = await Bun.file(legacyFixture).text();
+    const directory = await mkdtemp(join(tmpdir(), "nib-logs-"));
+    await writeFile(join(directory, "s1.jsonl"), original);
+
+    const [log] = readSessionLogs(directory);
+    const types = new Set(log!.events.map((entry) => entry.type));
+    expect(types.has("update")).toBe(true);
+    expect(types.has("user.message") || types.has("usage")).toBe(true);
+    expect(types.has("block.started")).toBe(false);
+    expect(types.has("message.started")).toBe(false);
+    expect(await Bun.file(join(directory, "s1.jsonl")).text()).toBe(original);
+  });
+
+  test("keeps appending from the last sequence number on disk", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "nib-logs-"));
+    await writeFile(join(directory, "s1.jsonl"), await Bun.file(legacyFixture).text());
+
+    const [log] = readSessionLogs(directory);
+    expect(log!.events.at(-1)!.seq).toBe(24);
+  });
+});

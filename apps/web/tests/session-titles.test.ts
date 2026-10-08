@@ -56,6 +56,11 @@ async function restoreFrom(lines: string[]) {
 }
 
 function prompt(seq: number, text: string): string[] {
+  return [event(seq, "user.message", { text })];
+}
+
+/** A prompt as logs written before nib stored ACP told it. */
+function legacyPrompt(seq: number, text: string): string[] {
   return [
     event(seq, "message.started", { messageId: `u${seq}`, role: "user" }),
     event(seq + 1, "block.started", { messageId: `u${seq}`, blockId: `u${seq}:0`, kind: "text" }),
@@ -71,6 +76,11 @@ const created = event(1, "session.created", {
 });
 
 describe("restoring a session without a title", () => {
+  test("names a session logged before ACP after its first prompt, too", async () => {
+    const sessions = await restoreFrom([created, ...legacyPrompt(2, "port the old log")]);
+    expect(sessions[0]!.title).toBe("port the old log");
+  });
+
   test("names it after the first prompt", async () => {
     const sessions = await restoreFrom([
       created,
