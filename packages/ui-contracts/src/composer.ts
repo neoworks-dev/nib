@@ -33,7 +33,10 @@ export interface ComposerTargetOption {
   disabled?: boolean;
 }
 
-/** The form a picked option shows under the prompt. Values belong to the composer, so a draft keeps them. */
+/**
+ * The controls a picked option shows in the composer's row of pills, in place of
+ * the agent's. Values belong to the composer, so a draft keeps them.
+ */
 export interface ComposerTargetFormProps {
   optionId: string;
   context: ComposerTargetContext;

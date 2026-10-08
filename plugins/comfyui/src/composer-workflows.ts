@@ -8,6 +8,7 @@ import {
   blockedReason,
   findEntry,
   promptParameter,
+  promptPlaceholder,
   runInput,
   workflowOptions,
 } from "./composer-target";
@@ -36,7 +37,7 @@ export function workflowComposerTarget(store: ComfyStore): ComposerTarget {
       const entry = findEntry(store.cachedLibrary(context.cwd), optionId);
       const prompt = entry ? promptParameter(entry.manifest) : null;
       if (!entry || !prompt) return { takesText: false, placeholder: "" };
-      return { takesText: true, placeholder: `${prompt.label} for ${entry.manifest.name}` };
+      return { takesText: true, placeholder: promptPlaceholder(prompt) };
     },
     form: ComposerWorkflowForm,
     blocked: (request) => {
