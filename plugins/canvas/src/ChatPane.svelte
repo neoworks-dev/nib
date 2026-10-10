@@ -3,15 +3,19 @@
   import { agentFamily, ChatSurface, Composer, type PendingComposer } from "@nib-ui/plugin-chat";
   import { type PaneProps, statusLabel, statusTone } from "@nib-ui/ui-contracts";
   import { SlotHost } from "@nib-ui/ui-contracts/svelte";
+  import ArrowLeftIcon from "phosphor-svelte/lib/ArrowLeftIcon";
+  import { untrack } from "svelte";
+  import { chatList, groupChats } from "./chat-list";
+  import ChatList from "./ChatList.svelte";
   import type { ChatPaneParams } from "./chat-pane";
   import { canvasState } from "./state.svelte";
 
-  /** `session` is the task in the foreground: what a pane opened without params shows. */
-  const { session: activeSession, instanceId, params }: PaneProps = $props();
+  const { instanceId, params }: PaneProps = $props();
 
-  const target = $derived(
-    canvasState.chatTarget(params as ChatPaneParams | undefined, activeSession),
-  );
+  const chatParams = $derived(params as ChatPaneParams | undefined);
+  /** A pane opened on no chat in particular is the overview of all of them. */
+  const listing = $derived(!chatParams?.workstreamId && !chatParams?.sessionId);
+  const target = $derived(canvasState.chatTarget(chatParams, null));
   const workstream = $derived(target.workstream);
   const session = $derived(target.session);
   const view = $derived(workstream ? canvasState.viewOf(workstream) : null);
@@ -42,13 +46,49 @@
     canvasState.panes?.reparam(instanceId, { ...params, sessionId });
   }
 
+  /** Back to the overview: the pane drops what it was keyed to. */
+  function showOverview(): void {
+    canvasState.panes?.reparam(instanceId, {});
+  }
+
+  /** A chat picked from the overview. */
+  function openChat(sessionId: string): void {
+    canvasState.panes?.reparam(instanceId, { sessionId } satisfies ChatPaneParams);
+  }
+
+  // The session the pane is keyed to is subscribed to, whether it was picked
+  // from the overview or restored with the pane: a chat nobody has opened this
+  // run has a log and no live projection until something watches it.
+  $effect(() => {
+    const sessionId = chatParams?.sessionId;
+    if (!sessionId) return;
+    untrack(() => canvasState.sessions?.watch(sessionId));
+  });
+
+  /**
+   * The arrows of an empty composer. Left steps back through the agents of a
+   * family and, from the one the user started, out to the overview; right steps
+   * forward and wraps.
+   */
   function switchAgent(direction: -1 | 1): void {
-    if (!session || family.length < 2) return;
-    const index = family.findIndex((member) => member.id === session.sessionId);
-    if (index < 0) return;
-    const next = family[(index + direction + family.length) % family.length];
+    const index = family.findIndex((member) => member.id === session?.sessionId);
+    if (direction === -1 && index <= 0) {
+      showOverview();
+      return;
+    }
+    if (family.length < 2 || index < 0) return;
+    const next = family[(index + direction) % family.length];
     if (next) showSession(next.id);
   }
+
+  const chats = $derived(chatList(canvasState.sessions?.summaries ?? [], canvasState.board.cwd));
+  const runningCount = $derived(chats.filter((chat) => chat.running).length);
+  /** Re-read each minute so the ages on the overview do not go stale. */
+  let now = $state(Date.now());
+  $effect(() => {
+    const timer = setInterval(() => (now = Date.now()), 60_000);
+    return () => clearInterval(timer);
+  });
 
   /**
    * The same composer a running task gets. The picks it makes are held on the
@@ -122,7 +162,26 @@
 
 <div class="flex h-full min-h-0 flex-col">
   <header class="flex shrink-0 items-center gap-2 border-b border-line py-2 pr-3 pl-2">
-    <span class="min-w-0 flex-1 truncate pl-2 text-xs font-medium text-default">{title}</span>
+    {#if listing}
+      <span class="min-w-0 flex-1 truncate pl-2 text-sm font-semibold text-default">Chats</span>
+      {#if runningCount > 0}
+        <span class="flex items-center gap-1.5 text-2xs text-blue">
+          <span class="size-1.5 animate-pulse rounded-full bg-blue"></span>
+          {runningCount} running
+        </span>
+      {/if}
+    {:else}
+      <button
+        type="button"
+        class="rounded-md p-1 text-faint hover:bg-hover hover:text-default"
+        aria-label="All chats"
+        title="All chats (← in an empty composer)"
+        onclick={showOverview}
+      >
+        <ArrowLeftIcon size={14} />
+      </button>
+      <span class="min-w-0 flex-1 truncate text-xs font-medium text-default">{title}</span>
+    {/if}
 
     {#if session}
       {@const label = statusLabel(session.status)}
@@ -135,7 +194,15 @@
     <SlotHost slot="chat.actions" session={session ?? null} class="flex items-center gap-1" />
   </header>
 
-  {#if pending}
+  {#if listing}
+    <!-- Every chat of this project; the composer under them starts another. -->
+    <div class="min-h-0 flex-1 overflow-y-auto">
+      <ChatList groups={groupChats(chats, now)} {now} onOpen={openChat} />
+    </div>
+    <div class="shrink-0">
+      <Composer pending={newChat} />
+    </div>
+  {:else if pending}
     <!-- No transcript yet: what is sent from here is what creates the session,
 		     so the composer is the same one, with its picks applied at launch. -->
     <div class="min-h-0 flex-1 overflow-y-auto px-8 py-3">
@@ -164,7 +231,7 @@
     </div>
 
     <div class="shrink-0">
-      <Composer {pending} />
+      <Composer {pending} onSwitchAgent={switchAgent} />
     </div>
   {:else if session}
     {#if sources.length > 0}
@@ -197,13 +264,9 @@
         onSwitchAgent={switchAgent}
       />
     </div>
-  {:else if workstream}
-    <p class="min-h-0 flex-1 px-3 py-3 text-xs text-dim">This workstream is not loaded.</p>
   {:else}
-    <!-- The composer's own placeholder asks what to do; the space above stays empty. -->
-    <div class="min-h-0 flex-1"></div>
-    <div class="shrink-0">
-      <Composer pending={newChat} />
-    </div>
+    <p class="min-h-0 flex-1 px-3 py-3 text-xs text-dim">
+      {workstream ? "This workstream is not loaded." : "This chat is not loaded."}
+    </p>
   {/if}
 </div>
