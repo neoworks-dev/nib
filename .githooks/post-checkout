@@ -1,0 +1,7 @@
+#!/bin/sh
+# `git worktree add` fires this with a null previous ref. Set the new worktree
+# up so `bun run dev`, the tests and the debug harness work in it straight away.
+null_ref="0000000000000000000000000000000000000000"
+if [ "$1" = "$null_ref" ] && [ "$3" = "1" ]; then
+  bun "$(git rev-parse --show-toplevel)/scripts/setup-worktree.ts"
+fi
