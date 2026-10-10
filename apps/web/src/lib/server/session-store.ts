@@ -33,6 +33,8 @@ export class HostedSession {
   view: SessionView;
   harnessSession: HarnessSession | null = null;
   private seq = 0;
+  /** Set once the session is disposed: what the harness says afterwards is not logged. */
+  private closed = false;
   private readonly subscribers = new Set<EventListener>();
   private readonly log: WriteStream;
 
@@ -60,7 +62,7 @@ export class HostedSession {
     this.events.push(event);
     this.updatedAt = event.ts;
     this.view = reduceSession(this.view, event);
-    this.log.write(`${JSON.stringify(event)}\n`);
+    if (!this.closed) this.log.write(`${JSON.stringify(event)}\n`);
     for (const listener of [...this.subscribers]) listener(event);
     return event;
   }
@@ -94,9 +96,25 @@ export class HostedSession {
 
   async dispose(): Promise<void> {
     this.subscribers.clear();
-    await this.harnessSession?.dispose();
-    this.harnessSession = null;
-    this.log.end();
+    try {
+      await this.harnessSession?.dispose();
+    } finally {
+      this.harnessSession = null;
+      await this.closeLog();
+    }
+  }
+
+  /**
+   * Stops writing and waits until what was queued has reached the file and the
+   * file is closed. Deleting the log before that would leave the stream to
+   * create it again when it finally opens.
+   */
+  private closeLog(): Promise<void> {
+    this.closed = true;
+    return new Promise((resolve) => {
+      this.log.once("error", () => resolve());
+      this.log.end(() => resolve());
+    });
   }
 }
 

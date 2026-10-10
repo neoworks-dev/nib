@@ -290,7 +290,13 @@ class SessionHostService implements SessionHost {
     const hosted = this.sessions.get(sessionId);
     if (!hosted) return;
     this.sessions.delete(sessionId);
-    await hosted.dispose();
+    try {
+      await hosted.dispose();
+    } catch (error) {
+      // The user asked for the chat to go; a harness that will not stop cleanly
+      // must not keep its transcript or turn the delete into an error.
+      console.error(`session ${sessionId} did not shut down cleanly:`, error);
+    }
     deleteSessionLog(this.config.logDirectoryFor(hosted.cwd), sessionId);
   }
 
