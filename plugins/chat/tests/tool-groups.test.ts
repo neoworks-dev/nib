@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { MessageItem, ToolItem } from "@nib-ui/protocol";
-import { textItem, toolItem } from "../../../packages/protocol/tests/builders";
-import { groupCount, groupTurnItems, type ToolGroup } from "../src/tool-groups";
+import { textItem, thoughtItem, toolItem } from "../../../packages/protocol/tests/builders";
+import { collapseToolRuns, groupCount, groupTurnItems, type ToolGroup } from "../src/tool-groups";
 
 const toolUse = toolItem;
 
@@ -83,4 +83,40 @@ describe("groupCount", () => {
     expect(groupCount(commands!)).toBe("2 commands");
     expect(groupCount(searches!)).toBe("2 searches");
   });
+});
+
+describe("collapseToolRuns", () => {
+  test("folds adjacent groups into one summary counted by kind of work", () => {
+    const collapsed = collapseToolRuns(
+      groupTurnItems([
+        toolUse("b1", "Bash", { command: "ls" }),
+        toolUse("b2", "Bash", { command: "pwd" }),
+        toolUse("r1", "Read", { file_path: "/a" }),
+      ]),
+    );
+    expect(collapsed).toHaveLength(1);
+    const [entry] = collapsed;
+    expect(entry?.kind).toBe("summary");
+    if (entry?.kind !== "summary") return;
+    expect(entry.summary.entries).toHaveLength(2);
+    expect(entry.summary.line).toBe("Used 2 commands, 1 file");
+  });
+
+  test("keeps prose between runs where it was", () => {
+    const collapsed = collapseToolRuns(
+      groupTurnItems([
+        toolUse("b1", "Bash", { command: "ls" }),
+        prose("t1"),
+        toolUse("b2", "Bash", { command: "pwd" }),
+      ]),
+    );
+    expect(collapsed.map((entry) => entry.kind)).toEqual(["summary", "item", "summary"]);
+  });
+});
+
+test("folds reasoning into the run it sits in", () => {
+  const collapsed = collapseToolRuns(
+    groupTurnItems([thoughtItem("th1", "hmm"), toolUse("b1", "Bash", { command: "ls" })]),
+  );
+  expect(collapsed).toHaveLength(1);
 });

@@ -414,6 +414,8 @@ export const canvasPlugin: Plugin = {
         kind: "chat",
         title: "Chat",
         icon: ChatCenteredDotsIcon,
+        // The chat draws its own top row; a drag bar above it would be a second one.
+        chrome: "none",
         // Over the board's right side rather than beside it: the board keeps its
         // width, and the cards a conversation is about stay where they were.
         presentation: "drawer",

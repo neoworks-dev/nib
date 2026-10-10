@@ -101,9 +101,10 @@ export interface PaneDefinition {
    * How the title bar is drawn. `bar` is the tool-pane default: a bordered strip
    * above the content. `quiet` lays the bar over the top of the content with no
    * background of its own and shows it only while the pointer is over the pane,
-   * for a pane that is a page rather than a tool.
+   * for a pane that is a page rather than a tool. `none` draws no bar at all, so
+   * the pane has no drag handle or close button and must provide its own way out.
    */
-  chrome?: "bar" | "quiet";
+  chrome?: "bar" | "quiet" | "none";
   /** Where a new instance opens; `dock` when omitted. */
   presentation?: PanePresentation;
   /** A title for one instance, from what it was opened with; falls back to `title`. */

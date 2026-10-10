@@ -26,5 +26,11 @@ export {
   planHarnessSwitch,
 } from "./harness-switch";
 export type { PendingComposer } from "./pending";
-export { groupCount, groupTurnItems, type ToolGroup, type TurnEntry } from "./tool-groups";
+export {
+  collapseToolRuns,
+  groupCount,
+  groupTurnItems,
+  type ToolGroup,
+  type TurnEntry,
+} from "./tool-groups";
 export { DROPPED_MARKER, HANDOVER_BUDGET, handoverSeed, transcriptText } from "./transcript";

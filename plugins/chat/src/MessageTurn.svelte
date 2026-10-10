@@ -9,8 +9,11 @@
   import { SlotHost } from "@nib-ui/ui-contracts/svelte";
   import AgentNotificationCard from "./AgentNotificationCard.svelte";
   import ItemHost from "./ItemHost.svelte";
+  import CheckIcon from "phosphor-svelte/lib/CheckIcon";
+  import CopyIcon from "phosphor-svelte/lib/CopyIcon";
   import ToolGroup from "./ToolGroup.svelte";
-  import { groupTurnItems } from "./tool-groups";
+  import ToolSummary from "./ToolSummary.svelte";
+  import { collapseToolRuns, groupTurnItems } from "./tool-groups";
 
   const { turn, session }: { turn: TranscriptTurn; session: SessionView } = $props();
 
@@ -21,8 +24,30 @@
   );
   const entries = $derived.by(() => {
     if (turn.type === "user") return [];
-    return groupTurnItems(turn.items);
+    const grouped = groupTurnItems(turn.items);
+    // Tool work is shown while it runs and folded away once the turn is over.
+    if (turn.completed) return collapseToolRuns(grouped);
+    return grouped;
   });
+
+  /** What the agent said in this turn, without the tool work between. */
+  const replyText = $derived.by(() => {
+    if (turn.type === "user") return "";
+    const paragraphs: string[] = [];
+    for (const item of turn.items) {
+      if (item.type === "text") paragraphs.push(item.text.trim());
+    }
+    return paragraphs.join("\n\n");
+  });
+
+  let copied = $state(false);
+
+  /** Copies the reply and shows a tick for a moment. */
+  async function copyReply(): Promise<void> {
+    await navigator.clipboard.writeText(replyText);
+    copied = true;
+    setTimeout(() => (copied = false), 1500);
+  }
 
   /** The prompt as a message, so the same renderer that draws the agent's prose draws it. */
   function promptAsMessage(prompt: UserItem): MessageItem {
@@ -42,18 +67,17 @@
   {#if notification}
     <AgentNotificationCard {notification} {session} />
   {:else}
-    <article
-      data-message={turn.id}
-      class="flex flex-col gap-2 rounded-xl border border-line-faint bg-raised px-4 py-3"
-    >
+    <article data-message={turn.id} class="flex flex-col gap-2">
       <ItemHost item={promptAsMessage(turn.item)} {session} />
     </article>
   {/if}
 {:else}
   <!-- The agent's turn is the page, not a card: items flow at the full column width. -->
   <article data-message={turn.id} class="flex flex-col gap-3">
-    {#each entries as entry (entry.kind === "group" ? entry.group.id : entry.item.id)}
-      {#if entry.kind === "group"}
+    {#each entries as entry (entry.kind === "group" ? entry.group.id : entry.kind === "summary" ? entry.summary.id : entry.item.id)}
+      {#if entry.kind === "summary"}
+        <ToolSummary summary={entry.summary} {session} />
+      {:else if entry.kind === "group"}
         <ToolGroup group={entry.group} {session} />
       {:else}
         <ItemHost item={entry.item} {session} />
@@ -70,6 +94,25 @@
     {/if}
 
     <SlotHost slot="message.footer" {session} {turn} class="flex flex-col gap-2" />
-    <SlotHost slot="message.actions" {session} {turn} class="flex items-center gap-2" />
+    {#if turn.completed && replyText.length > 0}
+      <div class="flex items-center gap-1 text-faint">
+        <button
+          type="button"
+          class="rounded-md p-1 hover:bg-hover hover:text-default"
+          aria-label="Copy the reply"
+          title="Copy"
+          onclick={copyReply}
+        >
+          {#if copied}
+            <CheckIcon size={14} />
+          {:else}
+            <CopyIcon size={14} />
+          {/if}
+        </button>
+        <SlotHost slot="message.actions" {session} {turn} class="flex items-center gap-2" />
+      </div>
+    {:else}
+      <SlotHost slot="message.actions" {session} {turn} class="flex items-center gap-2" />
+    {/if}
   </article>
 {/if}

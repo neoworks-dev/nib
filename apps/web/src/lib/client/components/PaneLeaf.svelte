@@ -18,6 +18,7 @@
   const definition = $derived(instance ? panes.definition(instance.paneId) : undefined);
   const focused = $derived(panes.focusedInstanceId === instanceId);
   const quiet = $derived(definition?.chrome === "quiet");
+  const barless = $derived(definition?.chrome === "none");
   const docked = $derived(panes.frameOf(instanceId)?.layer === "dock");
   const title = $derived.by(() => {
     if (!definition) return instance?.paneId ?? instanceId;
@@ -131,45 +132,47 @@
   class="group relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
   transition:scale|global={settling}
 >
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <header
-    class="flex h-8 shrink-0 cursor-grab items-center gap-1.5 px-2.5 select-none"
-    class:border-b={!quiet}
-    class:border-line={!quiet}
-    class:bg-raised={!quiet && focused}
-    class:absolute={quiet}
-    class:inset-x-0={quiet}
-    class:top-0={quiet}
-    class:z-raised={quiet}
-    class:opacity-0={quiet}
-    class:transition-opacity={quiet}
-    class:group-hover:opacity-100={quiet}
-    class:focus-within:opacity-100={quiet}
-    onpointerdown={start}
-    onpointermove={track}
-    onpointerup={finish}
-    onpointercancel={() => {
-      drag = null;
-      clearPaneDrag();
-    }}
-  >
-    {#if definition?.icon}
-      {@const Icon = definition.icon}
-      <span class="text-faint"><Icon size={12} /></span>
-    {/if}
-    <span class="min-w-0 flex-1 truncate text-2xs tracking-caps text-faint uppercase">
-      {title}
-    </span>
-    <button
-      type="button"
-      class="rounded-md p-1 text-faint hover:bg-hover hover:text-default"
-      aria-label="Close the {title} pane"
-      onpointerdown={(event) => event.stopPropagation()}
-      onclick={() => panes.closeInstance(instanceId)}
+  {#if !barless}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <header
+      class="flex h-8 shrink-0 cursor-grab items-center gap-1.5 px-2.5 select-none"
+      class:border-b={!quiet}
+      class:border-line={!quiet}
+      class:bg-raised={!quiet && focused}
+      class:absolute={quiet}
+      class:inset-x-0={quiet}
+      class:top-0={quiet}
+      class:z-raised={quiet}
+      class:opacity-0={quiet}
+      class:transition-opacity={quiet}
+      class:group-hover:opacity-100={quiet}
+      class:focus-within:opacity-100={quiet}
+      onpointerdown={start}
+      onpointermove={track}
+      onpointerup={finish}
+      onpointercancel={() => {
+        drag = null;
+        clearPaneDrag();
+      }}
     >
-      <XIcon size={12} />
-    </button>
-  </header>
+      {#if definition?.icon}
+        {@const Icon = definition.icon}
+        <span class="text-faint"><Icon size={12} /></span>
+      {/if}
+      <span class="min-w-0 flex-1 truncate text-2xs tracking-caps text-faint uppercase">
+        {title}
+      </span>
+      <button
+        type="button"
+        class="rounded-md p-1 text-faint hover:bg-hover hover:text-default"
+        aria-label="Close the {title} pane"
+        onpointerdown={(event) => event.stopPropagation()}
+        onclick={() => panes.closeInstance(instanceId)}
+      >
+        <XIcon size={12} />
+      </button>
+    </header>
+  {/if}
 
   <!-- Working in a pane focuses it, the same as clicking its title bar: a plugin
 	     asking the registry which instance has focus must not need one of its own. -->

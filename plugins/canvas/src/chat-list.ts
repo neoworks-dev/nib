@@ -94,3 +94,14 @@ function groupIndex(entry: ChatListEntry, startOfToday: number): number {
   if (entry.updatedAt >= startOfToday - 7 * DAY) return 3;
   return 4;
 }
+
+/** The chats whose title or last reply contains the query, ignoring case; all of them for a blank query. */
+export function filterChats(entries: ChatListEntry[], query: string): ChatListEntry[] {
+  const needle = query.trim().toLowerCase();
+  if (needle.length === 0) return entries;
+  return entries.filter((entry) => {
+    if (entry.title.toLowerCase().includes(needle)) return true;
+    if (entry.preview === null) return false;
+    return entry.preview.toLowerCase().includes(needle);
+  });
+}

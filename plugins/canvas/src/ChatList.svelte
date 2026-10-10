@@ -8,6 +8,7 @@
   import { LoadingSpinner } from "@neoworks-dev/ui";
   import { formatRelativeTime } from "@nib-ui/ui-contracts";
   import ChatCircleIcon from "phosphor-svelte/lib/ChatCircleIcon";
+  import CircleIcon from "phosphor-svelte/lib/CircleIcon";
   import ChatsCircleIcon from "phosphor-svelte/lib/ChatsCircleIcon";
   import HandIcon from "phosphor-svelte/lib/HandIcon";
   import type { ChatListEntry, ChatListGroup } from "./chat-list";
@@ -16,11 +17,14 @@
     groups,
     now,
     selectedId = null,
+    unreadIds = new Set<string>(),
     compact = false,
     onOpen,
   }: {
     groups: ChatListGroup[];
     now: number;
+    /** Chats that moved since the user last looked at them, drawn bold with a dot. */
+    unreadIds?: Set<string>;
     /** The chat open beside the list, marked so the sidebar says where you are. */
     selectedId?: string | null;
     /** Drawn in a sidebar: the empty state is a line, not an invitation. */
@@ -28,11 +32,11 @@
     onOpen: (sessionId: string) => void;
   } = $props();
 
-  /** The row's second line: what the chat is doing while it runs, else what it last said. */
+  /** The row's second line: what the chat last said, unless it is waiting on the user. */
   function secondLine(chat: ChatListEntry): string {
     if (chat.needsInput) return "Needs your input";
-    if (chat.running) return "Working…";
     if (chat.preview) return chat.preview;
+    if (chat.running) return "Working…";
     return "No reply yet";
   }
 </script>
@@ -73,19 +77,25 @@
                   class="mt-0.5 flex size-5 shrink-0 items-center justify-center"
                   class:text-blue={chat.running && !chat.needsInput}
                   class:text-amber={chat.needsInput}
-                  class:text-faint={!chat.running}
+                  class:text-action={unreadIds.has(chat.sessionId)}
+                  class:text-faint={!chat.running && !unreadIds.has(chat.sessionId)}
                 >
                   {#if chat.needsInput}
                     <HandIcon size={16} weight="fill" aria-label="Needs input" />
                   {:else if chat.running}
                     <LoadingSpinner size={14} thickness={3} label="Running" />
+                  {:else if unreadIds.has(chat.sessionId)}
+                    <CircleIcon size={10} weight="fill" aria-label="Unread" />
                   {:else}
                     <ChatCircleIcon size={16} />
                   {/if}
                 </span>
 
                 <span class="min-w-0 flex-1">
-                  <span class="block truncate text-sm text-default">{chat.title}</span>
+                  <span
+                    class="block truncate text-sm text-default"
+                    class:font-semibold={unreadIds.has(chat.sessionId)}>{chat.title}</span
+                  >
                   <span
                     class="block truncate text-xs"
                     class:text-blue={chat.running && !chat.needsInput}
