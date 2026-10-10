@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { createContext } from "@nib-ui/kernel";
 import type { AnyAgentEvent, HarnessAdapter, HarnessSession } from "@nib-ui/protocol";
 import { sessionHostPlugin } from "../src/lib/server/plugins/session-host";
-import type { AssetService, HarnessRegistry } from "../src/lib/server/services";
+import type { AssetService, HarnessRegistry, SessionHost } from "../src/lib/server/services";
 
 const capabilities = {
   interrupt: true,
@@ -58,7 +58,7 @@ const assets = {
 } satisfies AssetService;
 
 /** A host that has restored one finished conversation, `source`, from its log. */
-async function hostWithSource() {
+async function hostWithSource(): Promise<SessionHost> {
   const logDirectory = await mkdtemp(join(tmpdir(), "nib-fork-"));
   const lines = [
     line(1, "session.created", { harnessId: "claude-code", cwd: "/repos/one", capabilities }),
