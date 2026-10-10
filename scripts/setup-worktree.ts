@@ -1,4 +1,4 @@
-import { existsSync, realpathSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, symlinkSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 /**
@@ -52,6 +52,7 @@ function ensureDesignSystemLink(worktree: string, mainRoot: string): void {
     );
     return;
   }
+  mkdirSync(dirname(link), { recursive: true });
   symlinkSync(realpathSync(source), link);
 }
 
