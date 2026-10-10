@@ -140,6 +140,7 @@ export class FakeSessionHost implements SessionHost {
       status: view.status,
       model: view.model,
       archived: view.archived,
+      pinned: view.pinned,
       createdAt: 0,
       updatedAt: 0,
       lastSeq: view.lastSeq,

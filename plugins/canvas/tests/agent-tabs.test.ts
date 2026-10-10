@@ -19,6 +19,7 @@ function summary(id: string, parentSessionId: string | null): SessionSummary {
     status: "idle",
     model: null,
     archived: false,
+    pinned: false,
     createdAt: 1,
     updatedAt: 1,
     lastSeq: 0,

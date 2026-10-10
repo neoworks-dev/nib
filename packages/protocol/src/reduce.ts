@@ -96,6 +96,7 @@ function applySessionMeta(state: SessionView, data: EventDataMap["session.meta"]
     permissionMode: data.permissionMode ?? state.permissionMode,
     effort: data.effort ?? state.effort,
     archived: data.archived ?? state.archived,
+    pinned: data.pinned ?? state.pinned,
     slashCommands: data.slashCommands ?? state.slashCommands,
     models: data.models ?? state.models,
   };

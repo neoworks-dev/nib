@@ -12,6 +12,7 @@ function summary(id: string, fields: Partial<SessionSummary> = {}): SessionSumma
     status: "idle",
     model: null,
     archived: false,
+    pinned: false,
     createdAt: 0,
     updatedAt: 0,
     lastSeq: 0,
@@ -27,7 +28,10 @@ function summary(id: string, fields: Partial<SessionSummary> = {}): SessionSumma
 describe("chatList", () => {
   test("leaves out a chat nobody has written in or answered", () => {
     const list = chatList(
-      [summary("empty", { digest: { prompt: null, reply: null, recent: [] } }), summary("used")],
+      [
+        summary("empty", { title: null, digest: { prompt: null, reply: null, recent: [] } }),
+        summary("used"),
+      ],
       "/repo",
     );
 
@@ -82,6 +86,8 @@ describe("chatList", () => {
         running: true,
         needsInput: false,
         preview: null,
+        pinned: false,
+        branchable: false,
       },
     ]);
   });
@@ -93,6 +99,24 @@ describe("chatList", () => {
     );
 
     expect(entry?.preview).toBe("Done.");
+  });
+});
+
+describe("pinned chats", () => {
+  test("lead the overview whatever their age, and a fork needs a native id to be offered", () => {
+    const now = new Date(2026, 9, 10, 15, 0).getTime();
+    const entries = chatList(
+      [
+        summary("recent", { updatedAt: now }),
+        summary("pinned", { updatedAt: now - 1000 * 60 * 60 * 24 * 30, pinned: true }),
+        summary("resumable", { nativeSessionId: "n1", resumable: true }),
+      ],
+      "/repo",
+    );
+
+    expect(groupChats(entries, now)[0]?.label).toBe("Pinned");
+    expect(entries.find((entry) => entry.sessionId === "resumable")?.branchable).toBe(true);
+    expect(entries.find((entry) => entry.sessionId === "recent")?.branchable).toBe(false);
   });
 });
 

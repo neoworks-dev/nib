@@ -21,6 +21,7 @@
     agents,
     onSelectAgent,
     onSwitchAgent,
+    onBranch,
   }: {
     /** The task this surface talks to — not necessarily the active one. */
     session: SessionView;
@@ -42,6 +43,8 @@
     onSelectAgent?: (sessionId: string) => void;
     /** Steps to the agent before or after this one; the composer keys it. */
     onSwitchAgent?: (direction: -1 | 1) => void;
+    /** Forks the conversation into a new chat; offered under each reply when given. */
+    onBranch?: () => void;
   } = $props();
 
   interface SelectionOffer {
@@ -222,7 +225,7 @@
 <div class="flex h-full min-h-0 flex-col">
   <div bind:this={feedFrame} class="relative min-h-0 flex-1">
     <div bind:this={feed} onscroll={trackScroll} class="h-full overflow-y-auto">
-      <MessageList {session} />
+      <MessageList {session} {onBranch} />
     </div>
 
     {#if offer}
@@ -277,7 +280,7 @@
   <DetachedBanner {session} />
 
   {#if annotations.length > 0}
-    <div class="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-1.5 px-6 pb-2">
+    <div class="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-1.5 px-6 pb-2">
       {#each annotations as annotation (annotation.id)}
         <span
           class="flex max-w-72 items-center gap-1.5 rounded-full border border-line bg-raised py-1 pr-1.5 pl-2.5 text-xs text-muted"

@@ -13,6 +13,8 @@ export interface SessionSummary {
   model: string | null;
   /** Archived sessions stay listable and resumable; a list just stops showing them. */
   archived: boolean;
+  /** Pinned sessions are listed ahead of the rest. */
+  pinned: boolean;
   createdAt: number;
   /** Timestamp of the newest event, so a list can sort and age sessions. */
   updatedAt: number;

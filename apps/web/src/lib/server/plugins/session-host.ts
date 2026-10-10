@@ -131,6 +131,9 @@ class SessionHostService implements SessionHost {
     if (command.type === "session.setArchived") {
       return void this.emit(hosted, { type: "session.meta", data: { archived: command.archived } });
     }
+    if (command.type === "session.setPinned") {
+      return void this.emit(hosted, { type: "session.meta", data: { pinned: command.pinned } });
+    }
     if (command.type === "session.close") return this.close(sessionId);
     if (command.type === "session.resume") {
       return this.reattach(
@@ -222,6 +225,7 @@ class SessionHostService implements SessionHost {
       status: hosted.view.status,
       model: hosted.view.model,
       archived: hosted.view.archived,
+      pinned: hosted.view.pinned,
       createdAt: hosted.createdAt,
       updatedAt: hosted.updatedAt,
       lastSeq: hosted.view.lastSeq,

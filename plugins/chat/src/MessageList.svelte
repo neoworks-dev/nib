@@ -2,15 +2,15 @@
   import { type SessionView, transcriptTurns } from "@nib-ui/protocol";
   import MessageTurn from "./MessageTurn.svelte";
 
-  const { session }: { session: SessionView } = $props();
+  const { session, onBranch }: { session: SessionView; onBranch?: () => void } = $props();
 
   const turns = $derived(transcriptTurns(session));
 </script>
 
 <!-- A reading column, not the pane's full width: long lines are hard to follow. -->
-<div class="mx-auto flex w-full max-w-3xl flex-col gap-5 px-6 py-6">
+<div class="mx-auto flex w-full max-w-5xl flex-col gap-5 px-6 py-6">
   {#each turns as turn (turn.id)}
-    <MessageTurn {turn} {session} />
+    <MessageTurn {turn} {session} {onBranch} />
   {/each}
 
   {#if turns.length === 0}

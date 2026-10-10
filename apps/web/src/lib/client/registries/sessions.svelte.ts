@@ -67,6 +67,7 @@ export class ReactiveSessionsStore implements SessionsService {
         status: view.status,
         model: view.model ?? summary.model,
         archived: view.archived,
+        pinned: view.pinned,
         nativeSessionId: view.nativeSessionId ?? summary.nativeSessionId,
         lastSeq: view.lastSeq,
         updatedAt: this.lastEventAt[summary.id] ?? summary.updatedAt,
@@ -238,6 +239,13 @@ export class ReactiveSessionsStore implements SessionsService {
     // The flag rides the session's own log, so it needs a subscription to land.
     this.watch(sessionId);
     await this.dispatchTo(sessionId, { type: "session.setArchived", archived });
+    await this.refresh();
+  }
+
+  async setPinned(sessionId: string, pinned: boolean): Promise<void> {
+    // Like the archived flag, it rides the session's own log.
+    this.watch(sessionId);
+    await this.dispatchTo(sessionId, { type: "session.setPinned", pinned });
     await this.refresh();
   }
 

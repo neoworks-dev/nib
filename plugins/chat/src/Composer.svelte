@@ -430,7 +430,7 @@
   }
 </script>
 
-<div class="mx-auto w-full max-w-3xl px-6 pb-4">
+<div class="mx-auto w-full max-w-5xl px-6 pb-4">
   <div
     class="relative flex flex-col rounded-2xl border border-line bg-raised shadow-sm transition-colors duration-fast focus-within:border-line-strong"
   >

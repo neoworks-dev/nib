@@ -169,6 +169,8 @@ export interface SessionView {
   effort: string | null;
   /** Archived tasks stay listable and resumable; the sidebar just stops showing them. */
   archived: boolean;
+  /** Pinned chats are listed ahead of the rest. */
+  pinned: boolean;
   model: string | null;
   slashCommands: SlashCommandInfo[];
   models: ModelInfo[];
@@ -470,6 +472,7 @@ export function createSessionView(sessionId: string): SessionView {
     permissionMode: null,
     effort: null,
     archived: false,
+    pinned: false,
     model: null,
     slashCommands: [],
     models: [],

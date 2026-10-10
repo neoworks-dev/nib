@@ -12,6 +12,10 @@ export interface ChatListEntry {
   needsInput: boolean;
   /** The newest thing the agent said, for the row's second line; null before it has replied. */
   preview: string | null;
+  /** Pinned chats sit in a group of their own above everything else. */
+  pinned: boolean;
+  /** Whether the chat can be forked into a new one: its harness can resume it and it has a native id. */
+  branchable: boolean;
 }
 
 /** A labelled run of rows in the overview. */
@@ -48,7 +52,7 @@ export function chatList(summaries: SessionSummary[], cwd: string): ChatListEntr
  * never used is not worth a row, unless it is working on something right now.
  */
 function hasContent(summary: SessionSummary): boolean {
-  if (summary.status === "working") return true;
+  if (summary.status === "working" || summary.title) return true;
   return Boolean(summary.digest.prompt?.trim()) || Boolean(summary.digest.reply?.trim());
 }
 
@@ -64,6 +68,8 @@ function entryFor(summaries: SessionSummary[], summary: SessionSummary): ChatLis
     running: working || needsInput,
     needsInput,
     preview: previewOf(summary.digest.reply),
+    pinned: summary.pinned,
+    branchable: summary.resumable && summary.nativeSessionId !== null,
   };
 }
 
@@ -76,13 +82,14 @@ function previewOf(reply: string | null): string | null {
 }
 
 /**
- * The overview's sections. Running chats come first whatever their age, because
+ * The overview's sections. Pinned chats lead, then running ones whatever their age, because
  * several can be at work at once and those are the ones to keep an eye on; the
  * rest are grouped by how long ago they last moved, the way chat apps do.
  */
 export function groupChats(entries: ChatListEntry[], now: number): ChatListGroup[] {
   const startOfToday = new Date(now).setHours(0, 0, 0, 0);
   const groups: ChatListGroup[] = [
+    { label: "Pinned", entries: [] },
     { label: "Running", entries: [] },
     { label: "Today", entries: [] },
     { label: "Yesterday", entries: [] },
@@ -98,11 +105,12 @@ export function groupChats(entries: ChatListEntry[], now: number): ChatListGroup
 
 /** Which of the overview's sections one chat belongs in, by position. */
 function groupIndex(entry: ChatListEntry, startOfToday: number): number {
-  if (entry.running) return 0;
-  if (entry.updatedAt >= startOfToday) return 1;
-  if (entry.updatedAt >= startOfToday - DAY) return 2;
-  if (entry.updatedAt >= startOfToday - 7 * DAY) return 3;
-  return 4;
+  if (entry.pinned) return 0;
+  if (entry.running) return 1;
+  if (entry.updatedAt >= startOfToday) return 2;
+  if (entry.updatedAt >= startOfToday - DAY) return 3;
+  if (entry.updatedAt >= startOfToday - 7 * DAY) return 4;
+  return 5;
 }
 
 /** The chats whose title or last reply contains the query, ignoring case; all of them for a blank query. */

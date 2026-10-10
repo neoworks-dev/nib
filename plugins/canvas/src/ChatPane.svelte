@@ -63,6 +63,33 @@
     canvasState.panes?.reparam(instanceId, {});
   }
 
+  /** Pins a chat above the rest of the list, or lets it go back to where its age puts it. */
+  function pinChat(sessionId: string, pinned: boolean): void {
+    void canvasState.sessions?.setPinned(sessionId, pinned);
+  }
+
+  /** Renames a chat; the label rides its own log, so it is watched for the name to land. */
+  async function renameChat(sessionId: string, label: string): Promise<void> {
+    const sessions = canvasState.sessions;
+    if (!sessions) return;
+    sessions.watch(sessionId);
+    await sessions.rename(sessionId, label);
+    await sessions.refresh();
+  }
+
+  /** Deletes a chat and its transcript; if it was the one on screen, the pane goes back to the overview. */
+  async function deleteChat(sessionId: string): Promise<void> {
+    const wasOpen = sessionId === selectedChatId;
+    await canvasState.sessions?.remove(sessionId);
+    if (wasOpen) showOverview();
+  }
+
+  /** Forks a chat into a new one and opens it. */
+  async function branchChat(sessionId: string): Promise<void> {
+    const branchedId = await canvasState.branchChat(sessionId);
+    if (branchedId) openChat(branchedId);
+  }
+
   /** A chat picked from the overview. */
   function openChat(sessionId: string): void {
     canvasState.panes?.reparam(instanceId, { sessionId } satisfies ChatPaneParams);
@@ -195,6 +222,10 @@
   const wide = $derived(paneWidth >= 720);
   /** The row the sidebar marks: the chat the user started, even while one of its agents is shown. */
   const selectedChatId = $derived(family[0]?.id ?? session?.sessionId ?? null);
+  /** Whether the chat on screen can be forked, which decides if its replies offer it. */
+  const branchable = $derived(
+    chats.find((chat) => chat.sessionId === selectedChatId)?.branchable === true,
+  );
 
   /** What nib is used for, as starting points: each one opens a sentence in the composer. */
   const quickStarts = [
@@ -248,6 +279,10 @@
           selectedId={listing ? null : selectedChatId}
           compact
           onOpen={openChat}
+          onPin={pinChat}
+          onRename={renameChat}
+          onBranch={branchChat}
+          onDelete={deleteChat}
         />
       </div>
     </aside>
@@ -287,7 +322,16 @@
       <!-- Every chat of this project; the composer under them starts another. -->
       {@render chatTools()}
       <div class="min-h-0 flex-1 overflow-y-auto">
-        <ChatList groups={visibleGroups} {now} {unreadIds} onOpen={openChat} />
+        <ChatList
+          groups={visibleGroups}
+          {now}
+          {unreadIds}
+          onOpen={openChat}
+          onPin={pinChat}
+          onRename={renameChat}
+          onBranch={branchChat}
+          onDelete={deleteChat}
+        />
       </div>
       <div class="shrink-0">
         <Composer pending={newChat} />
@@ -373,6 +417,7 @@
           agents={family}
           onSelectAgent={showSession}
           onSwitchAgent={switchAgent}
+          onBranch={branchable ? () => branchChat(selectedChatId ?? "") : undefined}
         />
       </div>
     {:else}

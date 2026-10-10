@@ -10,12 +10,17 @@
   import AgentNotificationCard from "./AgentNotificationCard.svelte";
   import ItemHost from "./ItemHost.svelte";
   import CheckIcon from "phosphor-svelte/lib/CheckIcon";
+  import GitBranchIcon from "phosphor-svelte/lib/GitBranchIcon";
   import CopyIcon from "phosphor-svelte/lib/CopyIcon";
   import ToolGroup from "./ToolGroup.svelte";
   import ToolSummary from "./ToolSummary.svelte";
   import { collapseToolRuns, groupTurnItems } from "./tool-groups";
 
-  const { turn, session }: { turn: TranscriptTurn; session: SessionView } = $props();
+  const {
+    turn,
+    session,
+    onBranch,
+  }: { turn: TranscriptTurn; session: SessionView; onBranch?: () => void } = $props();
 
   // A spawned agent's report enters the harness as a prompt, since nothing else
   // can; nobody typed it, so it is drawn as the report it is.
@@ -102,17 +107,28 @@
       <div class="flex items-center gap-1 text-faint">
         <button
           type="button"
-          class="rounded-md p-1 hover:bg-hover hover:text-default"
+          class="rounded-md p-1.5 hover:bg-hover hover:text-default"
           aria-label="Copy the reply"
           title="Copy"
           onclick={copyReply}
         >
           {#if copied}
-            <CheckIcon size={14} />
+            <CheckIcon size={16} />
           {:else}
-            <CopyIcon size={14} />
+            <CopyIcon size={16} />
           {/if}
         </button>
+        {#if onBranch}
+          <button
+            type="button"
+            class="rounded-md p-1.5 hover:bg-hover hover:text-default"
+            aria-label="Branch in new chat"
+            title="Branch in new chat"
+            onclick={onBranch}
+          >
+            <GitBranchIcon size={16} />
+          </button>
+        {/if}
         <SlotHost slot="message.actions" {session} {turn} class="flex items-center gap-2" />
       </div>
     {:else}

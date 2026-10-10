@@ -93,6 +93,7 @@ export const eventDataSchemas = {
     permissionMode: z.string().optional(),
     effort: z.string().optional(),
     archived: z.boolean().optional(),
+    pinned: z.boolean().optional(),
     slashCommands: z.array(slashCommandSchema).optional(),
     models: z.array(modelInfoSchema).optional(),
   }),

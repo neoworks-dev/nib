@@ -195,6 +195,20 @@ describe("the plan and the session's own fields", () => {
     expect(result).toMatchObject({ model: "opus", permissionMode: "ask", effort: "high" });
   });
 
+  test("pinning is a meta update that unpinning undoes and other updates leave alone", () => {
+    expect(view([{ type: "session.meta", data: { pinned: true } }]).pinned).toBe(true);
+    const later = view([
+      { type: "session.meta", data: { pinned: true } },
+      { type: "session.meta", data: { effort: "high" } },
+    ]);
+    expect(later.pinned).toBe(true);
+    const undone = view([
+      { type: "session.meta", data: { pinned: true } },
+      { type: "session.meta", data: { pinned: false } },
+    ]);
+    expect(undone.pinned).toBe(false);
+  });
+
   test("clearing the conversation empties the transcript but not the session", () => {
     const result = view([
       { type: "session.meta", data: { model: "opus" } },

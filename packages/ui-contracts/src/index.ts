@@ -41,6 +41,8 @@ export interface SessionSummary {
   model: string | null;
   /** Archived tasks stay listable and resumable; the sidebar just stops showing them. */
   archived: boolean;
+  /** Pinned sessions are listed ahead of the rest. */
+  pinned: boolean;
   createdAt: number;
   /** Timestamp of the newest event, so the sidebar can sort and age sessions. */
   updatedAt: number;
@@ -232,6 +234,7 @@ export interface SessionsService {
   resume(sessionId: string): Promise<void>;
   rename(sessionId: string, label: string): Promise<void>;
   setArchived(sessionId: string, archived: boolean): Promise<void>;
+  setPinned(sessionId: string, pinned: boolean): Promise<void>;
   /** Discards the session and its transcript; `close` only stops the process. */
   remove(sessionId: string): Promise<void>;
   /** Attachments are stored assets; the host resolves them to files for the harness. */
