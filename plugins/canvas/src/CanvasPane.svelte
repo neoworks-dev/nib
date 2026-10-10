@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { Composer, type PendingComposer } from "@nib-ui/plugin-chat";
+  import { Button } from "@neoworks-dev/ui";
   import {
     type PaneProps,
     parseWorkspaceFileRefs,
-    type Point,
     RECEDED_TRANSFORM,
     workspaceFileTransferType,
   } from "@nib-ui/ui-contracts";
+  import ChatCenteredDotsIcon from "phosphor-svelte/lib/ChatCenteredDotsIcon";
   import CornersOutIcon from "phosphor-svelte/lib/CornersOutIcon";
   import { onMount, untrack } from "svelte";
   import { CanvasEngine } from "./engine/CanvasEngine";
@@ -15,9 +15,9 @@
   import FolderRenameField from "./FolderRenameField.svelte";
   import SpawnPrompt from "./SpawnPrompt.svelte";
   import StickyOverlay from "./StickyOverlay.svelte";
+  import { chatPaneId } from "./chat-pane";
   import { canvasState } from "./state.svelte";
   import { boardTheme, refreshBoardTheme } from "./theme";
-  import { CARD_MIN_HEIGHT, CARD_WIDTH } from "./workstream";
 
   const { session }: PaneProps = $props();
 
@@ -95,50 +95,8 @@
     return slash === -1 ? cwd : cwd.slice(slash + 1);
   }
 
-  /**
-   * The board's own composer, docked at the foot of the pane. It is the one a
-   * session gets, driven by a target with no session behind it: the picks are
-   * held on the board, and sending is what puts a workstream on it. Keyed by
-   * directory so a draft survives the pane being closed and belongs to the
-   * project it was written for.
-   */
-  const boardComposer = $derived.by((): PendingComposer => {
-    const settings = canvasState.boardSettings;
-    return {
-      id: `board:${canvasState.board.cwd}`,
-      harnessId: settings.harnessId,
-      model: settings.model,
-      permissionMode: settings.permissionMode,
-      effort: settings.effort,
-      busy: canvasState.busy,
-      setHarness: (harnessId) => canvasState.configureBoard({ harnessId }),
-      setModel: (model) => canvasState.configureBoard({ model }),
-      setPermissionMode: (permissionMode) => canvasState.configureBoard({ permissionMode }),
-      setEffort: (effort) => canvasState.configureBoard({ effort }),
-      start: async (text) => {
-        await canvasState.startWorkstream(text, inView());
-      },
-      target: {
-        cwd: registry.cwd,
-        boardDirectory: registry.boardDirectory,
-        sources: [],
-        // Read on send: the board may have panned since the composer rendered.
-        get at() {
-          return inView();
-        },
-      },
-    };
-  });
-
-  /**
-   * Where something the board's composer makes goes: centred on what the pane is
-   * looking at, not dropped at its top-left corner, so it lands in view above
-   * the composer.
-   */
-  function inView(): Point {
-    const at = boardPoint();
-    return { x: at.x - CARD_WIDTH / 2, y: at.y - CARD_MIN_HEIGHT };
-  }
+  /** True while a chat drawer is open, which is when the button to open one is not needed. */
+  const chatOpen = $derived((canvasState.panes?.instances(chatPaneId).length ?? 0) > 0);
 
   // The menu coordinates are canvas-element relative, which is what the pane's
   // own box is, and it is flipped rather than clipped near an edge.
@@ -355,7 +313,7 @@
       <p
         class="pointer-events-none absolute inset-0 z-raised flex items-center justify-center text-sm text-dim"
       >
-        Nothing on this board yet — say what to do below.
+        Nothing on this board yet.
       </p>
     {/if}
 
@@ -385,7 +343,7 @@
 
     {#if status}
       <p
-        class="absolute bottom-40 left-1/2 z-raised max-w-[32rem] -translate-x-1/2 rounded-lg border border-red/40 bg-red-soft px-2 py-1 text-2xs text-red"
+        class="absolute bottom-3 left-1/2 z-raised max-w-[32rem] -translate-x-1/2 rounded-lg border border-red/40 bg-red-soft px-2 py-1 text-2xs text-red"
       >
         {status}
       </p>
@@ -497,18 +455,17 @@
       {/key}
     {/if}
 
-    <!--
-    The board's input, docked at the foot of the pane: the table has one place to
-    say what to do, and it is in the same spot whatever is selected. The wrapper
-    only places and lifts it — the composer draws its own box.
-  -->
-    {#if opened}
-      <div
-        class="pointer-events-none absolute bottom-0 left-0 right-[var(--board-inset-right,0px)] z-raised flex justify-center transition-[right] duration-200 ease-out"
-      >
-        <div class="pointer-events-auto w-[46rem] max-w-full drop-shadow-xl">
-          <Composer pending={boardComposer} />
-        </div>
+    <!-- The way to the agent: the board is for assets, and the chat and its
+         composer live in the drawer this opens. -->
+    {#if opened && !chatOpen}
+      <div class="absolute right-3 bottom-3 z-raised drop-shadow-xl">
+        <Button
+          variant="primary"
+          icon={ChatCenteredDotsIcon}
+          onclick={() => canvasState.panes?.open(chatPaneId)}
+        >
+          Chat
+        </Button>
       </div>
     {/if}
 

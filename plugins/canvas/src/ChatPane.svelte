@@ -85,6 +85,39 @@
       start: (text) => canvasState.launch(card.id, text),
     };
   });
+
+  /**
+   * The composer for a chat that does not exist yet, shown while the pane has no
+   * conversation. Keyed by directory so a draft belongs to the project it was
+   * written for. Sending pins the pane to the session it started.
+   */
+  const newChat = $derived.by((): PendingComposer => {
+    const settings = canvasState.boardSettings;
+    return {
+      id: `board:${canvasState.board.cwd}`,
+      harnessId: settings.harnessId,
+      model: settings.model,
+      permissionMode: settings.permissionMode,
+      effort: settings.effort,
+      busy: canvasState.busy,
+      setHarness: (harnessId) => canvasState.configureBoard({ harnessId }),
+      setModel: (model) => canvasState.configureBoard({ model }),
+      setPermissionMode: (permissionMode) => canvasState.configureBoard({ permissionMode }),
+      setEffort: (effort) => canvasState.configureBoard({ effort }),
+      start: async (text) => {
+        const sessionId = await canvasState.startChat(text);
+        if (sessionId) showSession(sessionId);
+      },
+      // A workflow picked here makes an asset; with no point given, its target
+      // places the result on the board on screen.
+      target: {
+        cwd: canvasState.registry.cwd,
+        boardDirectory: canvasState.registry.boardDirectory,
+        sources: [],
+        at: null,
+      },
+    };
+  });
 </script>
 
 <div class="flex h-full min-h-0 flex-col">
@@ -164,9 +197,13 @@
         onSwitchAgent={switchAgent}
       />
     </div>
+  {:else if workstream}
+    <p class="min-h-0 flex-1 px-3 py-3 text-xs text-dim">This workstream is not loaded.</p>
   {:else}
-    <p class="min-h-0 flex-1 px-3 py-3 text-xs text-dim">
-      {workstream ? "This workstream is not loaded." : "No task is open."}
-    </p>
+    <!-- The composer's own placeholder asks what to do; the space above stays empty. -->
+    <div class="min-h-0 flex-1"></div>
+    <div class="shrink-0">
+      <Composer pending={newChat} />
+    </div>
   {/if}
 </div>

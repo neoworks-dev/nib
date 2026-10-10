@@ -8,7 +8,6 @@ import type {
   SessionsService,
   TransportService,
 } from "@nib-ui/ui-contracts";
-import { chatPaneId } from "../src/chat-pane";
 import { canvasState } from "../src/state.svelte";
 import { isWorkstream, type WorkstreamObject } from "../src/workstream";
 
@@ -135,12 +134,12 @@ describe("the board composer", () => {
     });
   });
 
-  test("a pick is held until it has a card to put it on, and stays for the next one", async () => {
+  test("a pick is held until a chat starts with it, and stays for the next one", async () => {
     canvasState.configureBoard({ model: "opus", effort: "high" });
     expect(canvasState.boardSettings.model).toBe("opus");
 
-    await canvasState.startWorkstream("port the engine", { x: 40, y: 60 });
-    await canvasState.startWorkstream("and the renderer", { x: 40, y: 60 });
+    await canvasState.startChat("port the engine");
+    await canvasState.startChat("and the renderer");
 
     expect(sessions.created.map((input) => input.options)).toEqual([
       { model: "opus", permissionMode: "default", effort: "high" },
@@ -159,79 +158,43 @@ describe("the board composer", () => {
     });
   });
 
-  test("sending puts a card on the board and starts it in one move", async () => {
-    const id = await canvasState.startWorkstream("port the engine", { x: 40, y: 60 });
+  test("sending starts a session in the board's directory and puts nothing on the board", async () => {
+    const sessionId = await canvasState.startChat("port the engine");
 
-    expect(id).not.toBeNull();
-    expect(cards()).toHaveLength(1);
-    expect(cards()[0]).toMatchObject({
-      id: id!,
-      goal: "port the engine",
-      x: 40,
-      y: 60,
-      sessionId: "s1",
-    });
+    expect(sessionId).toBe("s1");
     expect(sessions.created[0]).toMatchObject({ harnessId: "claude-code", cwd: "/repo" });
     expect(sessions.sent).toEqual([{ sessionId: "s1", text: "port the engine" }]);
+    expect(canvasState.objects).toHaveLength(0);
+    expect(panes.opened).toEqual([]);
   });
 
-  test("the transcript pane comes up with the card, and follows it onto its session", async () => {
-    const id = await canvasState.startWorkstream("port the engine", { x: 40, y: 60 });
-
-    expect(panes.opened).toEqual([{ paneId: chatPaneId, params: { workstreamId: id! } }]);
-    expect(panes.reparamed).toEqual([
-      { instanceId: "i1", params: { workstreamId: id!, sessionId: "s1" } },
-    ]);
-  });
-
-  test("two sends in the same place are two cards, not one on top of another", async () => {
-    await canvasState.startWorkstream("first", { x: 40, y: 60 });
-    await canvasState.startWorkstream("second", { x: 40, y: 60 });
-
-    const placed = cards();
-    expect(placed).toHaveLength(2);
-    expect(placed[0]!.x === placed[1]!.x && placed[0]!.y === placed[1]!.y).toBe(false);
-  });
-
-  test("the shell focusing the session mid-launch does not put a second card on the board", async () => {
+  test("the shell focusing the new session puts no card on the board", async () => {
     // What the board pane's own effect does the moment the new task becomes active.
     sessions.onActive = (sessionId) => canvasState.focus(sessionId, "/repo");
 
-    const id = await canvasState.startWorkstream("port the engine", { x: 40, y: 60 });
+    await canvasState.startChat("port the engine");
 
-    expect(cards()).toHaveLength(1);
-    expect(cards()[0]).toMatchObject({ id: id!, sessionId: "s1" });
+    expect(canvasState.objects).toHaveLength(0);
   });
 
-  test("a session started outside the board still gets a card of its own", async () => {
+  test("a session started outside the board gets no card either", async () => {
     await canvasState.focus("s9", "/repo");
 
-    expect(cards()).toHaveLength(1);
-    expect(cards()[0]).toMatchObject({ sessionId: "s9", goal: "" });
-  });
-
-  test("a join is a card with its sources named on it, not a prompt to fill in first", async () => {
-    const first = await canvasState.startWorkstream("port the engine", { x: 0, y: 0 });
-    const second = await canvasState.startWorkstream("port the renderer", { x: 600, y: 0 });
-
-    const joined = canvasState.join([first!, second!], { x: 300, y: 400 });
-
-    expect(joined).not.toBeNull();
-    expect(canvasState.sourcesOf(joined!).map((source) => source.id)).toEqual([first!, second!]);
-  });
-
-  test("an empty prompt is not a workstream", async () => {
-    expect(await canvasState.startWorkstream("   ", { x: 0, y: 0 })).toBeNull();
     expect(cards()).toHaveLength(0);
   });
 
-  test("with no project open it says so rather than stranding a card", async () => {
+  test("an empty prompt starts nothing", async () => {
+    expect(await canvasState.startChat("   ")).toBeNull();
+    expect(sessions.created).toHaveLength(0);
+  });
+
+  test("with no project open it says so rather than starting a chat nowhere", async () => {
     canvasState.board.close();
     await canvasState.board.open("");
 
-    expect(await canvasState.startWorkstream("port the engine", { x: 0, y: 0 })).toBeNull();
-    expect(cards()).toHaveLength(0);
-    expect(canvasState.error).toBe("open a project before starting a workstream");
+    expect(await canvasState.startChat("port the engine")).toBeNull();
+    expect(sessions.created).toHaveLength(0);
+    expect(canvasState.error).toBe("open a project before starting a chat");
   });
 });
 
