@@ -67,7 +67,11 @@
   {#if notification}
     <AgentNotificationCard {notification} {session} />
   {:else}
-    <article data-message={turn.id} class="flex flex-col gap-2">
+    <!-- The person's own words sit apart from the page the agent writes: a soft pill, right-aligned. -->
+    <article
+      data-message={turn.id}
+      class="ml-auto flex max-w-[85%] flex-col gap-2 rounded-2xl bg-raised px-4 py-2.5"
+    >
       <ItemHost item={promptAsMessage(turn.item)} {session} />
     </article>
   {/if}

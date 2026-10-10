@@ -19,12 +19,21 @@ function summary(id: string, fields: Partial<SessionSummary> = {}): SessionSumma
     resumable: true,
     nativeSessionId: null,
     parentSessionId: null,
-    digest: { prompt: null, reply: null, recent: [] },
+    digest: { prompt: "hi", reply: null, recent: [] },
     ...fields,
   } as SessionSummary;
 }
 
 describe("chatList", () => {
+  test("leaves out a chat nobody has written in or answered", () => {
+    const list = chatList(
+      [summary("empty", { digest: { prompt: null, reply: null, recent: [] } }), summary("used")],
+      "/repo",
+    );
+
+    expect(list.map((entry) => entry.sessionId)).toEqual(["used"]);
+  });
+
   test("lists this project's chats, newest first", () => {
     const list = chatList(
       [
@@ -131,6 +140,7 @@ describe("chatTitle", () => {
     });
 
     expect(chatTitle(prompted)).toBe("port the engine");
-    expect(chatTitle(summary("s", { title: null }))).toBe("Untitled chat");
+    const unused = summary("s", { title: null, digest: { prompt: null, reply: null, recent: [] } });
+    expect(chatTitle(unused)).toBe("Untitled chat");
   });
 });

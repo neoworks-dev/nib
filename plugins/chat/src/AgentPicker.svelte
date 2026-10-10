@@ -17,8 +17,8 @@
     harnessId,
     models,
     model,
-    effortLevels,
-    effort,
+    effortLevels = [],
+    effort = null,
     onHarness,
     onModel,
     onEffort,
@@ -28,11 +28,12 @@
     harnessId: string | null;
     models: PillOption[];
     model: string | null;
-    effortLevels: string[];
-    effort: string | null;
+    /** Effort is left out when it is picked somewhere else, as the composer does under its box. */
+    effortLevels?: string[];
+    effort?: string | null;
     onHarness: (harnessId: string) => void;
     onModel: (model: string) => void;
-    onEffort: (effort: string) => void;
+    onEffort?: (effort: string) => void;
   } = $props();
 
   let open = $state(false);
@@ -73,7 +74,7 @@
 
   /** Effort stays open: it is a toggle row, and the change shows in place. */
   function pickEffort(level: string): void {
-    if (level !== effort) onEffort(level);
+    if (level !== effort) onEffort?.(level);
   }
 </script>
 

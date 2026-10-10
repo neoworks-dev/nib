@@ -38,8 +38,18 @@ export function chatTitle(summary: SessionSummary): string {
 export function chatList(summaries: SessionSummary[], cwd: string): ChatListEntry[] {
   return summaries
     .filter((summary) => summary.cwd === cwd && !summary.archived && !summary.parentSessionId)
+    .filter(hasContent)
     .map((summary) => entryFor(summaries, summary))
     .sort((left, right) => right.updatedAt - left.updatedAt);
+}
+
+/**
+ * Whether a chat has been asked or has answered anything. One that was opened and
+ * never used is not worth a row, unless it is working on something right now.
+ */
+function hasContent(summary: SessionSummary): boolean {
+  if (summary.status === "working") return true;
+  return Boolean(summary.digest.prompt?.trim()) || Boolean(summary.digest.reply?.trim());
 }
 
 /** One chat's row, with its family's activity folded into it. */

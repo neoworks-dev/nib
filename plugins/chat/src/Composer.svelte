@@ -4,6 +4,7 @@
     assetUrl,
     type ComposerTarget,
     type ComposerTargetRequest,
+    effortLabel,
     fuzzyRank,
     permissionModeLabel,
     permissionModeShortLabel,
@@ -17,12 +18,15 @@
     SlotHost,
   } from "@nib-ui/ui-contracts/svelte";
   import ArrowUpIcon from "phosphor-svelte/lib/ArrowUpIcon";
+  import GaugeIcon from "phosphor-svelte/lib/GaugeIcon";
+  import PlusIcon from "phosphor-svelte/lib/PlusIcon";
   import PlayIcon from "phosphor-svelte/lib/PlayIcon";
   import RobotIcon from "phosphor-svelte/lib/RobotIcon";
   import ShieldCheckIcon from "phosphor-svelte/lib/ShieldCheckIcon";
   import StopIcon from "phosphor-svelte/lib/StopIcon";
   import AgentPicker from "./AgentPicker.svelte";
   import AgentTabs from "./AgentTabs.svelte";
+  import { uploadAttachment } from "./client";
   import { composeAnnotatedMessage, type StagedAnnotation } from "./annotations";
   import ComposerAction from "./ComposerAction.svelte";
   import { applyTrigger, detectTrigger, type TriggerItem } from "./composer-trigger";
@@ -97,6 +101,13 @@
   /** A chosen harness waits here until the user accepts what the switch costs. */
   let proposed = $state<HarnessSwitchPlan | null>(null);
   let switching = $state(false);
+  /** Files the user attached here, held until the prompt that carries them is sent. */
+  let uploaded = $state<MessageAttachment[]>([]);
+  let uploading = $state(false);
+  let uploadError = $state<string | null>(null);
+  let fileInput = $state<HTMLInputElement>();
+  /** Everything the next prompt carries: what the board linked, then what was attached. */
+  const outgoing = $derived([...attachments, ...uploaded]);
 
   const capabilities = $derived(session?.capabilities);
   const busy = $derived(session?.status === "working");
@@ -257,19 +268,43 @@
     pending?.onTargetSent?.();
   }
 
+  /** Stores each picked file and stages it on the next prompt; one failure does not drop the rest. */
+  async function attachFiles(files: FileList | null): Promise<void> {
+    if (!files || files.length === 0) return;
+    uploading = true;
+    uploadError = null;
+    for (const file of files) {
+      try {
+        uploaded = [...uploaded, await uploadAttachment(file)];
+      } catch (cause) {
+        uploadError = cause instanceof Error ? cause.message : String(cause);
+      }
+    }
+    uploading = false;
+    if (fileInput) fileInput.value = "";
+  }
+
+  function unstage(assetId: string): void {
+    uploaded = uploaded.filter((attachment) => attachment.assetId !== assetId);
+  }
+
   async function submit() {
     if (pickedTarget && targetRequest) return sendToTarget(pickedTarget, targetRequest);
     const text = composeAnnotatedMessage(annotations, draft);
-    if (text.length === 0 && attachments.length === 0) return;
+    if (text.length === 0 && outgoing.length === 0) return;
+    // A session starts from a prompt, so files alone have nothing to start one with.
+    if (!session && text.length === 0) return;
     composerDrafts.set(draftKey, "");
     caret = 0;
+    const sent = uploaded;
+    uploaded = [];
     // Without a session the first prompt is what creates one; the pending target
     // carries the picks the pills made, and the files, into the session it starts.
     if (!session) {
-      await pending?.start(text);
+      await pending?.start(text, sent);
       return;
     }
-    await sessions.sendTo(session.sessionId, text, attachments);
+    await sessions.sendTo(session.sessionId, text, [...attachments, ...sent]);
     onAnnotationsSent?.();
     if (attachments.length > 0) onAttachmentsSent?.();
   }
@@ -395,7 +430,7 @@
   }
 </script>
 
-<div class="px-8 pb-5">
+<div class="mx-auto w-full max-w-3xl px-6 pb-4">
   <div
     class="relative flex flex-col rounded-2xl border border-line bg-raised shadow-sm transition-colors duration-fast focus-within:border-line-strong"
   >
@@ -416,9 +451,9 @@
 
     <div class="flex flex-col gap-2 px-3 py-2.5">
       <!-- What rides the next prompt, shown before it goes: a picture as itself, anything else by name. -->
-      {#if attachments.length > 0}
+      {#if outgoing.length > 0}
         <div class="flex flex-wrap items-center gap-2 px-1 pt-1">
-          {#each attachments as attachment (attachment.assetId)}
+          {#each outgoing as attachment (attachment.assetId)}
             {#if attachment.mime.startsWith("image/")}
               <img
                 src={assetUrl(attachment.assetId)}
@@ -454,12 +489,28 @@
         ></textarea>
       {/if}
 
-      <!--
-        The pills wrap on their own; the action stays in the bottom-right corner.
-        The pill rows' 3px padding centres their last row on the 32px action.
-      -->
-      <div class="flex items-end gap-3">
-        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 py-0.75">
+      <div class="flex items-center gap-2">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+          <input
+            bind:this={fileInput}
+            type="file"
+            multiple
+            class="hidden"
+            onchange={(event) => attachFiles(event.currentTarget.files)}
+          />
+          {#if !pickedTarget}
+            <button
+              type="button"
+              class="flex size-8 items-center justify-center rounded-lg text-muted hover:bg-hover hover:text-default disabled:opacity-50"
+              aria-label="Attach files"
+              title="Attach files"
+              disabled={uploading}
+              onclick={() => fileInput?.click()}
+            >
+              <PlusIcon size={18} />
+            </button>
+          {/if}
+
           {#if targetOptions.length > 0}
             <PillSelect
               icon={RobotIcon}
@@ -480,16 +531,18 @@
               values={targetPick.values}
               onchange={(values) => composerTargetPicks.setValues(draftKey, values)}
             />
-          {:else}
-            {@render agentPills()}
           {/if}
 
-          <SlotHost
-            slot="composer.actions"
-            session={session ?? null}
-            class="flex items-center gap-1.5"
-          />
+          {#if uploadError}
+            <span class="max-w-72 truncate text-2xs text-red" title={uploadError}
+              >{uploadError}</span
+            >
+          {/if}
         </div>
+
+        {#if !pickedTarget}
+          {@render modelPill()}
+        {/if}
 
         <span class="flex h-8 shrink-0 items-center gap-2">
           {#if pickedTarget}
@@ -525,7 +578,8 @@
               shortcut="Enter"
               disabled={(draft.trim().length === 0 &&
                 annotations.length === 0 &&
-                attachments.length === 0) ||
+                outgoing.length === 0) ||
+                uploading ||
                 pending?.busy === true}
               onclick={submit}
             />
@@ -534,9 +588,21 @@
       </div>
     </div>
   </div>
+
+  <!-- What shapes the work, under the box where it is read rather than typed into. -->
+  {#if !pickedTarget}
+    <div class="flex flex-wrap items-center gap-1.5 px-2 pt-2">
+      {@render workPills()}
+      <SlotHost
+        slot="composer.actions"
+        session={session ?? null}
+        class="flex items-center gap-1.5"
+      />
+    </div>
+  {/if}
 </div>
 
-{#snippet agentPills()}
+{#snippet modelPill()}
   <AgentPicker
     harnesses={sessions.harnesses.map((entry) => ({
       value: entry.id,
@@ -551,20 +617,29 @@
       hint: model.description,
     }))}
     model={selectedModel}
-    {effortLevels}
-    effort={selectedEffort}
     onHarness={proposeHarness}
     onModel={(model) => {
       if (!session) return pending?.setModel(model);
       focusSession();
       void sessions.setModel(model);
     }}
-    onEffort={(effort) => {
-      if (!session) return pending?.setEffort(effort);
-      focusSession();
-      void sessions.setEffort(effort);
-    }}
   />
+{/snippet}
+
+{#snippet workPills()}
+  {#if effortLevels.length > 0}
+    <PillSelect
+      icon={GaugeIcon}
+      value={selectedEffort}
+      placeholder="Effort"
+      options={effortLevels.map((level) => ({ value: level, label: effortLabel(level) }))}
+      onChange={(effort) => {
+        if (!session) return pending?.setEffort(effort);
+        focusSession();
+        void sessions.setEffort(effort);
+      }}
+    />
+  {/if}
 
   {#if permissionModes.length > 0}
     <PillSelect

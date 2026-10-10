@@ -277,7 +277,7 @@
   <DetachedBanner {session} />
 
   {#if annotations.length > 0}
-    <div class="flex flex-wrap items-center gap-1.5 px-8 pb-2">
+    <div class="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-1.5 px-6 pb-2">
       {#each annotations as annotation (annotation.id)}
         <span
           class="flex max-w-72 items-center gap-1.5 rounded-full border border-line bg-raised py-1 pr-1.5 pl-2.5 text-xs text-muted"

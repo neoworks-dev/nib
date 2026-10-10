@@ -148,7 +148,7 @@
       setModel: (model) => canvasState.configure(card.id, { model }),
       setPermissionMode: (permissionMode) => canvasState.configure(card.id, { permissionMode }),
       setEffort: (effort) => canvasState.configure(card.id, { effort }),
-      start: (text) => canvasState.launch(card.id, text),
+      start: (text, attachments) => canvasState.launch(card.id, text, "compact", attachments),
     };
   });
 
@@ -170,8 +170,8 @@
       setModel: (model) => canvasState.configureBoard({ model }),
       setPermissionMode: (permissionMode) => canvasState.configureBoard({ permissionMode }),
       setEffort: (effort) => canvasState.configureBoard({ effort }),
-      start: async (text) => {
-        const sessionId = await canvasState.startChat(text);
+      start: async (text, attachments) => {
+        const sessionId = await canvasState.startChat(text, attachments);
         if (sessionId) showSession(sessionId);
       },
       // A workflow picked here makes an asset; with no point given, its target

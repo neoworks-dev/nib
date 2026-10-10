@@ -1,3 +1,4 @@
+import type { MessageAttachment } from "@nib-ui/protocol";
 import type { ComposerTargetContext } from "@nib-ui/ui-contracts";
 
 /**
@@ -19,8 +20,8 @@ export interface PendingComposer {
   setModel(model: string): void;
   setPermissionMode(mode: string): void;
   setEffort(effort: string): void;
-  /** Sends the first prompt, which is what creates the session. */
-  start(text: string): Promise<void>;
+  /** Sends the first prompt, with any files the user attached, which is what creates the session. */
+  start(text: string, attachments?: MessageAttachment[]): Promise<void>;
   /**
    * What the request is about and where it was made. Given, the composer also
    * offers the registered targets — a ComfyUI workflow — besides an agent.

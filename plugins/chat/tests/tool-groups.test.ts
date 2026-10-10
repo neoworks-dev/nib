@@ -99,7 +99,7 @@ describe("collapseToolRuns", () => {
     expect(entry?.kind).toBe("summary");
     if (entry?.kind !== "summary") return;
     expect(entry.summary.entries).toHaveLength(2);
-    expect(entry.summary.line).toBe("Used 2 commands, 1 file");
+    expect(entry.summary.line).toBe("Ran 2 commands, read a file");
   });
 
   test("keeps prose between runs where it was", () => {

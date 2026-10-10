@@ -7,7 +7,6 @@
    */
   import { LoadingSpinner } from "@neoworks-dev/ui";
   import { formatRelativeTime } from "@nib-ui/ui-contracts";
-  import ChatCircleIcon from "phosphor-svelte/lib/ChatCircleIcon";
   import CircleIcon from "phosphor-svelte/lib/CircleIcon";
   import ChatsCircleIcon from "phosphor-svelte/lib/ChatsCircleIcon";
   import HandIcon from "phosphor-svelte/lib/HandIcon";
@@ -68,29 +67,11 @@
             <li>
               <button
                 type="button"
-                class="group flex w-full items-start gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-hover"
+                class="group flex w-full items-start gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-hover"
                 class:bg-raised={chat.sessionId === selectedId}
                 aria-current={chat.sessionId === selectedId ? "page" : undefined}
                 onclick={() => onOpen(chat.sessionId)}
               >
-                <span
-                  class="mt-0.5 flex size-5 shrink-0 items-center justify-center"
-                  class:text-blue={chat.running && !chat.needsInput}
-                  class:text-amber={chat.needsInput}
-                  class:text-action={unreadIds.has(chat.sessionId)}
-                  class:text-faint={!chat.running && !unreadIds.has(chat.sessionId)}
-                >
-                  {#if chat.needsInput}
-                    <HandIcon size={16} weight="fill" aria-label="Needs input" />
-                  {:else if chat.running}
-                    <LoadingSpinner size={14} thickness={3} label="Running" />
-                  {:else if unreadIds.has(chat.sessionId)}
-                    <CircleIcon size={10} weight="fill" aria-label="Unread" />
-                  {:else}
-                    <ChatCircleIcon size={16} />
-                  {/if}
-                </span>
-
                 <span class="min-w-0 flex-1">
                   <span
                     class="block truncate text-sm text-default"
@@ -106,8 +87,25 @@
                   </span>
                 </span>
 
-                <span class="mt-0.5 shrink-0 text-2xs text-faint tabular-nums">
-                  {formatRelativeTime(chat.updatedAt, now)}
+                <!-- What time-ago would say, unless the chat needs a look: then that takes its place. -->
+                <span
+                  class="mt-0.5 flex h-4 shrink-0 items-center text-2xs text-faint tabular-nums"
+                >
+                  {#if chat.needsInput}
+                    <span class="text-amber"
+                      ><HandIcon size={14} weight="fill" aria-label="Needs input" /></span
+                    >
+                  {:else if chat.running}
+                    <span class="text-blue"
+                      ><LoadingSpinner size={12} thickness={3} label="Running" /></span
+                    >
+                  {:else if unreadIds.has(chat.sessionId)}
+                    <span class="text-action"
+                      ><CircleIcon size={8} weight="fill" aria-label="Unread" /></span
+                    >
+                  {:else}
+                    {formatRelativeTime(chat.updatedAt, now)}
+                  {/if}
                 </span>
               </button>
             </li>

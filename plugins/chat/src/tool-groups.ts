@@ -1,5 +1,5 @@
 import { agentToolNames, isAgentTool, type MessageItem, type ToolItem } from "@nib-ui/protocol";
-import { countedNoun, describeCall } from "@nib-ui/ui-contracts";
+import { countedNoun, describeCall, type StepDescriptor } from "@nib-ui/ui-contracts";
 
 /** A run of adjacent calls that did the same kind of work. */
 export interface ToolGroup {
@@ -101,23 +101,53 @@ function summaryId(first: TurnEntry): string {
   return first.item.id;
 }
 
-/** What a run did: its tool calls counted by kind, or just that it reasoned. */
+/** What a run did, read as a sentence: `Edited 2 files, ran a command`, or just that it reasoned. */
 function summarizeRun(run: TurnEntry[]): string {
-  const groups: ToolGroup[] = [];
+  const tools: ToolItem[] = [];
   for (const entry of run) {
-    if (entry.kind === "group") groups.push(entry.group);
+    if (entry.kind === "group") tools.push(...entry.group.tools);
   }
-  if (groups.length === 0) return "Thought";
-  return `Used ${summarizeGroups(groups)}`;
+  if (tools.length === 0) return "Thought";
+  return summarizeTools(tools);
 }
 
-/** What a run of groups did, counted by kind of work: `3 commands, 2 searches`. */
-export function summarizeGroups(groups: ToolGroup[]): string {
+/**
+ * The phrases of a run's calls, merged where they say the same thing and joined
+ * as one sentence in the order they first appeared: `Read 2 files, edited a file`.
+ */
+export function summarizeTools(tools: ToolItem[]): string {
   const counts = new Map<string, number>();
-  for (const group of groups) {
-    const before = counts.get(group.noun);
-    if (before === undefined) counts.set(group.noun, group.tools.length);
-    else counts.set(group.noun, before + group.tools.length);
+  for (const tool of tools) {
+    const phrase = callPhrase(describeCall(tool));
+    const before = counts.get(phrase.key);
+    if (before === undefined) counts.set(phrase.key, 1);
+    else counts.set(phrase.key, before + 1);
   }
-  return [...counts].map(([noun, count]) => countedNoun(count, noun)).join(", ");
+  const clauses = [...counts].map(([key, count]) => clauseFor(key, count));
+  const [first, ...rest] = clauses;
+  if (first === undefined) return "";
+  const lowered = rest.map((clause) => clause.charAt(0).toLowerCase() + clause.slice(1));
+  return [first, ...lowered].join(", ");
+}
+
+/** A call's verb and what it acted on, as the key calls with the same meaning share. */
+function callPhrase(step: StepDescriptor): { key: string } {
+  return { key: `${step.verb}|${step.noun}` };
+}
+
+/** One merged clause: `Read 2 files`, `Ran a command`, `Searched 3 times`. */
+function clauseFor(key: string, count: number): string {
+  const [verb = "", noun = ""] = key.split("|");
+  if (noun === "file" || noun === "change") {
+    if (count === 1) return `${verb} a file`;
+    return `${verb} ${count} files`;
+  }
+  if (noun === "command") {
+    if (count === 1) return `${verb} a command`;
+    return `${verb} ${count} commands`;
+  }
+  // "Searched for" names a search term; the clause only counts them.
+  const bare = verb.replace(/ for$/, "");
+  if (count === 1) return bare;
+  return `${bare} ${count} times`;
 }

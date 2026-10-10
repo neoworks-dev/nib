@@ -22,11 +22,11 @@
 
 <button
   type="button"
-  class="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs text-dim hover:bg-hover hover:text-default"
+  class="flex h-7 items-center gap-1.5 rounded-lg border border-line px-2.5 text-xs text-muted hover:bg-hover hover:text-default"
   title="Trajectory"
   aria-label="Toggle the trajectory inspector beside this chat"
   onclick={() => toggleTrajectory(panes, attachments)}
 >
-  <PulseIcon size={13} />
+  <PulseIcon size={14} />
   <span class="tabular-nums">{count}</span>
 </button>
