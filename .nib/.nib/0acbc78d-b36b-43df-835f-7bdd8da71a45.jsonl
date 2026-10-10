@@ -36,3 +36,4 @@
 {"id":"b6b9fccc-064d-49bb-bc27-64f3d3786e1b","sessionId":"0acbc78d-b36b-43df-835f-7bdd8da71a45","seq":960,"ts":1791501279656,"type":"session.status","data":{"status":"idle","detail":"harness process is not attached"}}
 {"id":"283d482a-2f0c-4657-b314-a5a9b3427240","sessionId":"0acbc78d-b36b-43df-835f-7bdd8da71a45","seq":960,"ts":1791651466295,"type":"session.status","data":{"status":"idle","detail":"harness process is not attached"}}
 {"id":"c408547b-0d6c-4d9d-8feb-e0d02e31c6bf","sessionId":"0acbc78d-b36b-43df-835f-7bdd8da71a45","seq":960,"ts":1791652169742,"type":"session.status","data":{"status":"idle","detail":"harness process is not attached"}}
+{"id":"4720bda0-c340-4920-a283-252f97d93e40","sessionId":"0acbc78d-b36b-43df-835f-7bdd8da71a45","seq":960,"ts":1791652758888,"type":"session.status","data":{"status":"idle","detail":"harness process is not attached"}}
