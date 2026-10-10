@@ -79,8 +79,15 @@
 
   /** Deletes a chat and its transcript; if it was the one on screen, the pane goes back to the overview. */
   async function deleteChat(sessionId: string): Promise<void> {
+    const sessions = canvasState.sessions;
+    if (!sessions) return;
     const wasOpen = sessionId === selectedChatId;
-    await canvasState.sessions?.remove(sessionId);
+    await sessions.remove(sessionId);
+    // The service keeps a refusal in `error` and returns; without this the row would just stay.
+    if (sessions.error) {
+      canvasState.reportError(`Could not delete the chat: ${sessions.error}`);
+      return;
+    }
     if (wasOpen) showOverview();
   }
 
