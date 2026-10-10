@@ -15,10 +15,16 @@
   const {
     groups,
     now,
+    selectedId = null,
+    compact = false,
     onOpen,
   }: {
     groups: ChatListGroup[];
     now: number;
+    /** The chat open beside the list, marked so the sidebar says where you are. */
+    selectedId?: string | null;
+    /** Drawn in a sidebar: the empty state is a line, not an invitation. */
+    compact?: boolean;
     onOpen: (sessionId: string) => void;
   } = $props();
 
@@ -31,7 +37,9 @@
   }
 </script>
 
-{#if groups.length === 0}
+{#if groups.length === 0 && compact}
+  <p class="px-5 py-4 text-xs text-dim">No chats yet.</p>
+{:else if groups.length === 0}
   <div class="flex h-full flex-col items-center justify-center gap-3 px-8 text-center">
     <div class="flex size-12 items-center justify-center rounded-2xl bg-raised text-muted">
       <ChatsCircleIcon size={24} />
@@ -57,6 +65,8 @@
               <button
                 type="button"
                 class="group flex w-full items-start gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-hover"
+                class:bg-raised={chat.sessionId === selectedId}
+                aria-current={chat.sessionId === selectedId ? "page" : undefined}
                 onclick={() => onOpen(chat.sessionId)}
               >
                 <span

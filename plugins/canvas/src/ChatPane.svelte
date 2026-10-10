@@ -4,6 +4,7 @@
   import { type PaneProps, statusLabel, statusTone } from "@nib-ui/ui-contracts";
   import { SlotHost } from "@nib-ui/ui-contracts/svelte";
   import ArrowLeftIcon from "phosphor-svelte/lib/ArrowLeftIcon";
+  import NotePencilIcon from "phosphor-svelte/lib/NotePencilIcon";
   import { untrack } from "svelte";
   import { chatList, groupChats } from "./chat-list";
   import ChatList from "./ChatList.svelte";
@@ -158,57 +159,140 @@
       },
     };
   });
+
+  /** How wide the drawer is, which decides whether the list sits beside the chat. */
+  let paneWidth = $state(0);
+  /**
+   * Wide enough for the list and a chat side by side: the sidebar's 16rem plus
+   * a chat at the drawer's default width. Dragging the drawer past it brings
+   * the sidebar in, the way a chat app lays itself out on a large window.
+   */
+  const wide = $derived(paneWidth >= 720);
+  /** The row the sidebar marks: the chat the user started, even while one of its agents is shown. */
+  const selectedChatId = $derived(family[0]?.id ?? session?.sessionId ?? null);
 </script>
 
-<div class="flex h-full min-h-0 flex-col">
-  <header class="flex shrink-0 items-center gap-2 border-b border-line py-2 pr-3 pl-2">
-    {#if listing}
-      <span class="min-w-0 flex-1 truncate pl-2 text-sm font-semibold text-default">Chats</span>
-      {#if runningCount > 0}
-        <span class="flex items-center gap-1.5 text-2xs text-blue">
-          <span class="size-1.5 animate-pulse rounded-full bg-blue"></span>
-          {runningCount} running
-        </span>
+{#snippet chatsHeading()}
+  <span class="min-w-0 flex-1 truncate pl-2 text-sm font-semibold text-default">Chats</span>
+  {#if runningCount > 0}
+    <span class="flex items-center gap-1.5 text-2xs text-blue">
+      <span class="size-1.5 animate-pulse rounded-full bg-blue"></span>
+      {runningCount} running
+    </span>
+  {/if}
+{/snippet}
+
+<div class="flex h-full min-h-0" bind:clientWidth={paneWidth}>
+  {#if wide}
+    <aside class="flex w-64 shrink-0 flex-col border-r border-line">
+      <header class="flex shrink-0 items-center gap-2 border-b border-line py-2 pr-2 pl-2">
+        {@render chatsHeading()}
+        <button
+          type="button"
+          class="rounded-md p-1 text-faint hover:bg-hover hover:text-default"
+          aria-label="New chat"
+          title="New chat"
+          onclick={showOverview}
+        >
+          <NotePencilIcon size={14} />
+        </button>
+      </header>
+      <div class="min-h-0 flex-1 overflow-y-auto">
+        <ChatList
+          groups={groupChats(chats, now)}
+          {now}
+          selectedId={listing ? null : selectedChatId}
+          compact
+          onOpen={openChat}
+        />
+      </div>
+    </aside>
+  {/if}
+
+  <div class="flex min-w-0 flex-1 flex-col">
+    <header class="flex shrink-0 items-center gap-2 border-b border-line py-2 pr-3 pl-2">
+      {#if listing && !wide}
+        {@render chatsHeading()}
+      {:else if listing}
+        <span class="min-w-0 flex-1 truncate pl-2 text-xs font-medium text-default">New chat</span>
+      {:else if wide}
+        <span class="min-w-0 flex-1 truncate pl-2 text-xs font-medium text-default">{title}</span>
+      {:else}
+        <button
+          type="button"
+          class="rounded-md p-1 text-faint hover:bg-hover hover:text-default"
+          aria-label="All chats"
+          title="All chats (← in an empty composer)"
+          onclick={showOverview}
+        >
+          <ArrowLeftIcon size={14} />
+        </button>
+        <span class="min-w-0 flex-1 truncate text-xs font-medium text-default">{title}</span>
       {/if}
-    {:else}
-      <button
-        type="button"
-        class="rounded-md p-1 text-faint hover:bg-hover hover:text-default"
-        aria-label="All chats"
-        title="All chats (← in an empty composer)"
-        onclick={showOverview}
-      >
-        <ArrowLeftIcon size={14} />
-      </button>
-      <span class="min-w-0 flex-1 truncate text-xs font-medium text-default">{title}</span>
-    {/if}
 
-    {#if session}
-      {@const label = statusLabel(session.status)}
-      {#if label}
-        <StatusBadge tone={statusTone(session.status)}>{label}</StatusBadge>
+      {#if session}
+        {@const label = statusLabel(session.status)}
+        {#if label}
+          <StatusBadge tone={statusTone(session.status)}>{label}</StatusBadge>
+        {/if}
       {/if}
-    {/if}
 
-    <!-- What plugins offer on this conversation: the trajectory inspector lives here. -->
-    <SlotHost slot="chat.actions" session={session ?? null} class="flex items-center gap-1" />
-  </header>
+      <!-- What plugins offer on this conversation: the trajectory inspector lives here. -->
+      <SlotHost slot="chat.actions" session={session ?? null} class="flex items-center gap-1" />
+    </header>
 
-  {#if listing}
-    <!-- Every chat of this project; the composer under them starts another. -->
-    <div class="min-h-0 flex-1 overflow-y-auto">
-      <ChatList groups={groupChats(chats, now)} {now} onOpen={openChat} />
-    </div>
-    <div class="shrink-0">
-      <Composer pending={newChat} />
-    </div>
-  {:else if pending}
-    <!-- No transcript yet: what is sent from here is what creates the session,
+    {#if listing && !wide}
+      <!-- Every chat of this project; the composer under them starts another. -->
+      <div class="min-h-0 flex-1 overflow-y-auto">
+        <ChatList groups={groupChats(chats, now)} {now} onOpen={openChat} />
+      </div>
+      <div class="shrink-0">
+        <Composer pending={newChat} />
+      </div>
+    {:else if listing}
+      <!-- The list is in the sidebar, so the room beside it is the new chat's. -->
+      <div class="flex min-h-0 flex-1 flex-col items-center justify-center px-8">
+        <p class="text-lg font-medium text-default">What needs doing?</p>
+        <p class="mt-1 text-xs text-dim">The agent works on this project's files.</p>
+      </div>
+      <div class="shrink-0">
+        <Composer pending={newChat} />
+      </div>
+    {:else if pending}
+      <!-- No transcript yet: what is sent from here is what creates the session,
 		     so the composer is the same one, with its picks applied at launch. -->
-    <div class="min-h-0 flex-1 overflow-y-auto px-8 py-3">
+      <div class="min-h-0 flex-1 overflow-y-auto px-8 py-3">
+        {#if sources.length > 0}
+          <!-- What this task is joined to, named before it runs: sending carries them. -->
+          <div class="mb-2 flex flex-wrap items-center gap-1.5">
+            <span class="text-2xs text-faint">Carries</span>
+            {#each sources as source (source.id)}
+              <button
+                type="button"
+                class="max-w-52 truncate rounded-full border border-line bg-raised px-2 py-0.5 text-2xs text-muted hover:text-default"
+                onclick={() => canvasState.open(source.id)}
+              >
+                {source.title}
+              </button>
+            {/each}
+          </div>
+        {/if}
+
+        <p class="text-xs text-dim">
+          {workstream?.goal || "This workstream has no task yet."}
+        </p>
+        <p class="mt-2 text-2xs text-faint">
+          What is sent from here starts it, carrying anything it joins as context.
+        </p>
+      </div>
+
+      <div class="shrink-0">
+        <Composer {pending} onSwitchAgent={switchAgent} />
+      </div>
+    {:else if session}
       {#if sources.length > 0}
-        <!-- What this task is joined to, named before it runs: sending carries them. -->
-        <div class="mb-2 flex flex-wrap items-center gap-1.5">
+        <!-- What the board linked to this task; the unsent files ride the next prompt. -->
+        <div class="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-4 py-1.5">
           <span class="text-2xs text-faint">Carries</span>
           {#each sources as source (source.id)}
             <button
@@ -222,51 +306,24 @@
         </div>
       {/if}
 
-      <p class="text-xs text-dim">
-        {workstream?.goal || "This workstream has no task yet."}
-      </p>
-      <p class="mt-2 text-2xs text-faint">
-        What is sent from here starts it, carrying anything it joins as context.
-      </p>
-    </div>
-
-    <div class="shrink-0">
-      <Composer {pending} onSwitchAgent={switchAgent} />
-    </div>
-  {:else if session}
-    {#if sources.length > 0}
-      <!-- What the board linked to this task; the unsent files ride the next prompt. -->
-      <div class="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-4 py-1.5">
-        <span class="text-2xs text-faint">Carries</span>
-        {#each sources as source (source.id)}
-          <button
-            type="button"
-            class="max-w-52 truncate rounded-full border border-line bg-raised px-2 py-0.5 text-2xs text-muted hover:text-default"
-            onclick={() => canvasState.open(source.id)}
-          >
-            {source.title}
-          </button>
-        {/each}
+      <div class="min-h-0 flex-1">
+        <ChatSurface
+          {session}
+          scrollToMessageId={anchor}
+          annotations={canvasState.annotationsFor(session.sessionId)}
+          attachments={waiting?.attachments ?? []}
+          onAnnotationAdd={(annotation) => canvasState.pinAnnotation(annotation)}
+          onAnnotationRemove={(annotationId) => canvasState.unpinAnnotation(annotationId)}
+          onAttachmentsSent={() => canvasState.markCarried(waiting?.edgeIds ?? [])}
+          agents={family}
+          onSelectAgent={showSession}
+          onSwitchAgent={switchAgent}
+        />
       </div>
+    {:else}
+      <p class="min-h-0 flex-1 px-3 py-3 text-xs text-dim">
+        {workstream ? "This workstream is not loaded." : "This chat is not loaded."}
+      </p>
     {/if}
-
-    <div class="min-h-0 flex-1">
-      <ChatSurface
-        {session}
-        scrollToMessageId={anchor}
-        annotations={canvasState.annotationsFor(session.sessionId)}
-        attachments={waiting?.attachments ?? []}
-        onAnnotationAdd={(annotation) => canvasState.pinAnnotation(annotation)}
-        onAnnotationRemove={(annotationId) => canvasState.unpinAnnotation(annotationId)}
-        onAttachmentsSent={() => canvasState.markCarried(waiting?.edgeIds ?? [])}
-        agents={family}
-        onSelectAgent={showSession}
-        onSwitchAgent={switchAgent}
-      />
-    </div>
-  {:else}
-    <p class="min-h-0 flex-1 px-3 py-3 text-xs text-dim">
-      {workstream ? "This workstream is not loaded." : "This chat is not loaded."}
-    </p>
-  {/if}
+  </div>
 </div>
