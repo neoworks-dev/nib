@@ -10,13 +10,7 @@
 
 import type { Disposer } from "@nib-ui/kernel";
 import type { MessageAttachment } from "@nib-ui/protocol";
-import type {
-  CanvasObject,
-  Point,
-  SessionsService,
-  TransportService,
-  VaultMoveResult,
-} from "@nib-ui/ui-contracts";
+import type { CanvasObject, Point, TransportService, VaultMoveResult } from "@nib-ui/ui-contracts";
 import { renamePlacements, setMetaString } from "@nib-ui/vault";
 import type {
   Placement,
@@ -27,7 +21,6 @@ import type {
   VaultDoc,
   VaultSnapshotItem,
 } from "@nib-ui/vault";
-import { untrack } from "svelte";
 import { STICKY_DEFAULT_COLOR, type StickyColor } from "./theme";
 import type { BoardStore } from "./board.svelte";
 import {
@@ -36,8 +29,8 @@ import {
   isDiagramPath,
   isImagePath,
   isMarkdownPath,
+  isTranscriptPath,
   isVideoPath,
-  sessionIdOf,
 } from "./card-kind";
 import { documentToMarkdown, parseDocument, toggleTask } from "./markdown";
 import {
@@ -124,12 +117,6 @@ export interface PageCapture {
 
 export class VaultStore {
   transport = $state<TransportService | null>(null);
-  /**
-   * Set by the app, for lineage: a transcript of an agent another agent spawned
-   * is folded into its spawner's card — read through its tabs — rather than
-   * drawn as a chat of its own.
-   */
-  sessions = $state<SessionsService | null>(null);
   /** The vault as the server last reported it. Null until the first load resolves. */
   doc = $state<VaultDoc | null>(null);
 
@@ -214,39 +201,10 @@ export class VaultStore {
   /** The project `stream` is watching, so re-opening the same one is a no-op. */
   private watched: string | null = null;
 
-  /**
-   * The sessions whose transcript belongs on another card. Sorted and joined so
-   * it only changes when the set does: the summaries are re-read on a timer,
-   * and redrawing the board on every tick would be most of what the board did.
-   */
-  private readonly spawnedKey = $derived(
-    (this.sessions?.summaries ?? [])
-      .filter((summary) => summary.parentSessionId !== null)
-      .map((summary) => summary.id)
-      .sort()
-      .join("\n"),
-  );
-
   constructor(private readonly board: BoardStore) {
     board.onVaultObjectPatch = (id, patch) => this.patchCard(id, patch);
     board.onVaultObjectsRemoved = (ids) => this.removeCards(ids);
     board.onBoardSynced = () => this.derive();
-    // A spawned agent's transcript lands in the vault before the session list
-    // says who spawned it, so the fold has to follow the list, not the scan.
-    $effect.root(() => {
-      $effect(() => {
-        void this.spawnedKey;
-        untrack(() => this.derive());
-      });
-    });
-  }
-
-  /** True for the transcript of an agent another agent spawned. */
-  private folded(item: VaultSnapshotItem): boolean {
-    if (cardKindFor(item) !== "transcript") return false;
-    const sessionId = sessionIdOf(item.path);
-    const summary = this.sessions?.summaries.find((entry) => entry.id === sessionId);
-    return summary?.parentSessionId != null;
   }
 
   get cwd(): string {
@@ -1430,7 +1388,8 @@ export class VaultStore {
     // dead keys for boards that hold nothing.
     const viewed = boardView({
       vault: doc,
-      omit: (item) => this.folded(item),
+      // The board is for assets. A chat is read in its agent pane, never as a card.
+      omit: (item) => isTranscriptPath(item.path),
       placements: this.slice(),
       board: this.view,
       size: sizeForItem,

@@ -97,7 +97,6 @@ export const canvasPlugin: Plugin = {
     // The vault is read over the same transport: without this the board has
     // nothing to draw from disk and silently shows only authored cards.
     canvasState.vault.transport = transport;
-    canvasState.vault.sessions = sessions;
 
     ctx.effect(() => ctx.provide("canvas", registry));
 
