@@ -28,7 +28,7 @@ One agent at a time, with me giving feedback as it goes. Keep each step small en
 
 Straight to `main` in the root, no branch: typos, one-liners, and anything that only touches how we work rather than the app — this file, `.claude/skills/`, lint and editor config.
 
-Everything else happens on a branch off `main`, in a worktree under `.worktrees/<branch>` (`git worktree add .worktrees/<branch> -b <branch> main`). Name it `<issue-number>-<slug>` when there is an issue (`12-tab-strip-overflow`), `<slug>` when there isn't. One branch is one thing; anything found along the way gets written down as an issue and stays off the branch, unless the branch can't finish without it.
+Everything else happens on a branch off `main`, in a worktree under `.worktrees/<branch>` (`git worktree add .worktrees/<branch> -b <branch> main`); a `post-checkout` hook in `.githooks/` runs `scripts/setup-worktree.ts` on that, so the worktree has its dependencies, the Electron binary and the design-system link, and `bun run dev` works in it (rerun the script by hand if it ever doesn't). Name it `<issue-number>-<slug>` when there is an issue (`12-tab-strip-overflow`), `<slug>` when there isn't. One branch is one thing; anything found along the way gets written down as an issue and stays off the branch, unless the branch can't finish without it.
 
 Before starting on anything, check whether it is already half-built: `git branch` and `git worktree list` for the feature, the issue's comments, and what is on the branch. Sessions end mid-feature, and a branch is where that work is — starting again writes it a second time and loses whatever the first attempt learned. If a branch for it exists, continue on it.
 

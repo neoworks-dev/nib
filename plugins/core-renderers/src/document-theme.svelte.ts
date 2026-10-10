@@ -19,13 +19,22 @@ function read(): MermaidTheme {
   return document.documentElement.dataset["theme"] === "dark" ? "dark" : "light";
 }
 
+/**
+ * The page's theme now, and again whenever it changes. This is called from
+ * `$derived`, where state may not be written, so the first call hands back what
+ * it read and the state catches up a microtask later.
+ */
 export function documentTheme(): MermaidTheme {
   if (!watched) {
     watched = true;
-    theme = read();
+    const initial = read();
+    queueMicrotask(() => {
+      theme = initial;
+    });
     new MutationObserver(() => {
       theme = read();
     }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return initial;
   }
   return theme;
 }
