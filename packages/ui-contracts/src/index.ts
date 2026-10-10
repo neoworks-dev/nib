@@ -81,7 +81,7 @@ export interface CreateSessionInput {
    * its history, which is how a task started off another one inherits context
    * without any of it travelling in the prompt.
    */
-  resume?: { nativeSessionId: string; fork?: boolean };
+  resume?: { nativeSessionId: string; fork?: boolean; copyHistoryFrom?: string };
 }
 
 export interface TransportService {

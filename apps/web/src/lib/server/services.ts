@@ -87,7 +87,10 @@ export interface SessionHost {
     cwd: string;
     nativeSessionId: string;
     fork?: boolean;
+    label?: string;
     options?: Record<string, unknown>;
+    /** A session whose conversation is copied into the new one's log, so it opens showing it. */
+    copyHistoryFrom?: string;
   }): Promise<string>;
   execute(sessionId: string, command: SessionCommand): Promise<void>;
   eventsSince(sessionId: string, fromSeq: number): AnyAgentEvent[];

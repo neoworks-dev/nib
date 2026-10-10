@@ -9,8 +9,9 @@
 
 <!-- A reading column, not the pane's full width: long lines are hard to follow. -->
 <div class="mx-auto flex w-full max-w-5xl flex-col gap-5 px-6 py-6">
-  {#each turns as turn (turn.id)}
-    <MessageTurn {turn} {session} {onBranch} />
+  {#each turns as turn, index (turn.id)}
+    <!-- A branch carries the whole conversation, so only the newest reply offers one. -->
+    <MessageTurn {turn} {session} onBranch={index === turns.length - 1 ? onBranch : undefined} />
   {/each}
 
   {#if turns.length === 0}

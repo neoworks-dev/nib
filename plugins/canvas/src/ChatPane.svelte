@@ -281,7 +281,6 @@
           onOpen={openChat}
           onPin={pinChat}
           onRename={renameChat}
-          onBranch={branchChat}
           onDelete={deleteChat}
         />
       </div>
@@ -329,7 +328,6 @@
           onOpen={openChat}
           onPin={pinChat}
           onRename={renameChat}
-          onBranch={branchChat}
           onDelete={deleteChat}
         />
       </div>

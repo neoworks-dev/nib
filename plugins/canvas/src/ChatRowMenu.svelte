@@ -1,11 +1,9 @@
 <script lang="ts">
   /**
-   * What can be done to one chat in the list: pin it, rename it, branch it into a
-   * new chat, delete it. Fixed to the button that opened it so the list's own
+   * What can be done to one chat in the list: pin it, rename it, delete it. Fixed to the button that opened it so the list's own
    * scrolling does not clip it. Delete asks a second time, since it takes the
    * transcript with it.
    */
-  import GitBranchIcon from "phosphor-svelte/lib/GitBranchIcon";
   import PencilSimpleIcon from "phosphor-svelte/lib/PencilSimpleIcon";
   import PushPinIcon from "phosphor-svelte/lib/PushPinIcon";
   import PushPinSlashIcon from "phosphor-svelte/lib/PushPinSlashIcon";
@@ -14,20 +12,16 @@
   const {
     anchor,
     pinned,
-    branchable,
     onPin,
     onRename,
-    onBranch,
     onDelete,
     onClose,
   }: {
     /** The button the menu hangs from. */
     anchor: DOMRect;
     pinned: boolean;
-    branchable: boolean;
     onPin: () => void;
     onRename: () => void;
-    onBranch: () => void;
     onDelete: () => void;
     onClose: () => void;
   } = $props();
@@ -91,16 +85,6 @@
   >
     <PencilSimpleIcon size={16} /> Rename
   </button>
-  {#if branchable}
-    <button
-      type="button"
-      role="menuitem"
-      class="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-default hover:bg-hover"
-      onclick={() => choose(onBranch)}
-    >
-      <GitBranchIcon size={16} /> Branch in new chat
-    </button>
-  {/if}
   <button
     type="button"
     role="menuitem"

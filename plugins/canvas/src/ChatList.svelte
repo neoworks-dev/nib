@@ -23,7 +23,6 @@
     onOpen,
     onPin,
     onRename,
-    onBranch,
     onDelete,
   }: {
     groups: ChatListGroup[];
@@ -37,7 +36,6 @@
     onOpen: (sessionId: string) => void;
     onPin: (sessionId: string, pinned: boolean) => void;
     onRename: (sessionId: string, label: string) => void;
-    onBranch: (sessionId: string) => void;
     onDelete: (sessionId: string) => void;
   } = $props();
 
@@ -184,10 +182,8 @@
   <ChatRowMenu
     anchor={menu.anchor}
     pinned={target.pinned}
-    branchable={target.branchable}
     onPin={() => onPin(target.sessionId, !target.pinned)}
     onRename={() => startRename(target)}
-    onBranch={() => onBranch(target.sessionId)}
     onDelete={() => onDelete(target.sessionId)}
     onClose={() => (menu = null)}
   />

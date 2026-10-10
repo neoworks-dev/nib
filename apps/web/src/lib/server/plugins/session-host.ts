@@ -7,7 +7,13 @@ import type {
   SessionView,
   UsageTotals,
 } from "@nib-ui/protocol";
-import { createSessionView, deriveTaskTitle, reduceSession, sessionDigest } from "@nib-ui/protocol";
+import {
+  createSessionView,
+  deriveTaskTitle,
+  isKnownEvent,
+  reduceSession,
+  sessionDigest,
+} from "@nib-ui/protocol";
 import type {
   AgentControlProvider,
   CreateSessionOptions,
@@ -91,8 +97,11 @@ class SessionHostService implements SessionHost {
     cwd: string;
     nativeSessionId: string;
     fork?: boolean;
+    label?: string;
     options?: Record<string, unknown>;
+    copyHistoryFrom?: string;
   }): Promise<string> {
+    const source = this.sourceOfCopy(input.copyHistoryFrom);
     const { adapter, hosted, emit } = this.prepare(input.harnessId, input.cwd);
     if (!adapter.resumeSession)
       throw new Error(`harness "${input.harnessId}" cannot resume sessions`);
@@ -105,12 +114,15 @@ class SessionHostService implements SessionHost {
     emit({
       type: "session.meta",
       data: {
+        label: input.label,
         permissionMode:
           readStringOption(input.options, "permissionMode") ?? adapter.defaultPermissionMode,
         model: readStringOption(input.options, "model") ?? adapter.defaultModel,
+        effort: readStringOption(input.options, "effort"),
         models: adapter.models,
       },
     });
+    if (source) this.copyHistory(hosted, source);
     const opts: CreateSessionOptions & { fork?: boolean } = {
       cwd: input.cwd,
       options: input.options,
@@ -119,6 +131,26 @@ class SessionHostService implements SessionHost {
     };
     await this.attach(hosted, () => adapter.resumeSession!(input.nativeSessionId, opts, emit));
     return hosted.id;
+  }
+
+  /** The session a fork copies its transcript from; asked for and missing is an error, not a blank fork. */
+  private sourceOfCopy(sessionId: string | undefined): HostedSession | null {
+    if (sessionId === undefined) return null;
+    return this.require(sessionId);
+  }
+
+  /**
+   * Writes the source's conversation into a fork's own log, so the fork opens
+   * showing what was said. What describes the source's own process — its
+   * creation, settings, status and pending permission prompts — stays behind.
+   */
+  private copyHistory(hosted: HostedSession, source: HostedSession): void {
+    for (const event of source.events) {
+      if (!isKnownEvent(event)) continue;
+      if (eventsLeftBehindByFork.has(event.type)) continue;
+      const { id, sessionId, seq, ts, ...content } = event;
+      this.emit(hosted, content);
+    }
   }
 
   async execute(sessionId: string, command: SessionCommand): Promise<void> {
@@ -386,6 +418,16 @@ class SessionHostService implements SessionHost {
     return hosted;
   }
 }
+
+/** Events that describe one session's own process rather than its conversation. */
+const eventsLeftBehindByFork = new Set<string>([
+  "session.created",
+  "session.meta",
+  "session.cleared",
+  "session.status",
+  "permission.requested",
+  "permission.resolved",
+]);
 
 /** The picks a session was last given, so a resumed session carries on under them. */
 function resumeOptions(view: SessionView): Record<string, unknown> {

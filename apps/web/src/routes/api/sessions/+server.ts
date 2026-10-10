@@ -7,7 +7,13 @@ const createBodySchema = z.object({
   cwd: z.string(),
   label: z.string().optional(),
   options: z.record(z.string(), z.unknown()).optional(),
-  resume: z.object({ nativeSessionId: z.string(), fork: z.boolean().optional() }).optional(),
+  resume: z
+    .object({
+      nativeSessionId: z.string(),
+      fork: z.boolean().optional(),
+      copyHistoryFrom: z.string().optional(),
+    })
+    .optional(),
 });
 
 export const GET: RequestHandler = () => json({ sessions: sessionHost().list() });
@@ -20,7 +26,7 @@ export const POST: RequestHandler = async ({ request }) => {
   const { harnessId, cwd, label, options, resume } = body.data;
   try {
     const sessionId = resume
-      ? await host.resume({ harnessId, cwd, options, ...resume })
+      ? await host.resume({ harnessId, cwd, label, options, ...resume })
       : await host.create({ harnessId, cwd, label, options });
     return json({ sessionId });
   } catch (cause) {
